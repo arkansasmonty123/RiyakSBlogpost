@@ -1,0 +1,96 @@
+.quiz-modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(40,40,60,0.36);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1002;
+  animation: fadeInModal 0.3s cubic-bezier(.35,.92,.33,1.15);
+}
+@keyframes fadeInModal {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.quiz-modal {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 12px 48px rgba(80,80,160,0.18);
+  min-width: 340px;
+  max-width: 95vw;
+  padding: 2rem 1.6rem 1.2rem 1.6rem;
+  position: relative;
+  animation: popInQuiz 0.33s cubic-bezier(.4,2,.7,1);
+}
+@keyframes popInQuiz {
+  from { opacity: 0; transform: scale(.85) translateY(80px);}
+  to { opacity: 1; transform: scale(1) translateY(0);}
+}
+.quiz-close {
+  position: absolute;
+  top: 10px; right: 12px;
+  font-size: 1.7em;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6949e4;
+}
+.quiz-question {
+  font-size: 1.2em;
+  font-weight: 600;
+  margin-bottom: 1.2em;
+  color: #573fd3;
+  text-align: center;
+}
+.quiz-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8em;
+  margin-bottom: 1em;
+}
+.quiz-option {
+  background: #f4f4fa;
+  border: 1px solid #cfcfff;
+  border-radius: 8px;
+  padding: 0.8em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.18s, border 0.18s;
+}
+.quiz-option.selected,
+.quiz-option:disabled.selected {
+  background: #cfcfff;
+  border: 1.5px solid #573fd3;
+  color: #3d2c8d;
+}
+.quiz-option:disabled:not(.selected) {
+  opacity: 0.7;
+  cursor: default;
+}
+.quiz-feedback {
+  text-align: center;
+  margin-bottom: 1.1em;
+  font-size: 1.05em;
+  font-weight: 600;
+  transition: color 0.2s;
+}
+.quiz-feedback.correct { color: #179e63; }
+.quiz-feedback.wrong { color: #cf2e44; }
+.quiz-next {
+  display: block;
+  margin: 0 auto;
+  background: #573fd3;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.7em 1.6em;
+  font-size: 1em;
+  font-weight: bold;
+  cursor: pointer;
+}
+.quiz-loading {
+  text-align: center;
+  color: #573fd3;
+  font-size: 1.1em;
+}
