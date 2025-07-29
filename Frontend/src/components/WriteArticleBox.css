@@ -1,0 +1,51 @@
+.write-article-box {
+  background: #f9f9ff;
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(90,80,200,0.09);
+  padding: 1.7em 1.2em 1.2em 1.2em;
+  margin-bottom: 2em;
+  max-width: 600px;
+  margin-left: auto;
+  margin-right: auto;
+  animation: fadeInCard 0.7s cubic-bezier(.44,2,.6,1);
+}
+.write-article-box h2 {
+  margin-top: 0;
+  color: #573fd3;
+  font-size: 1.3em;
+  margin-bottom: 1em;
+  text-align: center;
+}
+.write-article-box form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8em;
+}
+.write-article-box input,
+.write-article-box textarea {
+  border: 1px solid #cfcfff;
+  border-radius: 8px;
+  padding: 0.7em 1em;
+  font-size: 1em;
+  outline: none;
+}
+.write-article-box button {
+  background: #573fd3;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.8em 1.2em;
+  font-size: 1em;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background 0.18s;
+}
+.write-article-box button:hover {
+  background: #3d2c8d;
+}
+.write-article-message {
+  margin-top: 0.6em;
+  text-align: center;
+  color: #147c5a;
+  font-weight: 500;
+}
