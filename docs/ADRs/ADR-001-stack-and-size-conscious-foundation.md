@@ -7,7 +7,7 @@
 
 ## Context
 
-Master context §20 suggests Next.js App Router, TypeScript, Tailwind, PostgreSQL, Prisma. The home/project has a hard <1.5 GB total footprint limit (D-019). Current home usage after cleanup is ~915M; a typical Next.js+Prisma+Postgres local setup plus deps can exceed the remaining budget.
+Master context §20 suggests Next.js App Router, TypeScript, Tailwind, PostgreSQL, Prisma. D-019 requires keeping >2 GB available in the home/project environment. The P0 stack should remain size-conscious and avoid unnecessary bloat.
 
 ## Decision
 
@@ -22,13 +22,13 @@ For P0 prototype, use a **size-conscious web stack**:
 
 ## Alternatives considered
 
-- Next.js + Postgres + Prisma now — rejected for P0 due to footprint/ops overhead under 1.5GB; revisit in Phase 1+ if budget allows or deps cleaned after install.
+- Next.js + Postgres + Prisma now — deferred for P0 to keep setup lightweight; revisit when justified by requirements.
 - No build tool/plain HTML — rejected; too limiting for scene state/component architecture.
 - Native app first — rejected; higher packaging complexity, unclear requirement.
 
 ## Consequences
 
-- Faster, smaller P0 iteration; easier to stay under 1.5GB.
+- Faster, smaller P0 iteration; size-conscious by default while maintaining >2 GB available storage.
 - Migration path needed if/when moving to Next.js/Postgres/Prisma.
 - Must keep domain boundaries clean so persistence/UI stack can evolve.
 - After `npm install`/build verification, heavy reinstallable dirs may be cleaned to preserve budget; record restore commands.

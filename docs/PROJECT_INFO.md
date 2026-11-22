@@ -86,7 +86,7 @@ project-courtroom/
 - Mobile-first and accessible interface.
 - Fiction and real-world legal information clearly labelled.
 - No feature claimed working until implemented and tested.
-- **Project size budget: < 1.5 GB** (D-019, user direction 2026-11-22). Avoid bundling large local models/raw media/caches in-repo; prefer optimized assets and external/hosted large artifacts. Clarify whether budget applies to repo, dev workspace, or installed artifact.
+- **Storage availability: keep >2 GB free** in home/project environment (D-019, corrected 2026-11-22). Avoid unnecessary bloat; clean reinstallable artifacts only when space is tight.
 
 ## Open questions
 

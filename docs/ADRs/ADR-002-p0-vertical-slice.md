@@ -7,7 +7,7 @@
 
 ## Context
 
-Master context defines a large product. We need a small, testable first slice that fits the <1.5GB home limit and validates core seams.
+Master context defines a large product. We need a small, testable first slice while maintaining >2 GB available storage in the home/project environment.
 
 ## Decision
 
@@ -44,4 +44,4 @@ Build **"The First Brief — Office Prototype"** as P0:
 - Save/load and clock tests.
 - Canonical truth no-leak tests.
 - No fabricated citation display.
-- Home/workspace remains <1.5GB.
+- Home/project environment keeps >2 GB available storage.

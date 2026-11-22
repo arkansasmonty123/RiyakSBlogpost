@@ -21,7 +21,7 @@
 | D-001 | Exact target platforms: mobile web first, installable PWA, native app, or desktop? | Accepted (pragmatic default) | Orchestrator/Product owner | 2026-11-22 | High — affects stack packaging, UI, storage, AI runtime | Mobile-first web, PWA-friendly later; desktop usable. Revisit if native required. |
 | D-002 | Initial visual art style: realistic illustration, stylised realism, graphic novel, or another direction? | Unknown | Product/design | Before Phase 5 | Medium — affects asset pipeline and consistency | Pick one style guide before producing scene assets. Placeholder composed UI used for P0 shell. |
 | D-003 | Which runtime model/provider will be available in the first playable build? | Accepted (pragmatic default) | Orchestrator/Product owner | 2026-11-22 | **High** — runtime AI features depend on it | AI-disabled deterministic stub for P0; provider abstraction required before real integration. No local model bundled (size budget). |
-| D-004 | Is local on-device inference required for first release or later optimisation? | Deferred (P0) | Product/Eng | Post-P0 | High — model size, packaging, latency, battery, cost | Deferred due to 1.5GB home limit and unproven capability; server/hosted or external model pack later. |
+| D-004 | Is local on-device inference required for first release or later optimisation? | Deferred (P0) | Product/Eng | Post-P0 | High — model size, packaging, latency, battery, cost | Deferred for P0 due to capability/packaging uncertainty; prefer hosted/external model pack later. Keep >2GB available. |
 | D-005 | How much real legal content can be sourced, licensed, and verified for first release? | Unknown | Legal/content owner | Before Phase 3 | **Critical** — no fabrication allowed | Start with minimal verified corpus needed for first case; document provenance. |
 | D-006 | Which practice area should follow the initial criminal case? | Unknown | Product/content | Post-P0 | Low/Medium — roadmap only | Defer until P0 validated. |
 | D-007 | Should personal life and romance be included in first chapter or deferred? | Unknown | Product owner | Before Phase 7 scope lock | Medium — scope/ethics/tone risk | Recommend defer from P0/P1 unless core to chapter. |
@@ -43,7 +43,7 @@
 | D-016 | Personal data/privacy/logging policy (future user data) | Unknown | Product/Legal/Eng | Before any user accounts/telemetry | High | Minimize data; no secrets in logs; define retention if accounts added. |
 | D-017 | Localization/language scope (English only first?) | Unknown | Product | Before UI content scale | Medium | Recommend English-first UI with content architecture allowing localization later. |
 | D-018 | Licensing for game code/content/assets | Unknown | Product/Legal | Before public release | Medium | Decide repo license and content/asset licenses separately. |
-| D-019 | Total space budget: project/folder/home must stay under 1.5 GB | Accepted (user direction, clarified) | Product owner / Architect | Active now | **Critical** — hard limit on home directory footprint | Clarified 2026-11-22: total space of project/folder/home must not exceed 1.5 GB. Reinstallable caches/node_modules/model weights must be cleaned or kept external. Audit with `du -sh /home/divyanshukumarsinha241` at checkpoints. |
+| D-019 | Storage availability: keep >2 GB free in home/project environment | Accepted (user direction, corrected) | Product owner / Architect | Active now | **High** — environment/storage constraint | Corrected 2026-11-22: available storage in home/project environment should be >2 GB. Previously misrecorded as total <1.5 GB; corrected per user. Audit with `df -h /home` and `du -sh /home/divyanshukumarsinha241` at checkpoints. |
 
 ---
 
@@ -89,13 +89,13 @@ Use this for future entries:
 - **Consequences / follow-up:** All product capabilities are missing; start with Phase 0 decisions and foundation.
 - **Verification:** Evidence captured in `docs/AUDIT.md`.
 
-### D-019 — Project size budget under 1.5 GB
+### D-019 — Storage availability > 2 GB (corrected)
 - **Date:** 2026-11-22
 - **Status:** Accepted (user direction; scope clarification needed)
 - **Owner:** Product owner
-- **Context:** User requested Phase 0 start and to keep project size under 1.5 GB; later clarified: "total space of project or this folder or home should not go above 1.5 gb".
-- **Decision:** Enforce a hard <1.5 GB total home/workspace footprint limit. Large/reinstallable artifacts (node_modules, Playwright browsers, pip/prisma caches, model weights, raw media, DB dumps) must be cleaned or kept external/download-on-demand.
-- **Rationale:** Hard environment constraint; prevents bloat from deps, assets, indexes, or bundled local models.
-- **Alternatives considered:** Repo-only cap — rejected by clarification. Installed-artifact-only cap — rejected by clarification.
-- **Consequences / follow-up:** Audit with `du -sh /home/divyanshukumarsinha241` at checkpoints. Prefer hosted AI/external model packs; optimize static assets (WebP); avoid bundling large local models. Reinstall deps/caches only when needed and clean after.
+- **Context:** User initially gave a size constraint that was misrecorded as total <1.5 GB; corrected 2026-11-22: "The available storage should be greater than 2 gb".
+- **Decision:** Maintain >2 GB available storage in the home/project environment. Avoid unnecessary bloat, but do not over-constrain development by deleting needed deps/caches unless space is tight.
+- **Rationale:** Ensures room for dependencies, builds, assets, and tooling without hitting disk limits.
+- **Alternatives considered:** Strict total cap <1.5 GB — rejected after user correction.
+- **Consequences / follow-up:** Check `df -h /home` at checkpoints. Clean reinstallable caches only when availability drops near/under 2 GB. Still prefer size-conscious choices (no bundled large model weights in repo).
 - **Verification:** `du -sh` at checkpoints; CI/artifact size checks in Phase 1; ADR-000.

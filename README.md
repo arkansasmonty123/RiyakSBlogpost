@@ -35,7 +35,7 @@ npm run build
 npm run dev
 ```
 
-> Size note: under hard <1.5 GB home budget (D-019). If needed, clear reinstallable `node_modules` after verification and reinstall on demand.
+> Size note: keep >2 GB available in home/project environment (D-019). Current `/home` has sufficient free space; clean reinstallable artifacts only when needed.
 
 ## Non-negotiables / active constraints
 
@@ -46,8 +46,8 @@ npm run dev
 - Validate AI outputs against schemas/game rules; use transactions for important state changes.
 - Do not claim features work until implemented and tested.
 - THE BAR is an educational simulation, not legal advice or a substitute for formal legal education/professional qualification.
-- **Hard size budget: total project/folder/home < 1.5 GB** (D-019). Large model weights/raw media/DB dumps/build caches must not bloat home; prefer optimized assets and external/hosted large artifacts. See `docs/DECISIONS.md` and `docs/ADRs/ADR-000-project-constraints.md`.
+- **Storage budget: keep >2 GB available** in home/project environment (D-019, corrected 2026-11-22). Avoid unnecessary bloat; clean reinstallable caches when space is tight. See `docs/DECISIONS.md` and `docs/ADRs/ADR-000-project-constraints.md`.
 
 ## Next step
 
-Continue P0 "The First Brief — Office Prototype" (ADR-002): deepen scene interactions, evidence discovery, notebook/drafting loop, save/load polish, and add guardrail tests — while keeping footprint under 1.5 GB.
+Continue P0 "The First Brief — Office Prototype" (ADR-002): deepen scene interactions, evidence discovery, notebook/drafting loop, save/load polish, and add guardrail tests — while maintaining >2 GB available storage.
