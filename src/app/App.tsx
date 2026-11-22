@@ -848,6 +848,31 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                     </ul>
                   </section>
 
+                  <section aria-labelledby="completion-legal-mind-heading" className="bg-bar-panel2 p-3 rounded border border-white/5">
+                    <h3 id="completion-legal-mind-heading" className="text-xs uppercase tracking-wide text-bar-gold">Legal Mind Profile (lite)</h3>
+                    <p className="text-xs text-bar-muted mt-1">{completion.legalMindProfile.intro}</p>
+                    <ul className="mt-3 space-y-3">
+                      {completion.legalMindProfile.dimensions.map((d) => (
+                        <li key={d.id} className="bg-bar-bg/40 p-2 rounded border border-white/5">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-sm text-bar-text font-medium">{d.label}</span>
+                            <span className="text-[11px] uppercase tracking-wide text-bar-gold">{d.levelLabel}</span>
+                          </div>
+                          <p className="text-xs text-bar-muted mt-1">{d.rationale}</p>
+                          {d.evidence.length > 0 && (
+                            <ul className="list-disc ml-5 mt-1 text-xs text-bar-muted">
+                              {d.evidence.map((e, i) => <li key={i}>{e}</li>)}
+                            </ul>
+                          )}
+                          <p className="text-xs text-bar-muted mt-1">
+                            <span className="text-bar-gold/80">Next step: </span>{d.nextStep}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-[11px] text-bar-muted mt-3">{completion.legalMindProfile.closing}</p>
+                  </section>
+
                   <section aria-labelledby="completion-relationships-heading" className="bg-bar-panel2 p-3 rounded border border-white/5">
                     <h3 id="completion-relationships-heading" className="text-xs uppercase tracking-wide text-bar-gold">Relationship highlights</h3>
                     <ul className="grid gap-1 mt-2 text-xs text-bar-muted sm:grid-cols-2">

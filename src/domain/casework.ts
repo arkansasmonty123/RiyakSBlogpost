@@ -1,3 +1,4 @@
+import { buildLegalMindProfile, LEGAL_MIND_LEVEL_RANK } from './legalMindProfile';
 import { isAssignmentUnlocked, makeId, refreshAssignmentUnlocks } from './progression';
 import type {
   AdmissibilityChallenge,
@@ -288,6 +289,8 @@ export interface FinalBriefResult {
   reason?: string;
   tier?: 'strong' | 'solid' | 'shaky';
   consequence?: string;
+  /** Specific, grounded observations included in the final review. */
+  highlights?: string[];
 }
 
 const FINAL_CONSEQUENCE: Record<'strong' | 'solid' | 'shaky', string> = {
@@ -295,6 +298,51 @@ const FINAL_CONSEQUENCE: Record<'strong' | 'solid' | 'shaky', string> = {
   solid: 'The file is accepted with minor notes. Your careful habits are recognised and your standing improves steadily.',
   shaky: 'The file is accepted with reservations. Gaps in the record were noted; your standing changes only slightly and the senior asks for closer work next time.',
 };
+
+/**
+ * Specific, player-legible observations for the final review. Every line is derived from a
+ * recorded action or a player-visible artifact; nothing here asserts what actually happened.
+ */
+function finalReviewHighlights(save: SaveGame): string[] {
+  const lines: string[] = [];
+  const reviewed = save.caseFile.evidence.filter((e) => e.discovered && e.reviewed);
+  if (reviewed.length > 0) {
+    lines.push(`Your file rests on material you actually reviewed — ${reviewed.map((e) => e.title).join(', ')}.`);
+  }
+  if (save.notebook.some((n) => n.verified === true && !!n.sourceId)) {
+    lines.push('You attached a verified, labelled educational source rather than presenting an unverified provision as law.');
+  }
+  if (save.flags.clientInterviewDone) {
+    lines.push('You took the client statement within the limits of what they personally observed.');
+  }
+  if (save.custodyLog.length > 0) {
+    lines.push('You logged how an item was handled instead of treating its status as settled.');
+  }
+  if (save.challenges.length > 0) {
+    const grounds = [...new Set(save.challenges.map((c) => c.ground))].join(' and ');
+    lines.push(`You tested how material could be relied on with a stated ground (${grounds}).`);
+  }
+  const revisions = save.reviewRounds.filter((r) => r.status === 'needs_revision').length;
+  if (revisions > 0) {
+    lines.push(`You revised your brief after senior feedback before it was accepted (${revisions} revision round${revisions === 1 ? '' : 's'}).`);
+  }
+  if (save.caseTheory.claims.length > 0) {
+    lines.push('You recorded your working theory as your own analysis, linked to reviewed material rather than presented as a finding.');
+  }
+
+  // Ground the closing advice in the same deterministic profile shown on the completion screen.
+  const profile = buildLegalMindProfile(save);
+  const ranked = [...profile.dimensions].sort(
+    (a, b) => LEGAL_MIND_LEVEL_RANK[b.level] - LEGAL_MIND_LEVEL_RANK[a.level]
+      || b.evidence.length - a.evidence.length,
+  );
+  const strongest = ranked[0];
+  const nextArea = ranked[ranked.length - 1];
+  if (strongest && nextArea) {
+    lines.push(`In your Legal Mind Profile, ${strongest.label.toLowerCase()} is your clearest strength; ${nextArea.label.toLowerCase()} is the area to build on next.`);
+  }
+  return lines;
+}
 
 /**
  * Final Day-10 submission. Consequence is a deterministic function of player-visible
@@ -319,7 +367,10 @@ export function submitFinalBrief(save: SaveGame, workSummary: string): FinalBrie
   const acceptedRounds = save.reviewRounds.filter((r) => r.status === 'accepted').length;
   const score = rep.competence + rep.integrity + rep.reliability + acceptedRounds * 2;
   const tier: 'strong' | 'solid' | 'shaky' = score >= 60 ? 'strong' : score >= 40 ? 'solid' : 'shaky';
-  const consequence = FINAL_CONSEQUENCE[tier];
+  const highlights = finalReviewHighlights(save);
+  const consequence = highlights.length > 0
+    ? `${FINAL_CONSEQUENCE[tier]} ${highlights.join(' ')}`
+    : FINAL_CONSEQUENCE[tier];
 
   assignment.status = 'reviewed';
   assignment.feedback = consequence;
@@ -349,5 +400,5 @@ export function submitFinalBrief(save: SaveGame, workSummary: string): FinalBrie
     verified: true,
   });
   refreshAssignmentUnlocks(save);
-  return { ok: true, tier, consequence };
+  return { ok: true, tier, consequence, highlights };
 }
