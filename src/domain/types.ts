@@ -264,6 +264,31 @@ export interface DraftState {
   versions: DraftVersion[];
 }
 
+/** Fixed set of important, player-legible actions traced by the audit/event log. */
+export type AuditEventType =
+  | 'save'
+  | 'draft-submitted'
+  | 'assignment-reviewed'
+  | 'senior-review-submitted'
+  | 'evidence-discovered'
+  | 'evidence-reviewed'
+  | 'evidence-challenged'
+  | 'custody-recorded'
+  | 'source-intake'
+  | 'final-brief';
+
+/**
+ * A bounded, append-only record that an important action happened. It contains only
+ * player-legible information: no canonical truth, no authenticity finding, no secrets.
+ */
+export interface AuditEvent {
+  id: string;
+  day: number;
+  slot: GameClock['slot'];
+  type: AuditEventType;
+  summary: string;
+}
+
 /** How the player provisionally regards their own theory claim — never canonical truth. */
 export type TheoryStatus = 'known' | 'claimed' | 'disputed';
 
@@ -306,4 +331,6 @@ export interface SaveGame {
   reviewRounds: ReviewRound[];
   /** Player-authored, evidence-linked case theory. Player-legible; never canonical truth. */
   caseTheory: CaseTheory;
+  /** Bounded, append-only trail of important player actions. Never canonical truth. */
+  auditLog: AuditEvent[];
 }

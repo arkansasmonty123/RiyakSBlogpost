@@ -1,3 +1,4 @@
+import { sanitizeAuditLog } from '@/domain/audit';
 import { MAX_DRAFT_CHARS, MAX_DRAFT_VERSIONS } from '@/domain/draft';
 import { validateSourceProvenance } from '@/domain/legalSources';
 import { isValidViewpoint } from '@/domain/scenes';
@@ -194,6 +195,8 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
               && Array.isArray(c.evidenceIds))
           : base.caseTheory.claims,
       },
+      // Audit log is absent in older saves; sanitize untrusted stored entries on load.
+      auditLog: sanitizeAuditLog(parsed.auditLog),
     };
   } catch {
     return createInitialSave();
@@ -209,6 +212,7 @@ export function persistSave(save: SaveGame, storage: StorageLike = defaultStorag
       current: save.draft.current,
       versions: save.draft.versions.slice(0, MAX_DRAFT_VERSIONS),
     },
+    auditLog: sanitizeAuditLog(save.auditLog),
   };
   storage.setItem(SAVE_KEY, JSON.stringify(payload));
   storage.removeItem(LEGACY_KEY);

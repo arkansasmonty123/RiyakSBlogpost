@@ -1,3 +1,4 @@
+import { recordAudit } from './audit';
 import { buildEvidenceSynthesis, pluralize, reviewSynthesis } from './evidenceSynthesis';
 import type { ReviewSynthesis } from './evidenceSynthesis';
 import { buildLegalMindProfile, LEGAL_MIND_LEVEL_RANK } from './legalMindProfile';
@@ -72,6 +73,7 @@ export function recordCustodyObservation(
   });
   save.flags.custodyLogged = true;
   save.player.reputation.reliability = clamp(save.player.reputation.reliability + 1);
+  recordAudit(save, 'custody-recorded', `Logged a custody observation for ${item.title}`);
   return { ok: true, observation: record };
 }
 
@@ -136,6 +138,7 @@ export function challengeEvidenceAdmissibility(
   const senior = seniorRelationship(save);
   if (senior) senior.respect = clamp(senior.respect + (specific ? 2 : -1));
   if (!specific) save.player.reputation.competence = clamp(save.player.reputation.competence - 1);
+  recordAudit(save, 'evidence-challenged', `Challenged ${item.title} on ${ground} grounds`);
 
   return {
     ok: true,
@@ -283,6 +286,7 @@ export function submitSeniorReview(
     verified: true,
   });
   refreshAssignmentUnlocks(save);
+  recordAudit(save, 'senior-review-submitted', `Submitted ${assignment.title} for senior review (round ${roundNo})`);
   return {
     ok: true,
     round,
@@ -423,5 +427,6 @@ export function submitFinalBrief(save: SaveGame, workSummary: string): FinalBrie
     verified: true,
   });
   refreshAssignmentUnlocks(save);
+  recordAudit(save, 'final-brief', `Submitted final brief (${tier})`);
   return { ok: true, tier, consequence, highlights, reviewSynthesis: synthesis };
 }

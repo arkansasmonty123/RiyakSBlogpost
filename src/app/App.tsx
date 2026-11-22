@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { SceneArt } from '@/app/SceneArt';
+import { config } from '@/config/env';
 import { loadSave, persistSave, resetSave } from '@/storage/save';
+import { recordAudit } from '@/domain/audit';
 import { checkDraftCitations } from '@/domain/guards';
 import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/completion';
 import { markHelpSeen, shouldShowHelp } from '@/domain/onboarding';
@@ -259,6 +261,16 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     });
   }
 
+  /** Explicit Save action. Automatic saves from other mutations are not logged separately. */
+  function doSave() {
+    update((s) => {
+      recordAudit(s, 'save', 'Saved progress locally');
+      return s;
+    });
+    setDialogue('Saved locally.');
+    setPanel('dialogue');
+  }
+
   /** Dismiss first-day guidance and remember the choice across saves. */
   function dismissHelp() {
     setShowHelp(false);
@@ -280,6 +292,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     const added = result.source;
     update((s) => {
       s.legalSources.unshift(added);
+      recordAudit(s, 'source-intake', `Source intake saved: ${added.title} (${added.verificationStatus})`);
       return s;
     });
     setSourceForm(emptySourceForm());
@@ -522,6 +535,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     const hasEvidenceRefs = discoveredCount > 0 && /evidence|medical|cctv|witness|report/i.test(draft);
     const warnings = citationCheck.warnings;
     update((s) => {
+      recordAudit(s, 'draft-submitted', 'Submitted case brief draft for senior review');
       s.flags.assignment2Submitted = true;
       s.player.reputation.reliability += hasIssue ? 2 : -1;
       s.player.reputation.competence += hasIssue && hasEvidenceRefs ? 2 : hasIssue ? 1 : 0;
@@ -568,7 +582,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-[11px] uppercase tracking-[0.2em] text-bar-muted">The First Brief · Office Prototype</p>
-            <h1 className="text-xl sm:text-2xl font-semibold text-bar-gold tracking-wide">THE BAR</h1>
+            <h1 className="text-xl sm:text-2xl font-semibold text-bar-gold tracking-wide">{config.appName}</h1>
             <p className="text-xs text-bar-muted">Educational simulation — not legal advice. No fabricated citations.</p>
           </div>
           <div className="text-sm text-bar-muted flex gap-2 flex-wrap items-center" aria-label="Session status">
@@ -596,7 +610,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                 Chapter summary
               </button>
             )}
-            <button type="button" className="px-2 py-1 border border-bar-gold/30 rounded hover:bg-white/5" onClick={() => { persistSave(save); setDialogue('Saved locally.'); setPanel('dialogue'); }}>Save</button>
+            <button type="button" className="px-2 py-1 border border-bar-gold/30 rounded hover:bg-white/5" onClick={doSave}>Save</button>
             <button type="button" className="px-2 py-1 border border-red-400/30 rounded text-red-200 hover:bg-red-400/10" onClick={() => { if (confirm('Reset local save?')) { setSave(resetSave()); setDraft(''); } }}>Reset</button>
           </div>
         </div>

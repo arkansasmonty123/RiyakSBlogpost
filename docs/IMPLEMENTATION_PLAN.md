@@ -8,9 +8,9 @@
 ## Current implementation snapshot (evidence-based)
 
 - **Stack (ADR-001 deviation):** Vite + React + TS + Tailwind, localStorage save, deterministic stubs. No Next.js/Postgres/Prisma (deferred by size/complexity; recorded).
-- **Verification baseline:** `npm run typecheck` PASS, `npm test` PASS (**166/166, 19 files**), `npm run build` PASS, CI workflow present (`.github/workflows/ci.yml`).
-- **Implemented:** Day 1–10 playable slice, 12-char cast, 2 locations/8 viewpoints, case truth separation + no-leak guards, evidence discovery/review/custody/challenge, assignments, drafting+version history, deterministic senior review/final brief, completion summary + Legal Mind Profile (lite), journal/timeline, theory board, source intake/provenance/validation/CLI, CSS/SVG scene art, onboarding/help, save v1→v2 migration.
-- **Not implemented / blocked:** real verified legal corpus (D-005/D-011, content-owner blocked), runtime AI provider/RAG (Phase 6), Postgres/Prisma/transactional DB audit log (ADR-001 deviation), full 30-day chapter content depth, courtroom hearings, formal lint/format/env validation pipeline, real-browser a11y matrix in CI.
+- **Verification baseline:** `npm run typecheck` PASS, `npm run lint` PASS (tsc-based alias), `npm test` PASS (**177/177, 21 files**), `npm run build` PASS, CI workflow present (`.github/workflows/ci.yml`).
+- **Implemented:** Day 1–10 playable slice, 12-char cast, 2 locations/8 viewpoints, case truth separation + no-leak guards, evidence discovery/review/custody/challenge, assignments, drafting+version history, deterministic senior review/final brief, completion summary + Legal Mind Profile (lite), journal/timeline, theory board, source intake/provenance/validation/CLI, CSS/SVG scene art, onboarding/help, save v1→v2 migration, typed env/config validation, bounded append-only audit log in save, draft art-direction/provenance doc.
+- **Not implemented / blocked:** real verified legal corpus (D-005/D-011, content-owner blocked), runtime AI provider/RAG (Phase 6), Postgres/Prisma/transactional DB audit log (ADR-001 deviation), full 30-day chapter content depth, courtroom hearings, formatter config (lint is a tsc alias; env validation now implemented), final approved art style + licensed asset pack (D-002/D-012), real-browser a11y matrix in CI.
 
 ## Planning principles
 
@@ -51,9 +51,9 @@
 | Work item | Deliverable | Dependencies | Exit criteria | Status / Evidence |
 |---|---|---|---|---|
 | Scaffold selected stack | App boots locally | Phase 0 ADRs | Dev server/build pass | ✅ Vite+React+TS+Tailwind scaffold; `build`/`dev`/`preview` scripts pass |
-| TypeScript/lint/format/test setup | Tooling configs + scripts | Scaffold | `typecheck`, `lint`, `test` pass | ⚠️ `typecheck` PASS, `test` PASS (166). **Missing:** lint/format scripts/config |
+| TypeScript/lint/format/test setup | Tooling configs + scripts | Scaffold | `typecheck`, `lint`, `test` pass | ⚠️ `typecheck` PASS, `lint` PASS (tsc alias), `test` PASS (177). **Remaining:** no dedicated formatter/linter config |
 | PostgreSQL + migrations/ORM | DB schema baseline, migration workflow | Stack/DB decision | Fresh DB reproducible | ⏸️ Deferred by ADR-001. localStorage + migration-safe merge used for P0; Postgres/Prisma revisit later |
-| Env/secrets/config | `.env.example`, config validation | Scaffold | No secrets hardcoded; config validated | ⚠️ No secrets hardcoded; **missing** `.env.example` + runtime config validation |
+| Env/secrets/config | `.env.example`, config validation | Scaffold | No secrets hardcoded; config validated | ✅ `src/config/env.ts` reads optional `VITE_*` values with safe defaults, validates known values (AI stays disabled), never exposes the API key; `.env.example` aligned; 5 tests |
 | CI baseline | CI workflow for lint/typecheck/test | Git + scripts | CI green on clean checkout | ✅ `.github/workflows/ci.yml` runs npm ci/typecheck/test/build on push/PR (Node 22). No remote run verified yet |
 | Domain boundaries | Module folders/contracts for player/world/cases/legal/ai/ui | Scaffold | Clear boundaries, no premature microservices | ✅ `src/domain/*`, `src/storage/*`, `src/app/*` modular separation; deterministic domain modules present |
 
@@ -74,7 +74,7 @@
 | Case truth model | Canonical truth, character knowledge, player knowledge, allegations, admissible/reliable, unresolved ambiguity | Phase 1 | **No-leak tests** pass | ✅ `CaseFile` separation; `toPlayerCaseView`/`assertNoCanonicalTruthLeak`; SSR smoke/no-leak tests |
 | Evidence model | Evidence type, provenance, authenticity, discoverability, chain/admissibility metadata | Case model | Evidence access/visibility tests | ✅ Evidence types/provenance/discovery/review/assessment/challenge/custody; authenticity hidden |
 | Legal source model | Source, citation, version/effective date, verification status, label type | Phase 1 | Provenance required; no fabricated seed citations | ✅ `LegalSource` provenance/verification model, intake workflow, validation/CLI, no fabricated verified citations |
-| Transactional mutation/audit | Service layer + transactions + audit/event log | Domain models | Important state changes atomic/audited | ⚠️ Partial: deterministic state updates + memory/event records; **missing** formal DB transactions/audit log (deferred with ADR-001 DB choice) |
+| Transactional mutation/audit | Service layer + transactions + audit/event log | Domain models | Important state changes atomic/audited | ⚠️ Partial: deterministic state updates + bounded append-only audit log in save (`src/domain/audit.ts`, player-safe, capped at 100, migrated/sanitized on load) covering save, draft submit, assignment/senior review, evidence discover/review/challenge/custody, source intake and final brief; 6 tests. **Remaining:** formal DB transactions (deferred with ADR-001 DB choice) |
 
 ---
 
@@ -117,7 +117,7 @@
 | Scene system | Viewpoint/background/hotspot/transition model | Phase 1 | Scene data-driven and persisted | ✅ `src/domain/scenes.ts` data-driven locations/viewpoints/hotspots; selected viewpoint persisted in save |
 | First chamber prototype | 4 viewpoints, 5 hotspots, 1 character, multiple expressions | Art assets + Phase 4 | Playable on desktop/mobile widths | ✅ Exceeded minimum: 2 locations, 8 viewpoints, many hotspots, 12 characters with portrait states; CSS/SVG placeholder art (no external image assets) |
 | Hotspot interactions | Detail view/dialogue/document/navigation actions | Phase 4 | All hotspots functional and accessible | ✅ Hotspots trigger navigation/dialogue/panel/time actions; accessible buttons/labels |
-| Art direction/asset provenance | Style guide, character refs, palette, asset licenses/origins | Phase 0 decision | Assets documented and rights clear | ❌ Not done: no final art style guide, no licensed/original asset pack, no character reference sheet pipeline |
+| Art direction/asset provenance | Style guide, character refs, palette, asset licenses/origins | Phase 0 decision | Assets documented and rights clear | ⚠️ Draft `docs/ART_DIRECTION.md` added: placeholder style guide, character/environment reference rules, palette/composition and licensing/provenance checklist, explicitly pending D-002/D-012/D-018 owner decisions. **Remaining:** approved final style, reference sheets, asset manifest and any licensed/original asset pack |
 | Responsive/accessibility | Keyboard/focus/labels/contrast/mobile layout | UI scaffold | Basic a11y checks pass | ⚠️ Partial: semantic landmarks, skip link, focus-visible, aria labels/pressed/expanded/live, reduced motion, mobile layouts; browser a11y matrix smoke done, full screen-reader/axe audit not yet formalized |
 
 ---

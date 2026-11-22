@@ -1155,5 +1155,6 @@ export function createInitialSave(): SaveGame {
     challenges: [],
     reviewRounds: [],
     caseTheory: { claims: [] },
+    auditLog: [],
   };
 }

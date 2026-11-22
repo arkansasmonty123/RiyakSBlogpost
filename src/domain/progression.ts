@@ -1,3 +1,4 @@
+import { recordAudit } from './audit';
 import type { Assignment, GameClock, NotebookEntry, SaveGame } from './types';
 
 export function makeId(prefix: string): string {
@@ -160,5 +161,6 @@ export function reviewAssignment(save: SaveGame, assignmentId: string): Assignme
     participants: ['player', 'senior'],
   });
   refreshAssignmentUnlocks(save);
+  recordAudit(save, 'assignment-reviewed', `Assignment "${assignment.title}" reviewed by senior`);
   return { ok: true, feedback: assignment.feedback };
 }

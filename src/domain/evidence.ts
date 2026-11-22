@@ -1,3 +1,4 @@
+import { recordAudit } from './audit';
 import { makeId } from './progression';
 import type { Admissibility, EvidenceItem, NotebookEntry, Reliability, SaveGame } from './types';
 
@@ -17,6 +18,7 @@ export function discoverEvidenceItem(save: SaveGame, evidenceId: string): Eviden
   item.discovered = true;
   item.admissibility = 'questionable';
   item.reliability = item.type === 'testimony' ? 'low' : 'medium';
+  recordAudit(save, 'evidence-discovered', `Discovered ${item.title}`);
   return item;
 }
 
@@ -31,6 +33,7 @@ export function reviewEvidence(save: SaveGame, evidenceId: string): boolean {
     summary: `Reviewed evidence: ${item.title}.`,
     participants: ['player'],
   });
+  recordAudit(save, 'evidence-reviewed', `Reviewed ${item.title}`);
   return true;
 }
 
