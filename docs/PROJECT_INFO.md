@@ -8,7 +8,7 @@
 | **Type** | Immersive, persistent legal-career simulator (educational simulation) |
 | **Primary jurisdiction** | India (fictional firm/district/court environment initially) |
 | **Repository** | `/home/divyanshukumarsinha241/project-courtroom` |
-| **Status** | P0 prototype implemented: "The First Brief — Office Prototype" (Vite + React + TS + Tailwind, localStorage); 7-day playable slice |
+| **Status** | Phase 0 complete (2026-11-22). P0 prototype in progress: "The First Brief — Office Prototype" (Vite + React + TS + Tailwind, localStorage), Day 1–10 playable slice, 35/35 tests passing, CI workflow added. |
 | **Primary reference** | [`../THE_BAR_MASTER_CONTEXT.md`](../THE_BAR_MASTER_CONTEXT.md) |
 | **Audit date** | 2026-11-22 |
 

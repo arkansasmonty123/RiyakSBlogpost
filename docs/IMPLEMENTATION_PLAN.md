@@ -1,7 +1,7 @@
 # THE BAR — Phased Implementation Plan
 
-**Date:** 2026-11-22  
-**Status:** Planning artifact — no implementation started  
+**Date:** 2026-11-22 (updated 2026-11-22)  
+**Status:** Phase 0 complete; early P0 prototype implementation in progress (beyond Phase 0)  
 **Primary reference:** [`../THE_BAR_MASTER_CONTEXT.md`](../THE_BAR_MASTER_CONTEXT.md)  
 **Companion docs:** [`AUDIT.md`](./AUDIT.md), [`DECISIONS.md`](./DECISIONS.md), [`PROJECT_INFO.md`](./PROJECT_INFO.md)
 
@@ -20,19 +20,20 @@
 
 ## Phase 0 — Decisions, Repo Bootstrap, Source of Truth
 
+**Status:** ✅ **COMPLETE (2026-11-22)** — bootstrap/docs/decision baseline established. Early P0 prototype work has also started under recorded pragmatic defaults; that does not invalidate Phase 0 completion.
+
 **Objective:** Establish a safe, reviewable foundation and resolve blocking unknowns.
 
-| Work item | Deliverable | Owner (suggested) | Dependencies | Exit criteria |
-|---|---|---|---|---|
-| Commit master context in repo | `THE_BAR_MASTER_CONTEXT.md` in repo | Orchestrator/DevOps | None | Present and referenced by docs |
-| Initialize git + basic hygiene | `.gitignore`, README, license decision | DevOps | None | Clean repo, no secrets tracked |
-| Record §22 decisions | `docs/DECISIONS.md` with owners/status/dates | Product/Architect | Stakeholder input | All blockers have status |
-| Create ADRs | Stack, platform, runtime AI, legal provenance, art pipeline, secrets/env | Architect | Decisions | ADRs accepted/deferred explicitly |
-| Set up project workflow (optional but recommended) | Project memory/recovery files if autonomous workflow used | Orchestrator | Decision | Clear task/state tracking |
-| Define legal-source policy | Verification, provenance, citation, update workflow | Legal Research + Architect | Legal access decision | Policy documented before legal ingestion |
+| Work item | Deliverable | Owner (suggested) | Dependencies | Exit criteria | Status / Evidence |
+|---|---|---|---|---|---|
+| Commit master context in repo | `THE_BAR_MASTER_CONTEXT.md` in repo | Orchestrator/DevOps | None | Present and referenced by docs | ✅ Copied into repo; referenced by README/docs |
+| Initialize git + basic hygiene | `.gitignore`, README, license decision | DevOps | None | Clean repo, no secrets tracked | ✅ Git initialized, `.gitignore`, `README.md`; license decision still open (D-018, non-blocking for Phase 0) |
+| Record §22 decisions | `docs/DECISIONS.md` with owners/status/dates | Product/Architect | Stakeholder input | All blockers have status | ✅ §22 questions recorded; D-001/003/004/009/015 pragmatically resolved for P0, others explicitly Unknown/Deferred with owners/impact |
+| Create ADRs | Stack, platform, runtime AI, legal provenance, art pipeline, secrets/env | Architect | Decisions | ADRs accepted/deferred explicitly | ✅ ADR-000/001/002 added; legal provenance/art pipeline/runtime AI still need dedicated ADRs before related implementation phases |
+| Set up project workflow (optional but recommended) | Project memory/recovery files if autonomous workflow used | Orchestrator | Decision | Clear task/state tracking | ⚠️ Optional — not created as separate project-management system; git history + docs used as lightweight tracking |
+| Define legal-source policy | Verification, provenance, citation, update workflow | Legal Research + Architect | Legal access decision | Policy documented before legal ingestion | ⚠️ Baseline guardrails documented (no fabrication, provenance/verification fields, placeholder blocking); formal ingestion/verification workflow still needed before real legal corpus ingestion (D-005/D-011) |
 
-**Risks:** Hidden assumptions; starting code before decisions.  
-**Verification:** Doc review; decision log complete for blockers.
+**Exit criteria check:** Source-of-truth docs in repo ✅; decision log present ✅; assumptions recorded as Unknown/Deferred/Accepted-pragmatic ✅. Remaining open items are tracked in `docs/DECISIONS.md` and do not block Phase 0 closure.
 
 ---
 
