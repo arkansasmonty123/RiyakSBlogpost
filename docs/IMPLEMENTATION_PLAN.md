@@ -3,14 +3,14 @@
 **Date:** 2026-11-22 (updated 2026-11-22)  
 **Status:** Phase 0 complete; P0 prototype actively implemented (Phases 1–5 partially/mostly complete under ADR-001 size-conscious deviations; Phase 6 not started)  
 **Primary reference:** [`../THE_BAR_MASTER_CONTEXT.md`](../THE_BAR_MASTER_CONTEXT.md)  
-**Companion docs:** [`AUDIT.md`](./AUDIT.md), [`DECISIONS.md`](./DECISIONS.md), [`PROJECT_INFO.md`](./PROJECT_INFO.md)
+**Companion docs:** [`AUDIT.md`](./AUDIT.md), [`DECISIONS.md`](./DECISIONS.md), [`PROJECT_INFO.md`](./PROJECT_INFO.md), [`QA_CHECKLIST.md`](./QA_CHECKLIST.md)
 
 ## Current implementation snapshot (evidence-based)
 
 - **Stack (ADR-001 deviation):** Vite + React + TS + Tailwind, localStorage save, deterministic stubs. No Next.js/Postgres/Prisma (deferred by size/complexity; recorded).
-- **Verification baseline:** `npm run typecheck` PASS, `npm run lint` PASS (tsc-based alias), `npm test` PASS (**177/177, 21 files**), `npm run build` PASS, CI workflow present (`.github/workflows/ci.yml`).
+- **Verification baseline:** `npm run typecheck` PASS, `npm run lint` PASS (tsc-based alias), `npm test` PASS (**182/182, 22 files** — includes the new `src/tests/a11ySmoke.test.tsx`), `npm run build` PASS, CI workflow present (`.github/workflows/ci.yml`).
 - **Implemented:** Day 1–10 playable slice, 12-char cast, 2 locations/8 viewpoints, case truth separation + no-leak guards, evidence discovery/review/custody/challenge, assignments, drafting+version history, deterministic senior review/final brief, completion summary + Legal Mind Profile (lite), journal/timeline, theory board, source intake/provenance/validation/CLI, CSS/SVG scene art, onboarding/help, save v1→v2 migration, typed env/config validation, bounded append-only audit log in save, draft art-direction/provenance doc.
-- **Not implemented / blocked:** real verified legal corpus (D-005/D-011, content-owner blocked), runtime AI provider/RAG (Phase 6), Postgres/Prisma/transactional DB audit log (ADR-001 deviation), full 30-day chapter content depth, courtroom hearings, formatter config (lint is a tsc alias; env validation now implemented), final approved art style + licensed asset pack (D-002/D-012), real-browser a11y matrix in CI.
+- **Not implemented / blocked:** real verified legal corpus (D-005/D-011, content-owner blocked), runtime AI provider/RAG (Phase 6), Postgres/Prisma/transactional DB audit log (ADR-001 deviation), full 30-day chapter content depth, courtroom hearings, formatter config (lint is a tsc alias; env validation now implemented), final approved art style + licensed asset pack (D-002/D-012), real-browser/axe a11y matrix in CI (deterministic SSR a11y smoke now added — see `docs/QA_CHECKLIST.md`).
 
 ## Planning principles
 
@@ -110,7 +110,7 @@
 
 ## Phase 5 — Illustrated 2D Scene Prototype
 
-**Status:** ⚠️ **Prototype complete, art pipeline incomplete** — scene architecture validated; final art/assets/style guide pending.
+**Status:** ⚠️ **Prototype complete, art pipeline incomplete** — scene architecture validated; a11y basics hardened with a deterministic SSR smoke gate and a documented QA matrix; final art/assets/style guide and real-browser/axe audit still pending.
 
 | Work item | Deliverable | Dependencies | Exit criteria | Status / Evidence |
 |---|---|---|---|---|
@@ -118,7 +118,7 @@
 | First chamber prototype | 4 viewpoints, 5 hotspots, 1 character, multiple expressions | Art assets + Phase 4 | Playable on desktop/mobile widths | ✅ Exceeded minimum: 2 locations, 8 viewpoints, many hotspots, 12 characters with portrait states; CSS/SVG placeholder art (no external image assets) |
 | Hotspot interactions | Detail view/dialogue/document/navigation actions | Phase 4 | All hotspots functional and accessible | ✅ Hotspots trigger navigation/dialogue/panel/time actions; accessible buttons/labels |
 | Art direction/asset provenance | Style guide, character refs, palette, asset licenses/origins | Phase 0 decision | Assets documented and rights clear | ⚠️ Draft `docs/ART_DIRECTION.md` added: placeholder style guide, character/environment reference rules, palette/composition and licensing/provenance checklist, explicitly pending D-002/D-012/D-018 owner decisions. **Remaining:** approved final style, reference sheets, asset manifest and any licensed/original asset pack |
-| Responsive/accessibility | Keyboard/focus/labels/contrast/mobile layout | UI scaffold | Basic a11y checks pass | ⚠️ Partial: semantic landmarks, skip link, focus-visible, aria labels/pressed/expanded/live, reduced motion, mobile layouts; browser a11y matrix smoke done, full screen-reader/axe audit not yet formalized |
+| Responsive/accessibility | Keyboard/focus/labels/contrast/mobile layout | UI scaffold | Basic a11y checks pass | ✅ Deterministic gate added: semantic landmarks, single `h1`, skip link, focus-visible, labelled controls/forms, `aria-pressed/expanded/current`, polite live feedback, reduced motion, mobile layouts; `src/tests/a11ySmoke.test.tsx` (5 SSR tests) checks accessible names + resolving ARIA targets across every panel, and `docs/QA_CHECKLIST.md` records the QA matrix. Browser matrix smoke (390×844 / 1440×900, no console errors) previously observed; full axe/screen-reader audit still not in CI (known gap) |
 
 ---
 

@@ -595,7 +595,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
               type="button"
               className="px-2 py-1 border border-bar-gold/30 rounded hover:bg-white/5"
               aria-expanded={showHelp}
-              aria-controls="how-to-play"
+              aria-controls={showHelp ? 'how-to-play' : undefined}
               onClick={() => setShowHelp((v) => !v)}
             >
               How to play
@@ -960,7 +960,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
 
           {panel === 'dialogue' && (
             <div className="space-y-3 text-sm">
-              <div className="whitespace-pre-wrap bg-bar-panel2 p-3 rounded">{dialogue}</div>
+              <div role="status" aria-live="polite" className="whitespace-pre-wrap bg-bar-panel2 p-3 rounded">{dialogue}</div>
               <div className="bg-bar-panel2 p-3 rounded">
                 <div className="text-xs text-bar-gold mb-2">Relationships (player → character)</div>
                 <div className="grid gap-1 text-xs text-bar-muted">
@@ -1469,7 +1469,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                   type="button"
                   className="px-2 py-1 border border-bar-gold/40 rounded text-xs"
                   aria-expanded={showSourceIntake}
-                  aria-controls="source-intake-form"
+                  aria-controls={showSourceIntake ? 'source-intake-form' : undefined}
                   onClick={() => { setShowSourceIntake((v) => !v); setIntakeError(''); }}
                 >
                   {showSourceIntake ? 'Close intake' : 'Add Source / Source Intake'}
