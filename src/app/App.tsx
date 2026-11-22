@@ -151,6 +151,41 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const caseTargetId = caseTarget || reviewedEvidence[0]?.id || '';
   const a7 = save.assignments.find((a) => a.id === 'a7');
   const a8 = save.assignments.find((a) => a.id === 'a8');
+  const reviewedAssignmentCount = save.assignments.filter((a) => a.status === 'reviewed').length;
+  const chapterProgress = Math.round((reviewedAssignmentCount / save.assignments.length) * 100);
+  const nextStep = useMemo(() => {
+    if (save.flags.chapterOneComplete) {
+      return { panel: 'notebook' as Panel, text: 'Chapter complete. Review the final consequence in your notebook and case record.' };
+    }
+    if (!objective) {
+      return { panel: 'case' as Panel, text: 'Review your case file and notebook for what remains.' };
+    }
+    if (objective.status === 'locked') {
+      return {
+        panel: 'assignments' as Panel,
+        text: `Locked until Day ${objective.unlockDay}. Advance time from the chamber window or header when ready.`,
+      };
+    }
+    if (objective.assignmentId === 'a7') {
+      return { panel: 'casework' as Panel, text: 'Open Casework to submit your brief for senior review, then revise if requested.' };
+    }
+    if (objective.assignmentId === 'a8') {
+      return { panel: 'casework' as Panel, text: 'Open Casework to submit the final brief. Keep it evidence-grounded and verified.' };
+    }
+    const isComplete = (progress: string) => {
+      const [done, total] = progress.split('/').map(Number);
+      return total === 0 || done >= total;
+    };
+    const evidenceNeeded = !isComplete(objective.evidenceProgress);
+    const sourcesNeeded = !isComplete(objective.sourceProgress);
+    const notesNeeded = !isComplete(objective.noteProgress);
+    const flagsNeeded = !isComplete(objective.flagProgress);
+    if (evidenceNeeded) return { panel: 'evidence' as Panel, text: 'Inspect and review the required evidence items before submitting this assignment.' };
+    if (sourcesNeeded) return { panel: 'research' as Panel, text: 'Add the required verified source note to your notebook from the Research panel.' };
+    if (notesNeeded) return { panel: 'evidence' as Panel, text: 'Record the required contradiction/corroboration note tied to reviewed evidence.' };
+    if (flagsNeeded) return { panel: objective.assignmentId === 'a4' ? 'dialogue' as Panel : 'casework' as Panel, text: 'Complete the required casework milestone, then return to Assignments.' };
+    return { panel: 'assignments' as Panel, text: 'Requirements met. Open Assignments and submit for senior evaluation.' };
+  }, [objective, save.flags.chapterOneComplete]);
   // Dev-time guard: fail loudly if any future UI change starts projecting canonical truth.
   if (import.meta.env.DEV) assertNoCanonicalTruthLeak(playerCase);
 
@@ -434,68 +469,161 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
 
   return (
     <div className="min-h-screen bg-bar-bg text-bar-text">
-      <header className="border-b border-bar-gold/20 px-4 py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-bar-gold tracking-wide">THE BAR</h1>
-          <p className="text-xs text-bar-muted">Educational simulation — not legal advice. No fabricated citations.</p>
-        </div>
-        <div className="text-sm text-bar-muted flex gap-3 flex-wrap items-center">
-          <span>Day {save.clock.day} / {MAX_DAY}</span><span>{save.clock.slot}</span><span>{save.player.careerStage}</span>
-          <button className="px-2 py-1 border border-bar-gold/30 rounded" onClick={doAdvanceTime}>Advance time</button>
-          <button className="px-2 py-1 border border-bar-gold/30 rounded" onClick={() => { persistSave(save); setDialogue('Saved locally.'); setPanel('dialogue'); }}>Save</button>
-          <button className="px-2 py-1 border border-red-400/30 rounded text-red-200" onClick={() => { if (confirm('Reset local save?')) { setSave(resetSave()); setDraft(''); } }}>Reset</button>
+      <a href="#main-content" className="skip-link">Skip to main content</a>
+      <header className="border-b border-bar-gold/20 px-4 py-3 bg-gradient-to-b from-bar-panel/80 to-transparent">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.2em] text-bar-muted">The First Brief · Office Prototype</p>
+            <h1 className="text-xl sm:text-2xl font-semibold text-bar-gold tracking-wide">THE BAR</h1>
+            <p className="text-xs text-bar-muted">Educational simulation — not legal advice. No fabricated citations.</p>
+          </div>
+          <div className="text-sm text-bar-muted flex gap-2 flex-wrap items-center" aria-label="Session status">
+            <span className="px-2 py-1 rounded border border-bar-gold/20 bg-bar-panel2/70 text-bar-text">Day {save.clock.day} / {MAX_DAY}</span>
+            <span className="px-2 py-1 rounded border border-white/10 bg-bar-panel2/70 capitalize">{save.clock.slot}</span>
+            <span className="px-2 py-1 rounded border border-white/10 bg-bar-panel2/70 capitalize">{save.player.careerStage.replace('_', ' ')}</span>
+            <button type="button" className="px-2 py-1 border border-bar-gold/30 rounded hover:bg-white/5" onClick={doAdvanceTime}>Advance time</button>
+            <button type="button" className="px-2 py-1 border border-bar-gold/30 rounded hover:bg-white/5" onClick={() => { persistSave(save); setDialogue('Saved locally.'); setPanel('dialogue'); }}>Save</button>
+            <button type="button" className="px-2 py-1 border border-red-400/30 rounded text-red-200 hover:bg-red-400/10" onClick={() => { if (confirm('Reset local save?')) { setSave(resetSave()); setDraft(''); } }}>Reset</button>
+          </div>
         </div>
       </header>
 
-      <div className="px-4 pt-3">
-        <div className="bg-bar-panel border border-bar-gold/20 rounded-lg p-3" role="status" aria-live="polite">
-          <div className="text-xs uppercase tracking-wide text-bar-muted">Current objective</div>
-          {objective ? (
-            <>
-              <div className="text-sm text-bar-gold">{objective.title} <span className="text-bar-muted">— Day {objective.unlockDay} · {objective.status}</span></div>
-              <div className="text-xs text-bar-muted mt-1">{objective.description}</div>
-              <div className="flex flex-wrap gap-3 text-xs mt-1">
-                <span>Progress: evidence {objective.evidenceProgress} · sources {objective.sourceProgress}{objective.noteProgress !== '0/0' ? ` · notes ${objective.noteProgress}` : ''}{objective.flagProgress !== '0/0' ? ` · casework ${objective.flagProgress}` : ''}</span>
-                {objective.status === 'locked' && <span>Locked until Day {objective.unlockDay} and prior work reviewed.</span>}
-              </div>
-            </>
-          ) : <div className="text-sm text-bar-muted">{save.flags.chapterOneComplete ? 'Chapter one complete — final brief submitted.' : 'All assignments reviewed.'}</div>}
+      <div className="px-4 pt-4">
+        <div className="bg-bar-panel border border-bar-gold/20 rounded-lg p-4 shadow-sm" role="status" aria-live="polite">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1 min-w-0">
+              <div className="text-xs uppercase tracking-wide text-bar-muted">Current objective</div>
+              {objective ? (
+                <>
+                  <div className="text-sm sm:text-base text-bar-gold font-medium">
+                    {objective.title}{' '}
+                    <span className="text-bar-muted font-normal">— Day {objective.unlockDay} · {objective.status}</span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-bar-muted">{objective.description}</p>
+                  <div className="flex flex-wrap gap-2 text-xs mt-1">
+                    <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-panel2">Evidence {objective.evidenceProgress}</span>
+                    <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-panel2">Sources {objective.sourceProgress}</span>
+                    {objective.noteProgress !== '0/0' && <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-panel2">Notes {objective.noteProgress}</span>}
+                    {objective.flagProgress !== '0/0' && <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-panel2">Casework {objective.flagProgress}</span>}
+                    {objective.status === 'locked' && <span className="px-2 py-0.5 rounded border border-yellow-400/30 text-yellow-200 bg-yellow-400/5">Locked until Day {objective.unlockDay}</span>}
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-bar-muted">{save.flags.chapterOneComplete ? 'Chapter one complete — final brief submitted.' : 'All assignments reviewed.'}</div>
+              )}
+            </div>
+            <div className="lg:w-80 shrink-0 bg-bar-panel2/70 border border-white/5 rounded-md p-3">
+              <div className="text-xs uppercase tracking-wide text-bar-muted">Next step</div>
+              <p className="text-sm mt-1">{nextStep.text}</p>
+              <button
+                type="button"
+                className="mt-2 px-2 py-1 text-xs border border-bar-gold/30 rounded hover:bg-white/5"
+                onClick={() => setPanel(nextStep.panel)}
+              >
+                Go to {nextStep.panel}
+              </button>
+            </div>
+          </div>
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-xs text-bar-muted mb-1">
+              <span>Chapter progress: Day 1–{MAX_DAY}</span>
+              <span>{reviewedAssignmentCount}/{save.assignments.length} assignments reviewed</span>
+            </div>
+            <div className="h-2 rounded bg-white/10 overflow-hidden" aria-hidden="true">
+              <div className="h-full bg-bar-gold/80" style={{ width: `${chapterProgress}%` }} />
+            </div>
+            <div className="sr-only">Chapter progress {chapterProgress} percent.</div>
+            <ol className="mt-3 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2" aria-label="Day 1 to 10 assignment progress">
+              {save.assignments.map((a) => {
+                const active = objective?.assignmentId === a.id;
+                const statusClass = a.status === 'reviewed'
+                  ? 'border-green-400/40 text-green-200 bg-green-400/5'
+                  : a.status === 'active' || a.status === 'submitted' || a.status === 'pending'
+                    ? 'border-bar-gold/40 text-bar-gold bg-bar-gold/5'
+                    : 'border-white/10 text-bar-muted bg-bar-panel2/40';
+                return (
+                  <li key={a.id} className={`rounded border p-2 text-[11px] leading-tight ${statusClass} ${active ? 'ring-1 ring-bar-gold/50' : ''}`}>
+                    <div className="font-medium">Day {a.day}</div>
+                    <div className="mt-0.5 line-clamp-2">{a.title}</div>
+                    <div className="mt-1 uppercase tracking-wide opacity-80">{a.status}</div>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
         </div>
       </div>
 
-      <main className="grid md:grid-cols-[1.4fr_1fr] gap-4 p-4">
-        <section className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4">
+      <main id="main-content" className="grid lg:grid-cols-[1.35fr_1fr] gap-4 p-4">
+        <section className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4" aria-labelledby="chamber-heading">
           <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-lg text-bar-gold">Senior Chamber — {viewpoint.label}</h2>
-            <div className="flex gap-2 text-xs">
-              {Object.entries(VIEWPOINTS).map(([k, v]) => (
-                <button key={k} onClick={() => onHotspot(`view:${k}`)} className={`px-2 py-1 rounded border ${save.selectedViewpoint===k?'border-bar-gold text-bar-gold':'border-white/10 text-bar-muted'}`}>{v.label}</button>
-              ))}
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-bar-muted">Static scene · viewpoint</p>
+              <h2 id="chamber-heading" className="text-lg text-bar-gold">Senior Chamber — {viewpoint.label}</h2>
             </div>
-          </div>
-          <div className="bg-bar-panel2 rounded-md p-4 min-h-52 border border-white/5">
-            <p className="text-sm text-bar-muted mb-4">{viewpoint.description}</p>
-            <div className="grid sm:grid-cols-2 gap-2">
-              {viewpoint.hotspots.map((h) => (
-                <button key={h.id} onClick={() => onHotspot(h.action)} className="text-left p-3 rounded border border-bar-gold/20 hover:bg-white/5">
-                  <div className="text-bar-gold text-sm">{h.label}</div>
-                  <div className="text-xs text-bar-muted">{h.action}</div>
+            <div className="flex gap-2 text-xs flex-wrap" role="group" aria-label="Viewpoints">
+              {Object.entries(VIEWPOINTS).map(([k, v]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => onHotspot(`view:${k}`)}
+                  aria-pressed={save.selectedViewpoint === k}
+                  className={`px-2 py-1 rounded border transition-colors ${save.selectedViewpoint === k ? 'border-bar-gold text-bar-gold bg-bar-gold/10' : 'border-white/10 text-bar-muted hover:bg-white/5'}`}
+                >
+                  {v.label}
                 </button>
               ))}
             </div>
           </div>
-          <div className="mt-4 grid sm:grid-cols-3 gap-2 text-xs text-bar-muted">
-            <div className="bg-bar-panel2 p-2 rounded">Competence: {save.player.reputation.competence}</div>
-            <div className="bg-bar-panel2 p-2 rounded">Integrity: {save.player.reputation.integrity}</div>
-            <div className="bg-bar-panel2 p-2 rounded">Reliability: {save.player.reputation.reliability}</div>
+          <div className="relative overflow-hidden rounded-md border border-bar-gold/15 bg-gradient-to-br from-[#1b202b] via-[#151922] to-[#10131a] p-4 sm:p-5 min-h-56">
+            <div className="absolute inset-0 pointer-events-none opacity-40" aria-hidden="true" style={{ backgroundImage: 'radial-gradient(circle at 20% 20%, rgba(200,167,90,0.18), transparent 35%), radial-gradient(circle at 80% 0%, rgba(232,226,213,0.08), transparent 30%), linear-gradient(to top, rgba(0,0,0,0.25), transparent 45%)' }} />
+            <div className="relative">
+              <p className="text-sm text-bar-muted mb-4 max-w-2xl">{viewpoint.description}</p>
+              <div className="grid sm:grid-cols-2 gap-2" role="group" aria-label={`${viewpoint.label} hotspots`}>
+                {viewpoint.hotspots.map((h) => (
+                  <button
+                    key={h.id}
+                    type="button"
+                    onClick={() => onHotspot(h.action)}
+                    className="text-left p-3 rounded border border-bar-gold/20 bg-bar-panel/50 hover:bg-white/5 hover:border-bar-gold/40 transition-colors"
+                  >
+                    <div className="text-bar-gold text-sm font-medium">{h.label}</div>
+                    <div className="text-xs text-bar-muted mt-0.5">{h.action.startsWith('view:') ? 'Move to viewpoint' : h.action.startsWith('panel:') ? `Open ${h.action.split(':')[1]} panel` : h.action.startsWith('time:') ? 'Advance in-game time' : 'Start conversation'}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 grid sm:grid-cols-3 gap-2 text-xs">
+            <div className="bg-bar-panel2 p-2 rounded border border-white/5"><span className="text-bar-muted">Competence</span> <span className="text-bar-text font-medium">{save.player.reputation.competence}</span></div>
+            <div className="bg-bar-panel2 p-2 rounded border border-white/5"><span className="text-bar-muted">Integrity</span> <span className="text-bar-text font-medium">{save.player.reputation.integrity}</span></div>
+            <div className="bg-bar-panel2 p-2 rounded border border-white/5"><span className="text-bar-muted">Reliability</span> <span className="text-bar-text font-medium">{save.player.reputation.reliability}</span></div>
           </div>
         </section>
 
-        <section className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4">
-          <nav aria-label="Work panels" className="flex gap-2 flex-wrap mb-3 text-sm">
-            {PANELS.map((p) => (
-              <button key={p} onClick={() => setPanel(p)} aria-current={panel===p ? 'page' : undefined} className={`px-2 py-1 rounded border ${panel===p?'border-bar-gold text-bar-gold':'border-white/10 text-bar-muted'}`}>{p}</button>
-            ))}
+        <section className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4" aria-labelledby="workspace-heading">
+          <div className="flex flex-col gap-2 mb-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h2 id="workspace-heading" className="text-lg text-bar-gold">Workspace</h2>
+              <span className="text-xs text-bar-muted">Panel: <span className="text-bar-text capitalize">{panel}</span></span>
+            </div>
+            <p className="text-xs text-bar-muted">Use panels to review the case, evidence, sources, draft, and casework. The recommended next panel is highlighted.</p>
+          </div>
+          <nav aria-label="Work panels" className="flex gap-2 flex-wrap mb-4 text-sm">
+            {PANELS.map((p) => {
+              const recommended = nextStep.panel === p && panel !== p;
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPanel(p)}
+                  aria-current={panel === p ? 'page' : undefined}
+                  className={`px-2.5 py-1.5 rounded border capitalize transition-colors ${panel === p ? 'border-bar-gold text-bar-gold bg-bar-gold/10' : 'border-white/10 text-bar-muted hover:bg-white/5'} ${recommended ? 'ring-1 ring-bar-gold/30' : ''}`}
+                >
+                  {p}{recommended ? ' •' : ''}
+                </button>
+              );
+            })}
           </nav>
 
           {panel === 'dialogue' && (
@@ -543,26 +671,47 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
           )}
 
           {panel === 'assignments' && (
-            <div className="space-y-2 text-sm">
+            <div className="space-y-3 text-sm">
+              <p className="text-xs text-bar-muted">Track Day 1–10 assignments. Complete requirements, then submit for deterministic senior evaluation.</p>
               {save.assignments.map((a: Assignment) => {
                 const unlocked = isAssignmentUnlocked(a, save);
+                const isCurrent = objective?.assignmentId === a.id;
+                const statusClass = a.status === 'reviewed'
+                  ? 'text-green-200 border-green-400/30 bg-green-400/5'
+                  : a.status === 'active' || a.status === 'submitted' || a.status === 'pending'
+                    ? 'text-bar-gold border-bar-gold/30 bg-bar-gold/5'
+                    : 'text-bar-muted border-white/10 bg-white/5';
                 return (
-                  <div key={a.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
-                    <div className="flex justify-between"><span className="text-bar-gold">{a.title}</span><span className="text-xs text-bar-muted">Day {a.day} • {a.status}</span></div>
-                    <div className="text-sm mt-1">{a.description}</div>
-                    <div className="text-xs text-bar-muted mt-1">Required evidence: {a.requiredEvidenceIds.join(', ') || 'none'} • Sources: {a.requiredSourceIds.join(', ') || 'none'}{a.requiredNotebookKinds?.length ? ` • Notes: ${a.requiredNotebookKinds.join(', ')}` : ''}</div>
-                    {!unlocked && a.status === 'locked' && <div className="text-xs text-yellow-300 mt-1">Locks until Day {a.day} and prior work is reviewed.</div>}
-                    {a.feedback && <div className="text-xs mt-1 text-bar-text">Feedback: {a.feedback}</div>}
-                    {(a.status === 'active' || a.status === 'submitted' || a.status === 'pending') && unlocked && a.id === 'a7' && (
-                      <button className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => setPanel('casework')}>Senior review & revision →</button>
-                    )}
-                    {(a.status === 'active' || a.status === 'pending') && unlocked && a.id === 'a8' && (
-                      <button className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => setPanel('casework')}>Final brief submission →</button>
-                    )}
-                    {(a.status === 'active' || a.status === 'pending') && unlocked && a.id !== 'a7' && a.id !== 'a8' && (
-                      <button className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => submitAssignment(a.id)}>Submit / Evaluate</button>
-                    )}
-                  </div>
+                  <article key={a.id} className={`bg-bar-panel2 p-3 rounded border ${isCurrent ? 'border-bar-gold/30' : 'border-white/5'}`}>
+                    <div className="flex justify-between gap-2 flex-wrap items-start">
+                      <div>
+                        <div className="text-bar-gold font-medium">{a.title}</div>
+                        <div className="text-xs text-bar-muted">Day {a.day}{a.unlockAfter ? ` · after ${a.unlockAfter.toUpperCase()}` : ''}</div>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded border capitalize ${statusClass}`}>{a.status}</span>
+                    </div>
+                    <p className="text-sm mt-2">{a.description}</p>
+                    <div className="text-xs text-bar-muted mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                      <span>Evidence: {a.requiredEvidenceIds.join(', ') || 'none'}</span>
+                      <span>Sources: {a.requiredSourceIds.join(', ') || 'none'}</span>
+                      {a.requiredNotebookKinds?.length ? <span>Notes: {a.requiredNotebookKinds.join(', ')}</span> : null}
+                      {a.requiredFlags?.length ? <span>Milestones: {a.requiredFlags.join(', ')}</span> : null}
+                    </div>
+                    {!unlocked && a.status === 'locked' && <p className="text-xs text-yellow-200 mt-2">Locks until Day {a.day} and prior work is reviewed.</p>}
+                    {a.feedback && <div className="text-xs mt-2 text-bar-text border-l-2 border-bar-gold/30 pl-2">Feedback: {a.feedback}</div>}
+                    <div className="mt-3 flex gap-2 flex-wrap">
+                      {(a.status === 'active' || a.status === 'submitted' || a.status === 'pending') && unlocked && a.id === 'a7' && (
+                        <button type="button" className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5" onClick={() => setPanel('casework')}>Senior review &amp; revision →</button>
+                      )}
+                      {(a.status === 'active' || a.status === 'pending') && unlocked && a.id === 'a8' && (
+                        <button type="button" className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5" onClick={() => setPanel('casework')}>Final brief submission →</button>
+                      )}
+                      {(a.status === 'active' || a.status === 'pending') && unlocked && a.id !== 'a7' && a.id !== 'a8' && (
+                        <button type="button" className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5" onClick={() => submitAssignment(a.id)}>Submit / Evaluate</button>
+                      )}
+                      {isCurrent && <span className="text-xs text-bar-muted self-center">Current objective</span>}
+                    </div>
+                  </article>
                 );
               })}
             </div>
@@ -916,11 +1065,16 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
 
           {panel === 'draft' && (
             <div className="space-y-2">
-              <textarea aria-label="Draft editor" className="w-full min-h-52 bg-bar-panel2 border border-white/10 rounded p-2 text-sm" value={draft} maxLength={MAX_DRAFT_CHARS} onChange={(e) => setDraft(e.target.value)} />
+              <label htmlFor="draft-editor" className="text-xs text-bar-muted block">Draft editor — structure your issue, facts, verified sources, analysis, and conclusion.</label>
+              <textarea id="draft-editor" aria-label="Draft editor" className="w-full min-h-52 bg-bar-panel2 border border-white/10 rounded p-2 text-sm" value={draft} maxLength={MAX_DRAFT_CHARS} onChange={(e) => setDraft(e.target.value)} />
+              <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-bar-muted">
+                <span>{draft.length}/{MAX_DRAFT_CHARS} characters</span>
+                <span>Use only verified sources; no fabricated citations.</span>
+              </div>
               <div className="flex gap-2 flex-wrap">
-                <button className="px-3 py-1 border border-bar-gold/30 rounded text-sm" onClick={submitDraft}>Submit for senior review</button>
-                <button className="px-3 py-1 border border-white/10 rounded text-sm text-bar-muted" onClick={doSaveDraftVersion}>Save version</button>
-                <button className="px-3 py-1 border border-white/10 rounded text-sm text-bar-muted" onClick={() => addNotebook({ kind:'note', title:'Draft snapshot', content:draft, verified:false })}>Save draft note</button>
+                <button type="button" className="px-3 py-1 border border-bar-gold/30 rounded text-sm hover:bg-white/5" onClick={submitDraft}>Submit for senior review</button>
+                <button type="button" className="px-3 py-1 border border-white/10 rounded text-sm text-bar-muted hover:bg-white/5" onClick={doSaveDraftVersion}>Save version</button>
+                <button type="button" className="px-3 py-1 border border-white/10 rounded text-sm text-bar-muted hover:bg-white/5" onClick={() => addNotebook({ kind:'note', title:'Draft snapshot', content:draft, verified:false })}>Save draft note</button>
               </div>
               <div>
                 <div className="text-xs text-bar-gold mb-1">Version history (max 8, newest first)</div>
@@ -945,6 +1099,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
             <div className="space-y-2 text-sm">
               <div role="group" aria-label="Filter notebook by kind" className="flex flex-wrap gap-2">
                 <button
+                  type="button"
                   aria-pressed={notebookFilter === 'all'}
                   onClick={() => setNotebookFilter('all')}
                   className={`px-2 py-1 rounded border text-xs ${notebookFilter === 'all' ? 'border-bar-gold text-bar-gold' : 'border-white/10 text-bar-muted'}`}
@@ -954,6 +1109,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                 {notebookKinds.map((kind) => (
                   <button
                     key={kind}
+                    type="button"
                     aria-pressed={notebookFilter === kind}
                     onClick={() => setNotebookFilter(kind)}
                     className={`px-2 py-1 rounded border text-xs ${notebookFilter === kind ? 'border-bar-gold text-bar-gold' : 'border-white/10 text-bar-muted'}`}
@@ -963,13 +1119,17 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                 ))}
               </div>
               <div className="space-y-2 max-h-[60vh] overflow-auto">
-                {save.notebook.filter((n) => notebookFilter === 'all' || n.kind === notebookFilter).map((n) => (
-                  <div key={n.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
-                    <div className="flex justify-between gap-2"><span className="text-bar-gold">{n.title}</span><span className="text-xs text-bar-muted">Day {n.day} • {n.kind}</span></div>
-                    <div className="whitespace-pre-wrap text-sm mt-1">{n.content}</div>
-                    {n.source && <div className="text-xs text-bar-muted mt-1">Source: {n.source} {n.verified ? '(verified)' : '(unverified)'}</div>}
-                  </div>
-                ))}
+                {(() => {
+                  const filtered = save.notebook.filter((n) => notebookFilter === 'all' || n.kind === notebookFilter);
+                  if (filtered.length === 0) return <p className="text-xs text-bar-muted bg-bar-panel2 p-3 rounded border border-white/5">No notebook entries for this filter.</p>;
+                  return filtered.map((n) => (
+                    <div key={n.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
+                      <div className="flex justify-between gap-2"><span className="text-bar-gold">{n.title}</span><span className="text-xs text-bar-muted">Day {n.day} • {n.kind}</span></div>
+                      <div className="whitespace-pre-wrap text-sm mt-1">{n.content}</div>
+                      {n.source && <div className="text-xs text-bar-muted mt-1">Source: {n.source} {n.verified ? '(verified)' : '(unverified)'}</div>}
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
           )}

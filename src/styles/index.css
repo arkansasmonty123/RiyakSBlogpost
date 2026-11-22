@@ -13,7 +13,36 @@ body {
   color: #e8e2d5;
 }
 
-button:focus-visible, a:focus-visible {
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible {
   outline: 2px solid #c8a75a;
   outline-offset: 2px;
+}
+
+.skip-link {
+  position: absolute;
+  left: -999px;
+  top: 0.5rem;
+  z-index: 50;
+  background: #171a21;
+  color: #c8a75a;
+  border: 1px solid #c8a75a;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+}
+.skip-link:focus {
+  left: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
