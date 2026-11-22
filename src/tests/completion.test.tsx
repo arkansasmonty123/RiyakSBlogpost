@@ -70,7 +70,12 @@ function completeChapter(): SaveGame {
   expect(reviewAssignment(save, 'a5').ok).toBe(true);
 
   advanceToDay(save, 8);
-  challengeEvidenceAdmissibility(save, 'ev-3', 'reliability', 'The consistency of the account was never tested against the recording.');
+  challengeEvidenceAdmissibility(
+    save,
+    'ev-3',
+    'reliability',
+    'The consistency of the account was never tested against the recording.',
+  );
   expect(reviewAssignment(save, 'a6').ok).toBe(true);
 
   advanceToDay(save, 9);
@@ -88,8 +93,12 @@ function renderWithSave(save: SaveGame): string {
   const data: Record<string, string> = {};
   const storage: StorageLike = {
     getItem: (key) => data[key] ?? null,
-    setItem: (key, value) => { data[key] = value; },
-    removeItem: (key) => { delete data[key]; },
+    setItem: (key, value) => {
+      data[key] = value;
+    },
+    removeItem: (key) => {
+      delete data[key];
+    },
   };
   persistSave(save, storage);
   const globalAny = globalThis as { window?: unknown };

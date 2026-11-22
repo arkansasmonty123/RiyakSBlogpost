@@ -11,9 +11,9 @@ export default {
           gold: '#c8a75a',
           text: '#e8e2d5',
           muted: '#a8a195',
-          danger: '#d66'
-        }
-      }
+          danger: '#d66',
+        },
+      },
     },
   },
   plugins: [],

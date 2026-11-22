@@ -7,14 +7,7 @@ import { createInitialSave } from '@/domain/seed';
 import type { SaveGame } from '@/domain/types';
 import { SAVE_KEY } from '@/storage/save';
 
-const FORBIDDEN = [
-  'canonicaltruth',
-  'actualevents',
-  'hiddenmotives',
-  'evidenceauthenticity',
-  'prior dispute',
-  '18:12',
-];
+const FORBIDDEN = ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12'];
 
 type RenderOptions = {
   viewpoint?: string;
@@ -31,8 +24,12 @@ function renderApp({ viewpoint, panel, save = createInitialSave() }: RenderOptio
   globals.window = {
     localStorage: {
       getItem: (key: string) => data[key] ?? null,
-      setItem: (key: string, value: string) => { data[key] = value; },
-      removeItem: (key: string) => { delete data[key]; },
+      setItem: (key: string, value: string) => {
+        data[key] = value;
+      },
+      removeItem: (key: string) => {
+        delete data[key];
+      },
     },
   };
   try {
@@ -120,6 +117,8 @@ describe('case board clarity and cross-links', () => {
     const html = renderApp({ panel: 'case' });
     expect(html).toContain('Next step');
     expect(html).toContain('Milestone 1/8');
-    expect(html).toMatch(/Open (case file|assignments|evidence board|casework|case theory|research|draft editor|notebook|timeline|conversations)/);
+    expect(html).toMatch(
+      /Open (case file|assignments|evidence board|casework|case theory|research|draft editor|notebook|timeline|conversations)/,
+    );
   });
 });

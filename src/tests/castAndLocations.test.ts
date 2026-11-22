@@ -33,16 +33,38 @@ const JUNIOR_MEDICAL_SCENE_IDS = ['d-junior-review', 'd-medical-record'] as cons
 /** The latest expansion (cast 10 → 12): a professional rival and a canteen supervisor. */
 const LATEST_CHARACTER_IDS = ['rival', 'supervisor'] as const;
 const LATEST_SCENE_IDS = [
-  'd-rival-intro', 'd-rival-final', 'd-supervisor-roster', 'd-supervisor-recollection',
+  'd-rival-intro',
+  'd-rival-final',
+  'd-supervisor-roster',
+  'd-supervisor-recollection',
 ] as const;
 const ALL_CAST_IDS = [
-  'senior', 'peer', 'clerk', 'client', 'witness', 'specialist', 'opposing', 'receptionist',
-  'junior', 'medical', 'rival', 'supervisor',
+  'senior',
+  'peer',
+  'clerk',
+  'client',
+  'witness',
+  'specialist',
+  'opposing',
+  'receptionist',
+  'junior',
+  'medical',
+  'rival',
+  'supervisor',
 ];
 const CANONICAL_MARKERS = [
-  'canonicaltruth', 'actualevents', 'actualtimeline', 'responsibleparties',
-  'hiddenmotives', 'evidenceauthenticity', 'prior dispute',
-  '18:05', '18:10', '18:12', '18:15', '18:20',
+  'canonicaltruth',
+  'actualevents',
+  'actualtimeline',
+  'responsibleparties',
+  'hiddenmotives',
+  'evidenceauthenticity',
+  'prior dispute',
+  '18:05',
+  '18:10',
+  '18:12',
+  '18:15',
+  '18:20',
 ];
 
 function advanceToDay(save: SaveGame, day: number): void {
@@ -59,8 +81,12 @@ function memoryStorage(initial: Record<string, string> = {}): StorageLike {
   const data = { ...initial };
   return {
     getItem: (key) => data[key] ?? null,
-    setItem: (key, value) => { data[key] = value; },
-    removeItem: (key) => { delete data[key]; },
+    setItem: (key, value) => {
+      data[key] = value;
+    },
+    removeItem: (key) => {
+      delete data[key];
+    },
   };
 }
 
@@ -101,7 +127,15 @@ describe('expanded cast (12 persistent characters)', () => {
     expect(save.relationships.filter((r) => r.fromId === 'player')).toHaveLength(12);
     for (const id of NEW_CHARACTER_IDS) {
       const rel = relationship(save, id);
-      for (const dimension of ['trust', 'respect', 'loyalty', 'rivalry', 'resentment', 'affection', 'professionalDependence'] as const) {
+      for (const dimension of [
+        'trust',
+        'respect',
+        'loyalty',
+        'rivalry',
+        'resentment',
+        'affection',
+        'professionalDependence',
+      ] as const) {
         expect(typeof rel[dimension]).toBe('number');
       }
     }
@@ -224,9 +258,7 @@ describe('new character interaction consequences', () => {
     const newScenes = DIALOGUE_SCENES.filter((s) => (NEW_SCENE_IDS as readonly string[]).includes(s.id));
     const authored = newScenes.flatMap((scene) => [
       scene.prompt,
-      ...scene.choices.flatMap((choice) => [
-        choice.label, choice.reply, choice.memory, ...(choice.reveals ?? []),
-      ]),
+      ...scene.choices.flatMap((choice) => [choice.label, choice.reply, choice.memory, ...(choice.reveals ?? [])]),
     ]);
     for (const text of authored) {
       expect(looksLikeSpecificCitation(text)).toBe(false);
@@ -303,11 +335,12 @@ describe('second location and viewpoint navigation data', () => {
     expect(toReception.action).toBe('view:reception-desk');
     expect(getLocationForViewpoint(toReception.action.split(':')[1]).id).toBe('reception');
     expect(viewpointsForLocation('reception').map((v) => v.id)).toEqual([
-      'reception-desk', 'corridor', 'waiting-area', 'consultation-room',
+      'reception-desk',
+      'corridor',
+      'waiting-area',
+      'consultation-room',
     ]);
-    expect(viewpointsForLocation('chamber').map((v) => v.id)).toEqual([
-      'entrance', 'desk', 'bookshelf', 'window',
-    ]);
+    expect(viewpointsForLocation('chamber').map((v) => v.id)).toEqual(['entrance', 'desk', 'bookshelf', 'window']);
 
     const back = VIEWPOINTS['waiting-area'].hotspots.find((h) => h.id === 'back')!;
     expect(getLocationForViewpoint(back.action.split(':')[1]).id).toBe('chamber');
@@ -467,9 +500,7 @@ describe('new cast interactions (junior advocate and medical consultant)', () =>
     expect(scenes).toHaveLength(2);
     const authored = scenes.flatMap((scene) => [
       scene.prompt,
-      ...scene.choices.flatMap((choice) => [
-        choice.label, choice.reply, choice.memory, ...(choice.reveals ?? []),
-      ]),
+      ...scene.choices.flatMap((choice) => [choice.label, choice.reply, choice.memory, ...(choice.reveals ?? [])]),
     ]);
     for (const text of authored) {
       expect(looksLikeSpecificCitation(text)).toBe(false);
@@ -517,7 +548,15 @@ describe('12-character cast: professional rival and canteen supervisor', () => {
 
     for (const id of LATEST_CHARACTER_IDS) {
       const rel = relationship(save, id);
-      for (const dimension of ['trust', 'respect', 'loyalty', 'rivalry', 'resentment', 'affection', 'professionalDependence'] as const) {
+      for (const dimension of [
+        'trust',
+        'respect',
+        'loyalty',
+        'rivalry',
+        'resentment',
+        'affection',
+        'professionalDependence',
+      ] as const) {
         expect(typeof rel[dimension]).toBe('number');
       }
     }
@@ -645,9 +684,7 @@ describe('12-character cast: professional rival and canteen supervisor', () => {
     const scenes = DIALOGUE_SCENES.filter((s) => (LATEST_SCENE_IDS as readonly string[]).includes(s.id));
     const authored = scenes.flatMap((scene) => [
       scene.prompt,
-      ...scene.choices.flatMap((choice) => [
-        choice.label, choice.reply, choice.memory, ...(choice.reveals ?? []),
-      ]),
+      ...scene.choices.flatMap((choice) => [choice.label, choice.reply, choice.memory, ...(choice.reveals ?? [])]),
     ]);
     for (const text of authored) {
       expect(looksLikeSpecificCitation(text)).toBe(false);
@@ -677,7 +714,9 @@ describe('12-character cast: professional rival and canteen supervisor', () => {
     expect(VIEWPOINTS.corridor.hotspots.find((h) => h.id === 'rival')?.action).toBe('dialogue:rival');
     expect(VIEWPOINTS['waiting-area'].hotspots.find((h) => h.id === 'rival')?.action).toBe('dialogue:rival');
     expect(VIEWPOINTS['waiting-area'].hotspots.find((h) => h.id === 'supervisor')?.action).toBe('dialogue:supervisor');
-    expect(VIEWPOINTS['consultation-room'].hotspots.find((h) => h.id === 'supervisor')?.action).toBe('dialogue:supervisor');
+    expect(VIEWPOINTS['consultation-room'].hotspots.find((h) => h.id === 'supervisor')?.action).toBe(
+      'dialogue:supervisor',
+    );
     // No new viewpoint or asset is required; all placements reuse existing static scenes.
     expect(ALL_VIEWPOINT_IDS).toHaveLength(8);
   });
@@ -687,7 +726,8 @@ describe('12-character cast: professional rival and canteen supervisor', () => {
     payload.version = 2;
     payload.characters = payload.characters.filter((c: any) => !LATEST_CHARACTER_IDS.includes(c.id));
     payload.relationships = payload.relationships.filter((r: any) => !LATEST_CHARACTER_IDS.includes(r.toId));
-    for (const key of ['rivalMet', 'rivalRespect', 'supervisorConsulted', 'supervisorStatement']) delete payload.flags[key];
+    for (const key of ['rivalMet', 'rivalRespect', 'supervisorConsulted', 'supervisorStatement'])
+      delete payload.flags[key];
     payload.characters.find((c: any) => c.id === 'senior').name = 'Mentor Renamed';
     payload.relationships.find((r: any) => r.toId === 'senior').trust = 88;
     payload.clock = { day: 5, slot: 'morning' };

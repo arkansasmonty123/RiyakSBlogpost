@@ -40,7 +40,9 @@ describe('provenance validation', () => {
     const noTrace = makeSource({ provenance: '  ', sourceUrl: undefined });
     expect(validateSourceProvenance(noTrace).ok).toBe(false);
     expect(canCiteAsAuthoritative(noTrace)).toBe(false);
-    expect(validateSourceProvenance(makeSource({ provenance: '', sourceUrl: 'https://example.invalid/official' })).ok).toBe(true);
+    expect(
+      validateSourceProvenance(makeSource({ provenance: '', sourceUrl: 'https://example.invalid/official' })).ok,
+    ).toBe(true);
   });
 
   it('requires verified status in addition to provenance before a source is authoritative', () => {
@@ -129,13 +131,16 @@ describe('Source Intake (player draft ingestion)', () => {
   });
 
   it('stores excerpts as non-authoritative and preserves optional provenance metadata', () => {
-    const result = intakeSource({
-      ...VALID_DRAFT,
-      excerpt: 'My paraphrase of the topic.',
-      sourceUrl: 'https://example.invalid/catalogue',
-      effectiveDate: '2024-07-01',
-      notes: 'Follow up with senior.',
-    }, 'ls-draft-6');
+    const result = intakeSource(
+      {
+        ...VALID_DRAFT,
+        excerpt: 'My paraphrase of the topic.',
+        sourceUrl: 'https://example.invalid/catalogue',
+        effectiveDate: '2024-07-01',
+        notes: 'Follow up with senior.',
+      },
+      'ls-draft-6',
+    );
     expect(result.ok).toBe(true);
     expect(result.source?.excerpt).toBe('My paraphrase of the topic.');
     expect(result.source?.sourceUrl).toBe('https://example.invalid/catalogue');
@@ -189,10 +194,7 @@ describe('citation guard with provenance-aware sources', () => {
 
   it('still blocks specific citations that only exist in player-draft placeholders', () => {
     const draft = intakeSource({ ...VALID_DRAFT, citation: 'Section 302 IPC' }, 'ls-guard-1').source!;
-    const result = checkDraftCitations('Section 302 IPC applies here.', [
-      ...createInitialSave().legalSources,
-      draft,
-    ]);
+    const result = checkDraftCitations('Section 302 IPC applies here.', [...createInitialSave().legalSources, draft]);
     expect(result.ok).toBe(false);
     expect(result.blocked.length).toBeGreaterThan(0);
   });

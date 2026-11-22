@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { createInitialSave } from '@/domain/seed';
 import { reviewEvidence, addEvidenceNote, discoverEvidenceItem } from '@/domain/evidence';
-import { advanceClock, currentObjective, isAssignmentUnlocked, refreshAssignmentUnlocks, reviewAssignment } from '@/domain/progression';
+import {
+  advanceClock,
+  currentObjective,
+  isAssignmentUnlocked,
+  refreshAssignmentUnlocks,
+  reviewAssignment,
+} from '@/domain/progression';
 import type { SaveGame } from '@/domain/types';
 
 function advanceToDay(save: SaveGame, day: number): void {
@@ -15,8 +21,14 @@ function discoverAndReview(save: SaveGame, id: string): void {
 
 function addVerifiedSourceNote(save: SaveGame): void {
   save.notebook.unshift({
-    id: 'n-source', day: save.clock.day, kind: 'research', title: 'Source: educational summary',
-    content: 'Verified educational summary', sourceId: 'ls-4', source: 'Educational summary', verified: true,
+    id: 'n-source',
+    day: save.clock.day,
+    kind: 'research',
+    title: 'Source: educational summary',
+    content: 'Verified educational summary',
+    sourceId: 'ls-4',
+    source: 'Educational summary',
+    verified: true,
   });
 }
 

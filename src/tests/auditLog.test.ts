@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { AUDIT_EVENT_KINDS, MAX_AUDIT_EVENTS, MAX_AUDIT_SUMMARY_CHARS, recordAudit, sanitizeAuditLog } from '@/domain/audit';
+import {
+  AUDIT_EVENT_KINDS,
+  MAX_AUDIT_EVENTS,
+  MAX_AUDIT_SUMMARY_CHARS,
+  recordAudit,
+  sanitizeAuditLog,
+} from '@/domain/audit';
 import { assertNoCanonicalTruthLeak } from '@/domain/caseAccess';
 import {
   challengeEvidenceAdmissibility,
@@ -20,8 +26,12 @@ function memoryStorage(initial: Record<string, string> = {}): StorageLike & { da
   return {
     data,
     getItem: (key) => data[key] ?? null,
-    setItem: (key, value) => { data[key] = value; },
-    removeItem: (key) => { delete data[key]; },
+    setItem: (key, value) => {
+      data[key] = value;
+    },
+    removeItem: (key) => {
+      delete data[key];
+    },
   };
 }
 
@@ -108,7 +118,10 @@ describe('bounded append-only audit log', () => {
 
   it('rebuilds stored events from known fields only and drops unsafe or malformed entries', () => {
     const valid = {
-      id: 'audit-old', day: 3, slot: 'afternoon', type: 'evidence-reviewed',
+      id: 'audit-old',
+      day: 3,
+      slot: 'afternoon',
+      type: 'evidence-reviewed',
       summary: '  Reviewed Canteen CCTV clip  ',
       canonicalTruth: { responsibleParties: ['x'] }, // unknown field must be dropped
     };
@@ -125,7 +138,10 @@ describe('bounded append-only audit log', () => {
     const clean = sanitizeAuditLog(events);
     expect(clean).toHaveLength(2);
     expect(clean[0]).toEqual({
-      id: 'audit-old', day: 3, slot: 'afternoon', type: 'evidence-reviewed',
+      id: 'audit-old',
+      day: 3,
+      slot: 'afternoon',
+      type: 'evidence-reviewed',
       summary: 'Reviewed Canteen CCTV clip',
     });
     expect(JSON.stringify(clean)).not.toContain('canonicalTruth');
@@ -187,7 +203,10 @@ describe('bounded append-only audit log', () => {
     save.auditLog = [
       { id: 'x', day: 1, slot: 'morning', type: 'bad', summary: 'invalid', extra: true } as never,
       ...Array.from({ length: MAX_AUDIT_EVENTS + 3 }, (_, i) => ({
-        id: `e${i}`, day: 2, slot: 'morning' as const, type: 'save' as AuditEventType,
+        id: `e${i}`,
+        day: 2,
+        slot: 'morning' as const,
+        type: 'save' as AuditEventType,
         summary: `Saved ${i}`,
       })),
     ];

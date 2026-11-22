@@ -1,9 +1,4 @@
-import {
-  looksLikeSpecificCitation,
-  MAX_SOURCE_FIELDS,
-  SOURCE_JURISDICTIONS,
-  SOURCE_TYPES,
-} from './legalSources';
+import { looksLikeSpecificCitation, MAX_SOURCE_FIELDS, SOURCE_JURISDICTIONS, SOURCE_TYPES } from './legalSources';
 import type { LegalSource, SourceVerificationStatus } from './types';
 
 /**
@@ -80,20 +75,12 @@ function normalizeIdentifier(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-function issue(
-  code: string,
-  message: string,
-  field?: string,
-  severity: ValidationSeverity = 'error',
-): ValidationIssue {
+function issue(code: string, message: string, field?: string, severity: ValidationSeverity = 'error'): ValidationIssue {
   return field ? { code, message, field, severity } : { code, message, severity };
 }
 
 /** Validate a single source record. Accepts unknown input so untrusted corpus JSON is safe. */
-export function validateSourceRecord(
-  source: unknown,
-  options: SourceValidationOptions = {},
-): SourceValidationResult {
+export function validateSourceRecord(source: unknown, options: SourceValidationOptions = {}): SourceValidationResult {
   const errors: ValidationIssue[] = [];
   const warnings: ValidationIssue[] = [];
 
@@ -123,11 +110,25 @@ export function validateSourceRecord(
   if (hasText(record.sourceType) && !SOURCE_TYPES.includes(record.sourceType as LegalSource['sourceType'])) {
     errors.push(issue('INVALID_SOURCE_TYPE', `Source type must be one of: ${SOURCE_TYPES.join(', ')}.`, 'sourceType'));
   }
-  if (hasText(record.jurisdiction) && !SOURCE_JURISDICTIONS.includes(record.jurisdiction as LegalSource['jurisdiction'])) {
-    errors.push(issue('INVALID_JURISDICTION', `Jurisdiction must be one of: ${SOURCE_JURISDICTIONS.join(', ')}.`, 'jurisdiction'));
+  if (
+    hasText(record.jurisdiction) &&
+    !SOURCE_JURISDICTIONS.includes(record.jurisdiction as LegalSource['jurisdiction'])
+  ) {
+    errors.push(
+      issue('INVALID_JURISDICTION', `Jurisdiction must be one of: ${SOURCE_JURISDICTIONS.join(', ')}.`, 'jurisdiction'),
+    );
   }
-  if (hasText(record.verificationStatus) && !VERIFICATION_STATUSES.includes(record.verificationStatus as SourceVerificationStatus)) {
-    errors.push(issue('INVALID_VERIFICATION_STATUS', 'Verification status must be verified, unverified or placeholder.', 'verificationStatus'));
+  if (
+    hasText(record.verificationStatus) &&
+    !VERIFICATION_STATUSES.includes(record.verificationStatus as SourceVerificationStatus)
+  ) {
+    errors.push(
+      issue(
+        'INVALID_VERIFICATION_STATUS',
+        'Verification status must be verified, unverified or placeholder.',
+        'verificationStatus',
+      ),
+    );
   }
   if (record.intake !== undefined && record.intake !== 'seed' && record.intake !== 'player-draft') {
     errors.push(issue('INVALID_INTAKE', "Intake must be 'seed' or 'player-draft' when present.", 'intake'));
@@ -149,12 +150,14 @@ export function validateSourceRecord(
   for (const [field, cap] of Object.entries(MAX_SOURCE_FIELDS)) {
     const value = record[field];
     if (typeof value === 'string' && value.length > cap) {
-      warnings.push(issue(
-        'FIELD_TOO_LONG',
-        `${field} exceeds the ${cap}-character field cap and would be truncated by the app.`,
-        field,
-        'warning',
-      ));
+      warnings.push(
+        issue(
+          'FIELD_TOO_LONG',
+          `${field} exceeds the ${cap}-character field cap and would be truncated by the app.`,
+          field,
+          'warning',
+        ),
+      );
     }
   }
 
@@ -170,66 +173,79 @@ export function validateSourceRecord(
     // `provenance` and `citation` are already required above for every record; for a
     // verified record those codes are the "identifier/provenance" blockers.
     if (placeholderMarked) {
-      errors.push(issue(
-        'PLACEHOLDER_CANNOT_BE_VERIFIED',
-        'A record labeled placeholder is a stand-in and can never be marked verified.',
-        'verificationStatus',
-      ));
+      errors.push(
+        issue(
+          'PLACEHOLDER_CANNOT_BE_VERIFIED',
+          'A record labeled placeholder is a stand-in and can never be marked verified.',
+          'verificationStatus',
+        ),
+      );
     }
     if (!hasText(record.verifiedBy)) {
-      errors.push(issue(
-        'VERIFIED_WITHOUT_REVIEWER',
-        'A verified record must name the human/content owner who reviewed it (verifiedBy).',
-        'verifiedBy',
-      ));
+      errors.push(
+        issue(
+          'VERIFIED_WITHOUT_REVIEWER',
+          'A verified record must name the human/content owner who reviewed it (verifiedBy).',
+          'verifiedBy',
+        ),
+      );
     }
     if (!hasText(record.verificationDate)) {
-      errors.push(issue(
-        'VERIFIED_WITHOUT_DATE',
-        'A verified record must record the review date (verificationDate, YYYY-MM-DD).',
-        'verificationDate',
-      ));
+      errors.push(
+        issue(
+          'VERIFIED_WITHOUT_DATE',
+          'A verified record must record the review date (verificationDate, YYYY-MM-DD).',
+          'verificationDate',
+        ),
+      );
     }
 
     const specific = hasText(record.citation) && looksLikeSpecificCitation(record.citation);
-    const realAuthority = record.jurisdiction === 'India'
-      && hasText(record.sourceType)
-      && REAL_AUTHORITY_TYPES.has(record.sourceType);
+    const realAuthority =
+      record.jurisdiction === 'India' && hasText(record.sourceType) && REAL_AUTHORITY_TYPES.has(record.sourceType);
     const needsOfficialUrl = specific || realAuthority;
 
     if (needsOfficialUrl && !hasText(record.sourceUrl)) {
-      errors.push(issue(
-        'VERIFIED_WITHOUT_OFFICIAL_URL',
-        'A verified real-world legal authority or specific-looking citation requires an official publisher URL.',
-        'sourceUrl',
-      ));
+      errors.push(
+        issue(
+          'VERIFIED_WITHOUT_OFFICIAL_URL',
+          'A verified real-world legal authority or specific-looking citation requires an official publisher URL.',
+          'sourceUrl',
+        ),
+      );
     } else if (!needsOfficialUrl && !hasText(record.sourceUrl)) {
-      warnings.push(issue(
-        'NO_OFFICIAL_URL',
-        'No official URL recorded. Acceptable for internal/fictional summaries; required before treating real-world authority as verified.',
-        'sourceUrl',
-        'warning',
-      ));
+      warnings.push(
+        issue(
+          'NO_OFFICIAL_URL',
+          'No official URL recorded. Acceptable for internal/fictional summaries; required before treating real-world authority as verified.',
+          'sourceUrl',
+          'warning',
+        ),
+      );
     }
 
     if (specific) {
       const reviewed = (options.reviewedOfficialIdentifiers ?? []).map(normalizeIdentifier);
       if (!reviewed.includes(normalizeIdentifier(record.citation as string))) {
-        errors.push(issue(
-          'UNREVIEWED_SPECIFIC_CITATION',
-          'This citation looks like a specific provision, reporter reference or case name. It may not be marked verified unless a human content owner has checked the exact text against an official publication and added the identifier to the reviewed allowlist. See docs/LEGAL_SOURCE_VERIFICATION.md.',
-          'citation',
-        ));
+        errors.push(
+          issue(
+            'UNREVIEWED_SPECIFIC_CITATION',
+            'This citation looks like a specific provision, reporter reference or case name. It may not be marked verified unless a human content owner has checked the exact text against an official publication and added the identifier to the reviewed allowlist. See docs/LEGAL_SOURCE_VERIFICATION.md.',
+            'citation',
+          ),
+        );
       }
     }
 
     if (record.intake === 'player-draft') {
-      warnings.push(issue(
-        'PLAYER_DRAFT_VERIFIED_BY_HUMAN',
-        'This record began as a player draft; confirm a human reviewer checked it against the official source.',
-        'verificationStatus',
-        'warning',
-      ));
+      warnings.push(
+        issue(
+          'PLAYER_DRAFT_VERIFIED_BY_HUMAN',
+          'This record began as a player draft; confirm a human reviewer checked it against the official source.',
+          'verificationStatus',
+          'warning',
+        ),
+      );
     }
   }
 
@@ -237,16 +253,14 @@ export function validateSourceRecord(
 }
 
 /** Validate a whole corpus file in one deterministic pass, preserving record positions. */
-export function validateSourceRecords(
-  input: unknown,
-  options: SourceValidationOptions = {},
-): BatchValidationResult {
+export function validateSourceRecords(input: unknown, options: SourceValidationOptions = {}): BatchValidationResult {
   const records: unknown[] = Array.isArray(input) ? input : input === undefined ? [] : [input];
   const results: BatchRecordResult[] = records.map((record, index) => {
     const result = validateSourceRecord(record, options);
-    const rawId = record && typeof record === 'object' && !Array.isArray(record)
-      ? (record as Record<string, unknown>).id
-      : undefined;
+    const rawId =
+      record && typeof record === 'object' && !Array.isArray(record)
+        ? (record as Record<string, unknown>).id
+        : undefined;
     return {
       index,
       ...(hasText(rawId) ? { id: rawId } : {}),

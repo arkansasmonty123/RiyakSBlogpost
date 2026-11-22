@@ -52,8 +52,12 @@ function renderPanel(panel?: Panel): string {
   globals.window = {
     localStorage: {
       getItem: (key: string) => data[key] ?? null,
-      setItem: (key: string, value: string) => { data[key] = value; },
-      removeItem: (key: string) => { delete data[key]; },
+      setItem: (key: string, value: string) => {
+        data[key] = value;
+      },
+      removeItem: (key: string) => {
+        delete data[key];
+      },
     },
   };
   return renderToString(panel ? <App initialPanel={panel} /> : <App />).replace(/<!-- -->/g, '');

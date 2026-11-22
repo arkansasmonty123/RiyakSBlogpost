@@ -16,7 +16,8 @@ const INTERNAL_SUMMARY: LegalSource = {
   sourceType: 'summary',
   jurisdiction: 'Fictional',
   verificationStatus: 'verified',
-  provenance: 'Internal prototype summary; not a statutory citation. Checked against the internal fictional case brief.',
+  provenance:
+    'Internal prototype summary; not a statutory citation. Checked against the internal fictional case brief.',
   verifiedBy: 'Internal prototype review',
   verificationDate: '2026-11-22',
   intake: 'seed',
@@ -159,14 +160,17 @@ describe('source record validation (D-005/D-011 ingestion gate)', () => {
 
 describe('human verification step uses the strict ingestion gate', () => {
   it('requires a dated human review and never auto-verifies a specific citation', () => {
-    const draft = intakeSource({
-      title: 'Internal notebook reference',
-      sourceName: 'Fictional notebook',
-      citation: 'NOTEBOOK-REF-12',
-      sourceType: 'summary',
-      jurisdiction: 'Fictional',
-      provenance: 'Copied from an internal notebook; not checked against an official source.',
-    }, 'lv-1').source!;
+    const draft = intakeSource(
+      {
+        title: 'Internal notebook reference',
+        sourceName: 'Fictional notebook',
+        citation: 'NOTEBOOK-REF-12',
+        sourceType: 'summary',
+        jurisdiction: 'Fictional',
+        provenance: 'Copied from an internal notebook; not checked against an official source.',
+      },
+      'lv-1',
+    ).source!;
 
     expect(markSourceVerified(draft, 'Legal content owner').ok).toBe(false);
     const verified = markSourceVerified(draft, 'Legal content owner', '2026-11-22');

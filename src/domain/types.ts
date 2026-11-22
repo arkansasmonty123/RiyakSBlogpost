@@ -1,10 +1,5 @@
 export type CareerStage =
-  | 'newcomer'
-  | 'intern'
-  | 'junior_advocate'
-  | 'independent_advocate'
-  | 'established_practitioner'
-  | 'senior';
+  'newcomer' | 'intern' | 'junior_advocate' | 'independent_advocate' | 'established_practitioner' | 'senior';
 
 export type KnowledgeLabel = 'known' | 'claimed' | 'disputed' | 'unknown';
 

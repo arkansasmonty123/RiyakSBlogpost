@@ -33,17 +33,17 @@ A single coherent direction must be chosen before any final asset is produced. T
 
 ### Palette (current prototype values — provisional)
 
-| Role | Hex | Source |
-|---|---|---|
-| UI background | `#0f1115` | `tailwind.config.js` → `bar.bg` |
-| UI panel | `#171a21` | `tailwind.config.js` → `bar.panel` |
-| Panel inset | `#1e2430` | `tailwind.config.js` → `bar.panel2` |
-| Accent / brass | `#c8a75a` | `tailwind.config.js` → `bar.gold` |
-| Body text | `#e8e2d5` | `tailwind.config.js` → `bar.text` |
-| Muted text | `#a8a195` | `tailwind.config.js` → `bar.muted` |
+| Role                          | Hex                                           | Source                               |
+| ----------------------------- | --------------------------------------------- | ------------------------------------ |
+| UI background                 | `#0f1115`                                     | `tailwind.config.js` → `bar.bg`      |
+| UI panel                      | `#171a21`                                     | `tailwind.config.js` → `bar.panel`   |
+| Panel inset                   | `#1e2430`                                     | `tailwind.config.js` → `bar.panel2`  |
+| Accent / brass                | `#c8a75a`                                     | `tailwind.config.js` → `bar.gold`    |
+| Body text                     | `#e8e2d5`                                     | `tailwind.config.js` → `bar.text`    |
+| Muted text                    | `#a8a195`                                     | `tailwind.config.js` → `bar.muted`   |
 | Wood / paper / teal / oxblood | `#6b5138` / `#ddd5c3` / `#456267` / `#63393b` | `src/app/SceneArt.tsx` local palette |
 
-Any final direction may revise these values, but contrast for text and controls must meet WCAG AA and be re-checked after a palette change. Keep the distinction between *decorative* art colours and *functional* UI colours documented.
+Any final direction may revise these values, but contrast for text and controls must meet WCAG AA and be re-checked after a palette change. Keep the distinction between _decorative_ art colours and _functional_ UI colours documented.
 
 ## 3. Character reference rules
 
@@ -78,12 +78,12 @@ For **every** image, portrait, texture, sound or font introduced, record an entr
 
 ## 6. Open decisions / follow-up
 
-| Item | Status | Owner | Needed before |
-|---|---|---|---|
-| Choose final visual style (D-002) | Unknown | Product / Design | Any final scene/character asset |
-| Approve asset rights + licence policy (D-012) | Unknown | Design / Legal | Importing any third-party or generated asset |
-| Decide repo/content/asset licence (D-018) | Unknown | Product / Legal | Public release |
-| Assign named art owner and reviewer | Not assigned | Product | Asset sign-off |
-| Create asset manifest and style sheets | Not started | Art owner | First external asset |
+| Item                                          | Status       | Owner            | Needed before                                |
+| --------------------------------------------- | ------------ | ---------------- | -------------------------------------------- |
+| Choose final visual style (D-002)             | Unknown      | Product / Design | Any final scene/character asset              |
+| Approve asset rights + licence policy (D-012) | Unknown      | Design / Legal   | Importing any third-party or generated asset |
+| Decide repo/content/asset licence (D-018)     | Unknown      | Product / Legal  | Public release                               |
+| Assign named art owner and reviewer           | Not assigned | Product          | Asset sign-off                               |
+| Create asset manifest and style sheets        | Not started  | Art owner        | First external asset                         |
 
 **Verification note:** As of this draft, no external assets exist, so there are no licences to verify and no rights have been claimed. This document will be revised when D-002/D-012/D-018 are resolved; until then it is guidance only.

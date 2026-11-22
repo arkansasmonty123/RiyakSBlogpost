@@ -12,7 +12,10 @@ describe('citation guardrails', () => {
 
   it('blocks unverified placeholder statute references', () => {
     const save = createInitialSave();
-    const result = checkDraftCitations('As per BNS (placeholder - verify exact provision before use), accused is liable.', save.legalSources);
+    const result = checkDraftCitations(
+      'As per BNS (placeholder - verify exact provision before use), accused is liable.',
+      save.legalSources,
+    );
     expect(result.ok).toBe(false);
     expect(result.blocked.some((b) => b.toLowerCase().includes('unverified/placeholder'))).toBe(true);
   });

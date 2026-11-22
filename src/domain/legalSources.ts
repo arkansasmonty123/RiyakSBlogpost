@@ -1,10 +1,5 @@
 import { validateSourceRecord } from './sourceValidation';
-import type {
-  LegalSource,
-  SourceJurisdiction,
-  SourceType,
-  SourceVerificationStatus,
-} from './types';
+import type { LegalSource, SourceJurisdiction, SourceType, SourceVerificationStatus } from './types';
 
 export const SOURCE_TYPES: readonly SourceType[] = ['statute', 'judgment', 'rule', 'commentary', 'summary'];
 export const SOURCE_JURISDICTIONS: readonly SourceJurisdiction[] = ['India', 'Fictional'];
@@ -69,7 +64,10 @@ export function validateSourceProvenance(source: ProvenanceShape): ProvenanceVal
       return { ok: false, reason: 'A placeholder source can never be verified or cited as authoritative.' };
     }
     if (looksLikeSpecificCitation(source.citation) && !source.sourceUrl?.trim()) {
-      return { ok: false, reason: 'A specific-looking citation requires an official source URL before it may be treated as verified.' };
+      return {
+        ok: false,
+        reason: 'A specific-looking citation requires an official source URL before it may be treated as verified.',
+      };
     }
   }
   return { ok: true };
@@ -77,9 +75,7 @@ export function validateSourceProvenance(source: ProvenanceShape): ProvenanceVal
 
 /** True only when a source may be cited as authoritative in a draft submission. */
 export function canCiteAsAuthoritative(source: LegalSource): boolean {
-  return source.verificationStatus === 'verified'
-    && !isPlaceholderText(source)
-    && validateSourceProvenance(source).ok;
+  return source.verificationStatus === 'verified' && !isPlaceholderText(source) && validateSourceProvenance(source).ok;
 }
 
 export interface SourceDraftInput {
@@ -128,7 +124,8 @@ export function intakeSource(input: SourceDraftInput, id: string): IntakeResult 
   if (!title) return { ok: false, reason: 'A source title is required.', warnings };
   if (!sourceName) return { ok: false, reason: 'A source name is required.', warnings };
   if (!citation) return { ok: false, reason: 'A citation/identifier is required.', warnings };
-  if (!provenance) return { ok: false, reason: 'A provenance note is required (where did this record come from?).', warnings };
+  if (!provenance)
+    return { ok: false, reason: 'A provenance note is required (where did this record come from?).', warnings };
   if (!SOURCE_TYPES.includes(input.sourceType as SourceType)) {
     return { ok: false, reason: 'Select a valid source type.', warnings };
   }
@@ -141,7 +138,8 @@ export function intakeSource(input: SourceDraftInput, id: string): IntakeResult 
   if (input.requestedStatus === 'verified') {
     return {
       ok: false,
-      reason: 'Source Intake cannot create a verified source. A human reviewer must verify provenance separately before citation.',
+      reason:
+        'Source Intake cannot create a verified source. A human reviewer must verify provenance separately before citation.',
       warnings,
     };
   }
@@ -151,11 +149,15 @@ export function intakeSource(input: SourceDraftInput, id: string): IntakeResult 
   if (input.requestPlaceholder || specific) {
     verificationStatus = 'placeholder';
     if (specific) {
-      warnings.push('This citation looks like a specific provision or judgment reference. It was saved as a non-authoritative placeholder; verify the exact text against an official source before relying on it.');
+      warnings.push(
+        'This citation looks like a specific provision or judgment reference. It was saved as a non-authoritative placeholder; verify the exact text against an official source before relying on it.',
+      );
     }
   } else {
     verificationStatus = 'unverified';
-    warnings.push('Saved as unverified. It cannot be cited as authoritative until a human reviewer confirms its provenance.');
+    warnings.push(
+      'Saved as unverified. It cannot be cited as authoritative until a human reviewer confirms its provenance.',
+    );
   }
 
   const source: LegalSource = {
@@ -186,13 +188,12 @@ export interface VerifyResult {
  * The human/content-owner verification step, kept separate from player intake so the game
  * never auto-verifies. Requires a named reviewer and traceable provenance.
  */
-export function markSourceVerified(
-  source: LegalSource,
-  reviewer: string,
-  verificationDate?: string,
-): VerifyResult {
+export function markSourceVerified(source: LegalSource, reviewer: string, verificationDate?: string): VerifyResult {
   if (source.verificationStatus === 'placeholder') {
-    return { ok: false, reason: 'A placeholder can never be marked verified. Intake a new source with official provenance instead.' };
+    return {
+      ok: false,
+      reason: 'A placeholder can never be marked verified. Intake a new source with official provenance instead.',
+    };
   }
   const reviewerName = (reviewer ?? '').trim();
   if (!reviewerName) {

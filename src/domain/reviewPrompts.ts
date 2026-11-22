@@ -48,21 +48,18 @@ const REVIEW_PROMPT_CATALOG: readonly ReviewPromptDefinition[] = [
 /** Prompts whose evidence the player has legitimately discovered and reviewed. */
 export function reviewPromptsFor(save: SaveGame): ReviewPrompt[] {
   const view = toPlayerCaseView(save.caseFile);
-  const reviewed = new Map(
-    view.evidence.filter((e) => e.discovered && e.reviewed).map((e) => [e.id, e.title]),
-  );
-  return REVIEW_PROMPT_CATALOG
-    .filter((definition) => reviewed.has(definition.evidenceId))
-    .map((definition) => ({
-      id: definition.id,
-      evidenceId: definition.evidenceId,
-      evidenceTitle: reviewed.get(definition.evidenceId) as string,
-      focus: definition.focus,
-      prompt: definition.prompt,
-    }));
+  const reviewed = new Map(view.evidence.filter((e) => e.discovered && e.reviewed).map((e) => [e.id, e.title]));
+  return REVIEW_PROMPT_CATALOG.filter((definition) => reviewed.has(definition.evidenceId)).map((definition) => ({
+    id: definition.id,
+    evidenceId: definition.evidenceId,
+    evidenceTitle: reviewed.get(definition.evidenceId) as string,
+    focus: definition.focus,
+    prompt: definition.prompt,
+  }));
 }
 
 /** All prompt text in a stable, testable form (used to check for leaks and citations). */
-export const ALL_REVIEW_PROMPT_TEXT: readonly string[] = REVIEW_PROMPT_CATALOG.flatMap(
-  (definition) => [definition.focus, definition.prompt],
-);
+export const ALL_REVIEW_PROMPT_TEXT: readonly string[] = REVIEW_PROMPT_CATALOG.flatMap((definition) => [
+  definition.focus,
+  definition.prompt,
+]);

@@ -17,9 +17,18 @@ import type { SaveGame } from '@/domain/types';
 const NEW_EVIDENCE_IDS = ['ev-7', 'ev-8', 'ev-9'];
 const EVENT_IDS = ['d-client-pressure', 'd-junior-credit'];
 const CANONICAL_MARKERS = [
-  'canonicaltruth', 'actualevents', 'actualtimeline', 'responsibleparties',
-  'hiddenmotives', 'evidenceauthenticity', 'prior dispute',
-  '18:05', '18:10', '18:12', '18:15', '18:20',
+  'canonicaltruth',
+  'actualevents',
+  'actualtimeline',
+  'responsibleparties',
+  'hiddenmotives',
+  'evidenceauthenticity',
+  'prior dispute',
+  '18:05',
+  '18:10',
+  '18:12',
+  '18:15',
+  '18:20',
 ];
 
 function advanceToDay(save: SaveGame, day: number): void {
@@ -30,8 +39,12 @@ function memoryStorage(initial: Record<string, string> = {}): StorageLike {
   const data = { ...initial };
   return {
     getItem: (key: string) => data[key] ?? null,
-    setItem: (key, value) => { data[key] = value; },
-    removeItem: (key) => { delete data[key]; },
+    setItem: (key, value) => {
+      data[key] = value;
+    },
+    removeItem: (key) => {
+      delete data[key];
+    },
   };
 }
 
@@ -42,8 +55,12 @@ function renderApp(panel: 'case' | 'dialogue' | 'journal', save: SaveGame): stri
   globals.window = {
     localStorage: {
       getItem: (key: string) => data[key] ?? null,
-      setItem: (key: string, value: string) => { data[key] = value; },
-      removeItem: (key: string) => { delete data[key]; },
+      setItem: (key: string, value: string) => {
+        data[key] = value;
+      },
+      removeItem: (key: string) => {
+        delete data[key];
+      },
     },
   };
   try {
@@ -56,9 +73,7 @@ function renderApp(panel: 'case' | 'dialogue' | 'journal', save: SaveGame): stri
 function authoredText(sceneIds: readonly string[]): string[] {
   return DIALOGUE_SCENES.filter((s) => sceneIds.includes(s.id)).flatMap((scene) => [
     scene.prompt,
-    ...scene.choices.flatMap((choice) => [
-      choice.label, choice.reply, choice.memory, ...(choice.reveals ?? []),
-    ]),
+    ...scene.choices.flatMap((choice) => [choice.label, choice.reply, choice.memory, ...(choice.reveals ?? [])]),
   ]);
 }
 
@@ -117,7 +132,9 @@ describe('richer evidence set (ev-7..ev-9)', () => {
   it('follows the same discover → review → assess flow as core evidence', () => {
     const save = createInitialSave();
     for (const id of NEW_EVIDENCE_IDS) {
-      expect(toPlayerCaseView(save.caseFile).evidence.find((e) => e.id === id)!.description).toBe('Not yet discovered.');
+      expect(toPlayerCaseView(save.caseFile).evidence.find((e) => e.id === id)!.description).toBe(
+        'Not yet discovered.',
+      );
       expect(setEvidenceAssessment(save, id, { admissibility: 'admissible' })).toBe(false);
 
       const item = discoverEvidenceItem(save, id);
@@ -125,7 +142,9 @@ describe('richer evidence set (ev-7..ev-9)', () => {
       expect(item?.reliability).toBe(id === 'ev-9' ? 'low' : 'medium');
       expect(reviewEvidence(save, id)).toBe(true);
       expect(reviewEvidence(save, id)).toBe(false);
-      expect(setEvidenceAssessment(save, id, { admissibility: 'questionable', rationale: 'Context is incomplete.' })).toBe(true);
+      expect(
+        setEvidenceAssessment(save, id, { admissibility: 'questionable', rationale: 'Context is incomplete.' }),
+      ).toBe(true);
 
       const viewItem = toPlayerCaseView(save.caseFile).evidence.find((e) => e.id === id)!;
       expect(viewItem.description).not.toBe('Not yet discovered.');
@@ -136,7 +155,9 @@ describe('richer evidence set (ev-7..ev-9)', () => {
   it('adds player-visible open questions without closing any of them', () => {
     const summary = buildCaseSummary(createInitialSave());
     expect(summary.openQuestions).toContain('What happened in the missing 20 seconds of video?');
-    expect(summary.openQuestions).toContain('Whether the camera clock and the clinic register times can be reconciled.');
+    expect(summary.openQuestions).toContain(
+      'Whether the camera clock and the clinic register times can be reconciled.',
+    );
     expect(summary.openQuestions).toContain('Whether the earlier and later eyewitness accounts can be reconciled.');
     expect(summary.openQuestions).toContain('Whether the message screenshot is complete and in context.');
     expect(summary.openQuestions.join(' ')).not.toMatch(/18:\d\d|prior dispute|first physical contact/i);
@@ -320,7 +341,8 @@ describe('case summary and timeline coherence', () => {
     expect(summary.evidenceNoteCount).toBeGreaterThanOrEqual(2);
     expect(summary.corroborationLinks).toHaveLength(2);
     expect(summary.corroborationLinks.map((l) => l.evidenceTitle)).toEqual([
-      'Earlier eyewitness account', 'Camera clock synchronisation note',
+      'Earlier eyewitness account',
+      'Camera clock synchronisation note',
     ]);
     expect(summary.corroborationLinks.map((l) => l.relation)).toEqual(['contradiction', 'corroboration']);
     expect(summary.corroborationLinks.every((l) => l.note.length > 0 && l.day >= 1)).toBe(true);
@@ -331,11 +353,14 @@ describe('case summary and timeline coherence', () => {
     advanceClock(save); // morning -> afternoon, no new day
     advanceToDay(save, 2);
     save.memories.unshift({
-      id: 'm-custom', day: 2,
+      id: 'm-custom',
+      day: 2,
       summary: 'Reviewed evidence: Camera clock synchronisation note.',
       participants: ['player'],
     });
-    const titles = buildCaseJournal(save).filter((e) => e.kind === 'event').map((e) => e.title);
+    const titles = buildCaseJournal(save)
+      .filter((e) => e.kind === 'event')
+      .map((e) => e.title);
     expect(titles).toContain('Day 2 begins');
     expect(titles).toContain('Reviewed evidence: Camera clock synchronisation note');
     expect(buildCaseJournal(save).every((e) => e.title.length > 0)).toBe(true);
@@ -398,7 +423,8 @@ describe('save migration and progression integrity with expanded content', () =>
     const loaded = loadSave(memoryStorage({ [SAVE_KEY]: JSON.stringify(payload) }));
 
     expect(loadSave(memoryStorage({ [SAVE_KEY]: JSON.stringify(loaded) })).usedDialogueSceneIds).toEqual([
-      'd-client-pressure', 'd-junior-credit',
+      'd-client-pressure',
+      'd-junior-credit',
     ]);
     expect(availableDialogueScenes(loaded).map((s) => s.id)).not.toContain('d-junior-credit');
     expect(applyDialogueChoice(loaded, 'd-junior-credit', 'credit-note').ok).toBe(false);

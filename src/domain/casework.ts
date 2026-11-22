@@ -3,13 +3,7 @@ import { buildEvidenceSynthesis, pluralize, reviewSynthesis } from './evidenceSy
 import type { ReviewSynthesis } from './evidenceSynthesis';
 import { buildLegalMindProfile, LEGAL_MIND_LEVEL_RANK } from './legalMindProfile';
 import { isAssignmentUnlocked, makeId, refreshAssignmentUnlocks } from './progression';
-import type {
-  AdmissibilityChallenge,
-  ChallengeGround,
-  CustodyObservation,
-  ReviewRound,
-  SaveGame,
-} from './types';
+import type { AdmissibilityChallenge, ChallengeGround, CustodyObservation, ReviewRound, SaveGame } from './types';
 
 const MAX_TEXT = 1000;
 
@@ -19,9 +13,7 @@ function clamp(value: number): number {
 
 /** Only an item the player actually discovered and reviewed can support casework. */
 function reviewedItem(save: SaveGame, evidenceId: string) {
-  return save.caseFile.evidence.find(
-    (e) => e.id === evidenceId && e.discovered && e.reviewed,
-  );
+  return save.caseFile.evidence.find((e) => e.id === evidenceId && e.discovered && e.reviewed);
 }
 
 function seniorRelationship(save: SaveGame) {
@@ -38,11 +30,7 @@ export interface CustodyResult {
  * Record a player-legible chain-of-custody observation. Deterministic consequences only:
  * reliability rises slightly and a specific memory is written. Authenticity is never touched.
  */
-export function recordCustodyObservation(
-  save: SaveGame,
-  evidenceId: string,
-  observation: string,
-): CustodyResult {
+export function recordCustodyObservation(save: SaveGame, evidenceId: string, observation: string): CustodyResult {
   const item = reviewedItem(save, evidenceId);
   if (!item) return { ok: false, reason: 'Discover and review the item before logging custody.' };
   const text = observation.trim().slice(0, MAX_TEXT);
@@ -170,11 +158,7 @@ const NOT_FOUND: SeniorReviewResult = {
  * resubmit loop: assignments marked `requiresRevisionLoop` cannot be accepted on round one.
  * All assessment is computed from player-visible state only.
  */
-export function submitSeniorReview(
-  save: SaveGame,
-  assignmentId: string,
-  workSummary: string,
-): SeniorReviewResult {
+export function submitSeniorReview(save: SaveGame, assignmentId: string, workSummary: string): SeniorReviewResult {
   const assignment = save.assignments.find((a) => a.id === assignmentId);
   if (!assignment) return NOT_FOUND;
   if (assignment.status === 'reviewed') {
@@ -197,9 +181,7 @@ export function submitSeniorReview(
     gaps.push('Review all required evidence before the senior accepts.');
   }
 
-  const sourcesDone = assignment.requiredSourceIds.filter((id) =>
-    save.notebook.some((n) => n.sourceId === id),
-  ).length;
+  const sourcesDone = assignment.requiredSourceIds.filter((id) => save.notebook.some((n) => n.sourceId === id)).length;
   if (sourcesDone === assignment.requiredSourceIds.length) {
     strengths.push('Verified source notes attached.');
   } else {
@@ -309,9 +291,12 @@ export interface FinalBriefResult {
 }
 
 const FINAL_CONSEQUENCE: Record<'strong' | 'solid' | 'shaky', string> = {
-  strong: 'The senior commends a careful, evidence-grounded file. Your standing for competence and reliability rises, and the firm trusts you with greater responsibility.',
-  solid: 'The file is accepted with minor notes. Your careful habits are recognised and your standing improves steadily.',
-  shaky: 'The file is accepted with reservations. Gaps in the record were noted; your standing changes only slightly and the senior asks for closer work next time.',
+  strong:
+    'The senior commends a careful, evidence-grounded file. Your standing for competence and reliability rises, and the firm trusts you with greater responsibility.',
+  solid:
+    'The file is accepted with minor notes. Your careful habits are recognised and your standing improves steadily.',
+  shaky:
+    'The file is accepted with reservations. Gaps in the record were noted; your standing changes only slightly and the senior asks for closer work next time.',
 };
 
 /**
@@ -325,7 +310,9 @@ function finalReviewHighlights(save: SaveGame): string[] {
     lines.push(`Your file rests on material you actually reviewed — ${reviewed.map((e) => e.title).join(', ')}.`);
   }
   if (save.notebook.some((n) => n.verified === true && !!n.sourceId)) {
-    lines.push('You attached a verified, labelled educational source rather than presenting an unverified provision as law.');
+    lines.push(
+      'You attached a verified, labelled educational source rather than presenting an unverified provision as law.',
+    );
   }
   if (save.flags.clientInterviewDone) {
     lines.push('You took the client statement within the limits of what they personally observed.');
@@ -339,33 +326,44 @@ function finalReviewHighlights(save: SaveGame): string[] {
   }
   const revisions = save.reviewRounds.filter((r) => r.status === 'needs_revision').length;
   if (revisions > 0) {
-    lines.push(`You revised your brief after senior feedback before it was accepted (${revisions} revision round${revisions === 1 ? '' : 's'}).`);
+    lines.push(
+      `You revised your brief after senior feedback before it was accepted (${revisions} revision round${revisions === 1 ? '' : 's'}).`,
+    );
   }
   if (save.caseTheory.claims.length > 0) {
-    lines.push('You recorded your working theory as your own analysis, linked to reviewed material rather than presented as a finding.');
+    lines.push(
+      'You recorded your working theory as your own analysis, linked to reviewed material rather than presented as a finding.',
+    );
   }
 
   const synthesis = buildEvidenceSynthesis(save);
   if (synthesis.contradictions.length > 0 || synthesis.corroborations.length > 0) {
-    lines.push(`Your file keeps ${pluralize(synthesis.contradictions.length, 'contradiction note')} and ${pluralize(synthesis.corroborations.length, 'corroboration note')} tied to reviewed items, so differing accounts remain visible.`);
+    lines.push(
+      `Your file keeps ${pluralize(synthesis.contradictions.length, 'contradiction note')} and ${pluralize(synthesis.corroborations.length, 'corroboration note')} tied to reviewed items, so differing accounts remain visible.`,
+    );
   }
   if (synthesis.totalClaims > 0) {
-    lines.push(`Of your theory claims, ${synthesis.groundedClaimsCount} of ${synthesis.totalClaims} are linked to reviewed evidence, keeping your working theory tied to the file.`);
+    lines.push(
+      `Of your theory claims, ${synthesis.groundedClaimsCount} of ${synthesis.totalClaims} are linked to reviewed evidence, keeping your working theory tied to the file.`,
+    );
   }
   if (synthesis.openQuestions.length > 0) {
-    lines.push(`You left ${pluralize(synthesis.openQuestions.length, 'player-visible open question')} on the file; the case closes on your work, not on certainty.`);
+    lines.push(
+      `You left ${pluralize(synthesis.openQuestions.length, 'player-visible open question')} on the file; the case closes on your work, not on certainty.`,
+    );
   }
 
   // Ground the closing advice in the same deterministic profile shown on the completion screen.
   const profile = buildLegalMindProfile(save);
   const ranked = [...profile.dimensions].sort(
-    (a, b) => LEGAL_MIND_LEVEL_RANK[b.level] - LEGAL_MIND_LEVEL_RANK[a.level]
-      || b.evidence.length - a.evidence.length,
+    (a, b) => LEGAL_MIND_LEVEL_RANK[b.level] - LEGAL_MIND_LEVEL_RANK[a.level] || b.evidence.length - a.evidence.length,
   );
   const strongest = ranked[0];
   const nextArea = ranked[ranked.length - 1];
   if (strongest && nextArea) {
-    lines.push(`In your Legal Mind Profile, ${strongest.label.toLowerCase()} is your clearest strength; ${nextArea.label.toLowerCase()} is the area to build on next.`);
+    lines.push(
+      `In your Legal Mind Profile, ${strongest.label.toLowerCase()} is your clearest strength; ${nextArea.label.toLowerCase()} is the area to build on next.`,
+    );
   }
   return lines;
 }
@@ -386,7 +384,10 @@ export function submitFinalBrief(save: SaveGame, workSummary: string): FinalBrie
   }
   const needed = ['clientInterviewDone', 'custodyLogged', 'admissibilityChallenged', 'reviewAccepted'];
   if (needed.some((flag) => !save.flags[flag])) {
-    return { ok: false, reason: 'Complete the interview, custody log, admissibility challenge and senior review before the final brief.' };
+    return {
+      ok: false,
+      reason: 'Complete the interview, custody log, admissibility challenge and senior review before the final brief.',
+    };
   }
 
   const rep = save.player.reputation;
@@ -395,9 +396,8 @@ export function submitFinalBrief(save: SaveGame, workSummary: string): FinalBrie
   const tier: 'strong' | 'solid' | 'shaky' = score >= 60 ? 'strong' : score >= 40 ? 'solid' : 'shaky';
   const highlights = finalReviewHighlights(save);
   const synthesis = reviewSynthesis(save);
-  const consequence = highlights.length > 0
-    ? `${FINAL_CONSEQUENCE[tier]} ${highlights.join(' ')}`
-    : FINAL_CONSEQUENCE[tier];
+  const consequence =
+    highlights.length > 0 ? `${FINAL_CONSEQUENCE[tier]} ${highlights.join(' ')}` : FINAL_CONSEQUENCE[tier];
 
   assignment.status = 'reviewed';
   assignment.feedback = consequence;

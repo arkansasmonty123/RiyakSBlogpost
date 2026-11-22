@@ -56,13 +56,9 @@ export function currentObjective(save: SaveGame): Objective | null {
   const evidenceDone = assignment.requiredEvidenceIds.filter((id) =>
     save.caseFile.evidence.some((e) => e.id === id && e.discovered),
   ).length;
-  const sourcesDone = assignment.requiredSourceIds.filter((id) =>
-    save.notebook.some((n) => n.sourceId === id),
-  ).length;
+  const sourcesDone = assignment.requiredSourceIds.filter((id) => save.notebook.some((n) => n.sourceId === id)).length;
   const requiredKinds = assignment.requiredNotebookKinds ?? [];
-  const notesDone = requiredKinds.filter((kind) =>
-    save.notebook.some((n: NotebookEntry) => n.kind === kind),
-  ).length;
+  const notesDone = requiredKinds.filter((kind) => save.notebook.some((n: NotebookEntry) => n.kind === kind)).length;
   const requiredFlags = assignment.requiredFlags ?? [];
   const flagsDone = requiredFlags.filter((flag) => save.flags[flag]).length;
 
@@ -127,24 +123,25 @@ export function reviewAssignment(save: SaveGame, assignmentId: string): Assignme
     return { ok: false, reason: 'Already submitted for review.', feedback: '' };
   }
   if (!isAssignmentUnlocked(assignment, save)) {
-    return { ok: false, reason: `Locked: unlocks on Day ${assignment.day} after prior work is reviewed.`, feedback: '' };
+    return {
+      ok: false,
+      reason: `Locked: unlocks on Day ${assignment.day} after prior work is reviewed.`,
+      feedback: '',
+    };
   }
 
   const evidenceOk = assignment.requiredEvidenceIds.every((id) =>
     save.caseFile.evidence.some((e) => e.id === id && e.discovered && e.reviewed),
   );
-  const sourcesOk = assignment.requiredSourceIds.every((id) =>
-    save.notebook.some((n) => n.sourceId === id),
-  );
-  const notesOk = (assignment.requiredNotebookKinds ?? []).every((kind) =>
-    save.notebook.some((n) => n.kind === kind),
-  );
+  const sourcesOk = assignment.requiredSourceIds.every((id) => save.notebook.some((n) => n.sourceId === id));
+  const notesOk = (assignment.requiredNotebookKinds ?? []).every((kind) => save.notebook.some((n) => n.kind === kind));
   const flagsOk = (assignment.requiredFlags ?? []).every((flag) => save.flags[flag]);
 
   if (!evidenceOk || !sourcesOk || !notesOk || !flagsOk) {
     return {
       ok: false,
-      reason: 'Incomplete: discover and review required evidence, add required sources, record required notes, and complete the required casework milestone (interview, custody log, admissibility challenge or review).',
+      reason:
+        'Incomplete: discover and review required evidence, add required sources, record required notes, and complete the required casework milestone (interview, custody log, admissibility challenge or review).',
       feedback: '',
     };
   }

@@ -80,13 +80,15 @@ export function buildEvidenceSynthesis(save: SaveGame): EvidenceSynthesis {
   const openQuestions = [...view.unresolvedAmbiguity];
 
   const noteCount = contradictions.length + corroborations.length;
-  const overview = noteCount > 0
-    ? `Your file keeps ${pluralize(contradictions.length, 'contradiction note')} and ${pluralize(corroborations.length, 'corroboration note')} tied to items you reviewed. Differences between accounts stay on the record instead of being smoothed over.`
-    : 'No contradiction or corroboration notes are tied to reviewed items yet. Record one to keep differences between accounts visible on the file.';
+  const overview =
+    noteCount > 0
+      ? `Your file keeps ${pluralize(contradictions.length, 'contradiction note')} and ${pluralize(corroborations.length, 'corroboration note')} tied to items you reviewed. Differences between accounts stay on the record instead of being smoothed over.`
+      : 'No contradiction or corroboration notes are tied to reviewed items yet. Record one to keep differences between accounts visible on the file.';
 
-  const ambiguityNote = openQuestions.length > 0
-    ? `The file leaves ${pluralize(openQuestions.length, 'player-visible open question')} unresolved. Nothing here determines what actually happened; the case closes on your documented work, not on certainty.`
-    : 'The file records no open questions; conclusions still stay within what was actually reviewed.';
+  const ambiguityNote =
+    openQuestions.length > 0
+      ? `The file leaves ${pluralize(openQuestions.length, 'player-visible open question')} unresolved. Nothing here determines what actually happened; the case closes on your documented work, not on certainty.`
+      : 'The file records no open questions; conclusions still stay within what was actually reviewed.';
 
   return {
     contradictions,

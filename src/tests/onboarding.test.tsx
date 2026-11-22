@@ -12,8 +12,12 @@ function memoryStorage(initial: Record<string, string> = {}): StorageLike & { da
   return {
     data,
     getItem: (key) => data[key] ?? null,
-    setItem: (key, value) => { data[key] = value; },
-    removeItem: (key) => { delete data[key]; },
+    setItem: (key, value) => {
+      data[key] = value;
+    },
+    removeItem: (key) => {
+      delete data[key];
+    },
   };
 }
 

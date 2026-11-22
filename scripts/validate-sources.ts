@@ -89,7 +89,9 @@ function main(): number {
     process.stdout.write(`PASS: ${batch.total} record(s) valid, ${batch.invalid} invalid.\n`);
     return 0;
   }
-  process.stderr.write(`FAIL: ${batch.invalid} of ${batch.total} record(s) invalid. No records were ingested or verified.\n`);
+  process.stderr.write(
+    `FAIL: ${batch.invalid} of ${batch.total} record(s) invalid. No records were ingested or verified.\n`,
+  );
   return 1;
 }
 

@@ -29,8 +29,14 @@ const GOOD_SUMMARY =
   'Issue: what happened outside the canteen. I reviewed the medical report, the partial clip and the witness note, attached the verified educational summary, and kept known facts separate from claims and disputed points.';
 
 const CANONICAL_MARKERS = [
-  'canonicaltruth', 'actualevents', 'actualtimeline', 'responsibleparties',
-  'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12',
+  'canonicaltruth',
+  'actualevents',
+  'actualtimeline',
+  'responsibleparties',
+  'hiddenmotives',
+  'evidenceauthenticity',
+  'prior dispute',
+  '18:12',
   'exact first physical contact',
 ];
 
@@ -79,12 +85,10 @@ function playGroundedChapter(): SaveGame {
   discoverAndReview(save, 'ev-7');
   discoverAndReview(save, 'ev-9');
   addEvidenceNote(save, 'ev-2', 'corroboration', 'The partial clip and the clock note both concern timing.');
-  expect(addTheoryClaim(
-    save,
-    'The medical report records a minor injury, but its timing is disputed.',
-    'disputed',
-    ['ev-1'],
-  ).ok).toBe(true);
+  expect(
+    addTheoryClaim(save, 'The medical report records a minor injury, but its timing is disputed.', 'disputed', ['ev-1'])
+      .ok,
+  ).toBe(true);
 
   advanceToDay(save, 6);
   expect(reviewAssignment(save, 'a4').ok).toBe(true);
@@ -94,7 +98,12 @@ function playGroundedChapter(): SaveGame {
   expect(reviewAssignment(save, 'a5').ok).toBe(true);
 
   advanceToDay(save, 8);
-  challengeEvidenceAdmissibility(save, 'ev-3', 'reliability', 'The consistency of the account was never tested against the recording.');
+  challengeEvidenceAdmissibility(
+    save,
+    'ev-3',
+    'reliability',
+    'The consistency of the account was never tested against the recording.',
+  );
   expect(reviewAssignment(save, 'a6').ok).toBe(true);
 
   advanceToDay(save, 9);
@@ -111,8 +120,12 @@ function memoryStorage(initial: Record<string, string> = {}): StorageLike {
   const data = { ...initial };
   return {
     getItem: (key) => data[key] ?? null,
-    setItem: (key, value) => { data[key] = value; },
-    removeItem: (key) => { delete data[key]; },
+    setItem: (key, value) => {
+      data[key] = value;
+    },
+    removeItem: (key) => {
+      delete data[key];
+    },
   };
 }
 
@@ -161,10 +174,7 @@ describe('evidence-linked review prompts (case depth)', () => {
     ]);
 
     const summary = buildCaseSummary(save);
-    expect(summary.reviewPrompts.map((prompt) => prompt.id)).toEqual([
-      'rp-clock-register',
-      'rp-earlier-later-account',
-    ]);
+    expect(summary.reviewPrompts.map((prompt) => prompt.id)).toEqual(['rp-clock-register', 'rp-earlier-later-account']);
     expect(() => assertNoCanonicalTruthLeak(summary)).not.toThrow();
   });
 

@@ -10,8 +10,12 @@ function memoryStorage(initial: Record<string, string> = {}): StorageLike & { da
   return {
     data,
     getItem: (key) => data[key] ?? null,
-    setItem: (key, value) => { data[key] = value; },
-    removeItem: (key) => { delete data[key]; },
+    setItem: (key, value) => {
+      data[key] = value;
+    },
+    removeItem: (key) => {
+      delete data[key];
+    },
   };
 }
 
@@ -49,7 +53,9 @@ describe('save/load migration', () => {
     expect(loaded.draft.versions).toEqual([]);
     expect(loaded.usedDialogueSceneIds).toEqual([]);
     expect(loaded.caseFile.evidence.every((e) => e.reviewed === false)).toBe(true);
-    expect(loaded.caseFile.evidence.every((e) => e.assessment.admissibility === 'unknown' && e.assessment.rationale === '')).toBe(true);
+    expect(
+      loaded.caseFile.evidence.every((e) => e.assessment.admissibility === 'unknown' && e.assessment.rationale === ''),
+    ).toBe(true);
     // New progression data is restored from defaults and not silently dropped.
     expect(loaded.assignments.find((a) => a.id === 'a2')?.unlockAfter).toBe('a1');
     expect(loaded.assignments.find((a) => a.id === 'a2')?.status).toBe('locked');
@@ -74,7 +80,11 @@ describe('save/load migration', () => {
     const storage = memoryStorage();
     const save = createInitialSave();
     save.draft.versions = Array.from({ length: 20 }, (_, i) => ({
-      id: `v${i}`, savedAt: new Date().toISOString(), day: 1, slot: 'morning' as const, text: `text ${i}`,
+      id: `v${i}`,
+      savedAt: new Date().toISOString(),
+      day: 1,
+      slot: 'morning' as const,
+      text: `text ${i}`,
     }));
     persistSave(save, storage);
     expect(JSON.parse(storage.data[SAVE_KEY]).draft.versions).toHaveLength(8);

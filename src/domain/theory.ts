@@ -27,9 +27,7 @@ export function addTheoryClaim(
     return { ok: false, reason: 'Select a valid status (known, claimed or disputed).' };
   }
 
-  const reviewed = new Set(
-    save.caseFile.evidence.filter((e) => e.discovered && e.reviewed).map((e) => e.id),
-  );
+  const reviewed = new Set(save.caseFile.evidence.filter((e) => e.discovered && e.reviewed).map((e) => e.id));
   const links = [...new Set(evidenceIds)];
   if (links.some((id) => !reviewed.has(id))) {
     return { ok: false, reason: 'Link only evidence you have discovered and reviewed.' };
@@ -117,11 +115,7 @@ function claimById(save: SaveGame, claimId: string): TheoryClaim | undefined {
  * Replace the evidence links on an existing claim. Only discovered + reviewed items may
  * be linked; the operation is a deterministic edit of the player's own working theory.
  */
-export function setClaimEvidenceLinks(
-  save: SaveGame,
-  claimId: string,
-  evidenceIds: string[],
-): TheoryLinkResult {
+export function setClaimEvidenceLinks(save: SaveGame, claimId: string, evidenceIds: string[]): TheoryLinkResult {
   const claim = claimById(save, claimId);
   if (!claim) return { ok: false, reason: 'Claim not found.' };
   const reviewed = new Set(reviewedTheoryEvidence(save).map((e) => e.id));
@@ -134,11 +128,7 @@ export function setClaimEvidenceLinks(
 }
 
 /** Add reviewed evidence links to an existing claim without dropping existing links. */
-export function linkReviewedEvidence(
-  save: SaveGame,
-  claimId: string,
-  evidenceIds: string[],
-): TheoryLinkResult {
+export function linkReviewedEvidence(save: SaveGame, claimId: string, evidenceIds: string[]): TheoryLinkResult {
   const claim = claimById(save, claimId);
   if (!claim) return { ok: false, reason: 'Claim not found.' };
   const reviewed = new Set(reviewedTheoryEvidence(save).map((e) => e.id));
@@ -151,11 +141,7 @@ export function linkReviewedEvidence(
 }
 
 /** Remove one evidence link from an existing claim. */
-export function unlinkReviewedEvidence(
-  save: SaveGame,
-  claimId: string,
-  evidenceId: string,
-): TheoryLinkResult {
+export function unlinkReviewedEvidence(save: SaveGame, claimId: string, evidenceId: string): TheoryLinkResult {
   const claim = claimById(save, claimId);
   if (!claim) return { ok: false, reason: 'Claim not found.' };
   if (!claim.evidenceIds.includes(evidenceId)) {

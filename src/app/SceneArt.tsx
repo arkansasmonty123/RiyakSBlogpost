@@ -90,7 +90,16 @@ function FileStack({ x, y, count = 3, s = 1 }: { x: number; y: number; count?: n
     <g transform={`translate(${x} ${y}) scale(${s})`}>
       {Array.from({ length: count }, (_, i) => (
         <g key={i} transform={`translate(0 ${-i * 7})`}>
-          <rect x="0" y="0" width="62" height="10" rx="1.5" fill={i % 2 ? C.paperShade : C.paper} stroke="#7c735f" strokeWidth="0.6" />
+          <rect
+            x="0"
+            y="0"
+            width="62"
+            height="10"
+            rx="1.5"
+            fill={i % 2 ? C.paperShade : C.paper}
+            stroke="#7c735f"
+            strokeWidth="0.6"
+          />
           <rect x="7" y="3" width="20" height="3" fill={C.brassSoft} opacity="0.7" />
         </g>
       ))}
@@ -113,7 +122,19 @@ function Paper({ x, y, w = 70, h = 52, lines = 4 }: { x: number; y: number; w?: 
 const BOOK_COLORS = [C.oxblood, C.teal, C.slate, C.brassSoft, '#6a6353', C.wood, '#4a4f5c'];
 
 /** Deterministic row of book spines, optionally with a couple of fallen volumes. */
-function BookRow({ x, y, width, height, seed = 0 }: { x: number; y: number; width: number; height: number; seed?: number }) {
+function BookRow({
+  x,
+  y,
+  width,
+  height,
+  seed = 0,
+}: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  seed?: number;
+}) {
   const books: Array<{ w: number; h: number; c: string }> = [];
   let cursor = 0;
   let i = 0;
@@ -128,8 +149,23 @@ function BookRow({ x, y, width, height, seed = 0 }: { x: number; y: number; widt
     <g>
       {books.map((b, idx) => (
         <g key={idx}>
-          <rect x={x + books.slice(0, idx).reduce((sum, prev) => sum + prev.w + 2, 0)} y={y + height - b.h} width={b.w} height={b.h} fill={b.c} stroke="#101318" strokeWidth="0.6" />
-          <rect x={x + books.slice(0, idx).reduce((sum, prev) => sum + prev.w + 2, 0) + 2} y={y + height - b.h + 8} width={b.w - 4} height="1.5" fill={C.brass} opacity="0.5" />
+          <rect
+            x={x + books.slice(0, idx).reduce((sum, prev) => sum + prev.w + 2, 0)}
+            y={y + height - b.h}
+            width={b.w}
+            height={b.h}
+            fill={b.c}
+            stroke="#101318"
+            strokeWidth="0.6"
+          />
+          <rect
+            x={x + books.slice(0, idx).reduce((sum, prev) => sum + prev.w + 2, 0) + 2}
+            y={y + height - b.h + 8}
+            width={b.w - 4}
+            height="1.5"
+            fill={C.brass}
+            opacity="0.5"
+          />
         </g>
       ))}
     </g>
@@ -139,12 +175,23 @@ function BookRow({ x, y, width, height, seed = 0 }: { x: number; y: number; widt
 function Noticeboard({ x, y, w = 150, h = 96 }: { x: number; y: number; w?: number; h?: number }) {
   return (
     <g>
-      <rect x={x - 4} y={y - 4} width={w + 8} height={h + 8} rx="2" fill={C.woodDark} stroke={C.brassFaint} strokeWidth="2" />
+      <rect
+        x={x - 4}
+        y={y - 4}
+        width={w + 8}
+        height={h + 8}
+        rx="2"
+        fill={C.woodDark}
+        stroke={C.brassFaint}
+        strokeWidth="2"
+      />
       <rect x={x} y={y} width={w} height={h} fill="#514636" />
       {[0, 1, 2].map((i) => (
-        <g key={i} transform={`translate(${x + 12 + i * (w - 34) / 3} ${y + 12 + (i % 2) * 10})`}>
+        <g key={i} transform={`translate(${x + 12 + (i * (w - 34)) / 3} ${y + 12 + (i % 2) * 10})`}>
           <rect width="30" height="38" fill={i === 1 ? C.paperShade : C.paper} opacity="0.92" />
-          {[0, 1, 2].map((l) => <rect key={l} x="4" y={8 + l * 7} width="22" height="1.6" fill="#7c735f" opacity="0.7" />)}
+          {[0, 1, 2].map((l) => (
+            <rect key={l} x="4" y={8 + l * 7} width="22" height="1.6" fill="#7c735f" opacity="0.7" />
+          ))}
           <circle cx="15" cy="3" r="2" fill={C.oxblood} />
         </g>
       ))}
@@ -170,7 +217,9 @@ function WallClock({ x, y }: { x: number; y: number }) {
       <circle cx={x} cy={y} r="24" fill="#202733" stroke={C.brassFaint} strokeWidth="1" />
       {Array.from({ length: 12 }, (_, i) => {
         const a = (i / 12) * Math.PI * 2;
-        return <circle key={i} cx={x + Math.sin(a) * 19} cy={y - Math.cos(a) * 19} r={i % 3 === 0 ? 2 : 1} fill={C.brass} />;
+        return (
+          <circle key={i} cx={x + Math.sin(a) * 19} cy={y - Math.cos(a) * 19} r={i % 3 === 0 ? 2 : 1} fill={C.brass} />
+        );
       })}
       <line x1={x} y1={y} x2={x + 10} y2={y - 8} stroke={C.paper} strokeWidth="2.5" strokeLinecap="round" />
       <line x1={x} y1={y} x2={x - 5} y2={y - 15} stroke={C.brass} strokeWidth="2" strokeLinecap="round" />
@@ -185,8 +234,27 @@ function EntranceScene() {
       <ellipse cx="400" cy="408" rx="170" ry="20" fill="#1d1a16" opacity="0.7" />
       <rect x="300" y="66" width="196" height="264" fill={C.woodDark} stroke={C.brassFaint} strokeWidth="3" />
       <rect x="314" y="80" width="168" height="250" fill="#2a303b" stroke={C.brassSoft} strokeWidth="1" />
-      <rect x="330" y="102" width="136" height="28" rx="2" fill="url(#bar-brass)" stroke={C.brassFaint} strokeWidth="1" />
-      <text x="398" y="120" textAnchor="middle" fontSize="9" letterSpacing="0.8" fill="#1a1710" fontFamily="Georgia, serif">MEERA KULKARNI</text>
+      <rect
+        x="330"
+        y="102"
+        width="136"
+        height="28"
+        rx="2"
+        fill="url(#bar-brass)"
+        stroke={C.brassFaint}
+        strokeWidth="1"
+      />
+      <text
+        x="398"
+        y="120"
+        textAnchor="middle"
+        fontSize="9"
+        letterSpacing="0.8"
+        fill="#1a1710"
+        fontFamily="Georgia, serif"
+      >
+        MEERA KULKARNI
+      </text>
       <rect x="334" y="150" width="128" height="80" fill="#262c36" stroke={C.brassFaint} strokeWidth="1" />
       <rect x="334" y="244" width="128" height="74" fill="#262c36" stroke={C.brassFaint} strokeWidth="1" />
       <circle cx="462" cy="214" r="6" fill={C.brass} />
@@ -215,7 +283,12 @@ function DeskScene() {
       </g>
       <Chair x={400} y={256} s={1.1} color="#2f3a49" />
       <g>
-        <polygon points="132,292 668,292 720,346 80,346" fill="url(#bar-wood)" stroke={C.brassFaint} strokeWidth="1.5" />
+        <polygon
+          points="132,292 668,292 720,346 80,346"
+          fill="url(#bar-wood)"
+          stroke={C.brassFaint}
+          strokeWidth="1.5"
+        />
         <rect x="96" y="346" width="608" height="52" fill={C.woodDark} />
         <rect x="112" y="356" width="150" height="30" rx="2" fill="#33271c" stroke={C.brassFaint} strokeWidth="1" />
         <rect x="538" y="356" width="150" height="30" rx="2" fill="#33271c" stroke={C.brassFaint} strokeWidth="1" />
@@ -227,7 +300,9 @@ function DeskScene() {
       <Paper x={316} y={296} w={78} h={48} />
       <g transform="translate(438 296)">
         <rect width="64" height="46" rx="1" fill="#e6dfcd" stroke={C.brassSoft} strokeWidth="1" />
-        {[0, 1, 2, 3].map((i) => <rect key={i} x="7" y={9 + i * 8} width={i === 3 ? 28 : 48} height="1.8" fill="#8f876f" />)}
+        {[0, 1, 2, 3].map((i) => (
+          <rect key={i} x="7" y={9 + i * 8} width={i === 3 ? 28 : 48} height="1.8" fill="#8f876f" />
+        ))}
         <line x1="50" y1="6" x2="60" y2="40" stroke={C.oxblood} strokeWidth="3" strokeLinecap="round" />
       </g>
       <g transform="translate(584 312)">
@@ -246,7 +321,9 @@ function BookshelfScene() {
     <g>
       <rect x="108" y="44" width="584" height="288" fill="#2b2119" stroke={C.brassFaint} strokeWidth="3" />
       <rect x="120" y="56" width="560" height="264" fill="#1c1a19" />
-      {[56, 140, 224, 308].map((y) => <rect key={y} x="120" y={y} width="560" height="7" fill={C.wood} stroke={C.brassFaint} strokeWidth="1" />)}
+      {[56, 140, 224, 308].map((y) => (
+        <rect key={y} x="120" y={y} width="560" height="7" fill={C.wood} stroke={C.brassFaint} strokeWidth="1" />
+      ))}
       <BookRow x={128} y={63} width={252} height={70} seed={1} />
       <BookRow x={396} y={63} width={276} height={70} seed={3} />
       <BookRow x={128} y={147} width={276} height={70} seed={5} />
@@ -287,9 +364,11 @@ function WindowScene() {
           <rect x="534" y="222" width="84" height="72" />
         </g>
         <g fill="#c8a75a" opacity="0.35">
-          {[252, 292, 370, 410, 490, 550, 586].map((wx) => [224, 258, 214, 256, 222, 244, 236].map((wy, j) => (
-            <rect key={`${wx}-${j}`} x={wx} y={wy + j * 14} width="4" height="5" />
-          )))}
+          {[252, 292, 370, 410, 490, 550, 586].map((wx) =>
+            [224, 258, 214, 256, 222, 244, 236].map((wy, j) => (
+              <rect key={`${wx}-${j}`} x={wx} y={wy + j * 14} width="4" height="5" />
+            )),
+          )}
         </g>
         <rect x="182" y="278" width="436" height="16" fill="#2f3a3a" opacity="0.6" />
       </g>
@@ -429,7 +508,9 @@ function ConsultationScene() {
       <rect x="40" y="132" width="92" height="4" fill={C.woodDark} />
       <rect x="332" y="58" width="136" height="104" rx="2" fill="#2a2119" stroke={C.brassFaint} strokeWidth="3" />
       <rect x="344" y="70" width="112" height="80" fill={C.paper} opacity="0.85" />
-      {[0, 1, 2, 3, 4].map((i) => <rect key={i} x="354" y={82 + i * 12} width={i === 4 ? 48 : 90} height="2.5" fill="#8f876f" opacity="0.75" />)}
+      {[0, 1, 2, 3, 4].map((i) => (
+        <rect key={i} x="354" y={82 + i * 12} width={i === 4 ? 48 : 90} height="2.5" fill="#8f876f" opacity="0.75" />
+      ))}
       <circle cx="444" cy="140" r="6" fill={C.oxblood} opacity="0.8" />
       <Chair x={250} y={356} s={1.15} color="#35424f" />
       <Chair x={552} y={356} s={1.15} color="#35424f" />
@@ -438,7 +519,9 @@ function ConsultationScene() {
       <ellipse cx="400" cy="320" rx="184" ry="44" fill="url(#bar-wood)" stroke={C.brassFaint} strokeWidth="1.5" />
       <g transform="translate(372 300) rotate(-6)">
         <rect width="76" height="52" rx="1.5" fill={C.paper} stroke="#8c836f" strokeWidth="0.8" />
-        {[0, 1, 2, 3].map((i) => <rect key={i} x="8" y={10 + i * 9} width={i === 3 ? 30 : 58} height="2" fill="#8f876f" opacity="0.7" />)}
+        {[0, 1, 2, 3].map((i) => (
+          <rect key={i} x="8" y={10 + i * 9} width={i === 3 ? 30 : 58} height="2" fill="#8f876f" opacity="0.7" />
+        ))}
         <rect x="8" y="44" width="18" height="2" fill={C.brassSoft} />
       </g>
       <g transform="translate(472 306)">

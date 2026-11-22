@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assertNoCanonicalTruthLeak } from '@/domain/caseAccess';
 import { buildChapterCompletionSummary } from '@/domain/completion';
-import {
-  buildLegalMindProfile,
-  LEGAL_MIND_LEVEL_RANK,
-  type LegalMindProfile,
-} from '@/domain/legalMindProfile';
+import { buildLegalMindProfile, LEGAL_MIND_LEVEL_RANK, type LegalMindProfile } from '@/domain/legalMindProfile';
 import { looksLikeSpecificCitation } from '@/domain/legalSources';
 import { advanceClock, reviewAssignment } from '@/domain/progression';
 import { createInitialSave } from '@/domain/seed';
@@ -88,7 +84,12 @@ function completeChapter(): SaveGame {
   expect(reviewAssignment(save, 'a5').ok).toBe(true);
 
   advanceToDay(save, 8);
-  challengeEvidenceAdmissibility(save, 'ev-3', 'reliability', 'The consistency of the account was never tested against the recording.');
+  challengeEvidenceAdmissibility(
+    save,
+    'ev-3',
+    'reliability',
+    'The consistency of the account was never tested against the recording.',
+  );
   expect(reviewAssignment(save, 'a6').ok).toBe(true);
 
   advanceToDay(save, 9);
@@ -113,8 +114,12 @@ function memoryStorage(data: Record<string, string> = {}): StorageLike & { data:
   return {
     data,
     getItem: (key) => data[key] ?? null,
-    setItem: (key, value) => { data[key] = value; },
-    removeItem: (key) => { delete data[key]; },
+    setItem: (key, value) => {
+      data[key] = value;
+    },
+    removeItem: (key) => {
+      delete data[key];
+    },
   };
 }
 
@@ -139,7 +144,13 @@ describe('Legal Mind Profile (lite)', () => {
     expect(Object.keys(first).sort()).toEqual(['closing', 'dimensions', 'intro']);
     for (const d of first.dimensions) {
       expect(Object.keys(d).sort()).toEqual([
-        'evidence', 'id', 'label', 'level', 'levelLabel', 'nextStep', 'rationale',
+        'evidence',
+        'id',
+        'label',
+        'level',
+        'levelLabel',
+        'nextStep',
+        'rationale',
       ]);
       expect(['emerging', 'developing', 'consistent']).toContain(d.level);
       expect(d.levelLabel).toBeTruthy();
@@ -244,8 +255,9 @@ describe('Legal Mind Profile (lite)', () => {
     const storage = memoryStorage({ [SAVE_KEY]: JSON.stringify(completed) });
     const loaded = loadSave(storage);
     expect(buildLegalMindProfile(loaded)).toEqual(buildLegalMindProfile(completed));
-    expect(buildChapterCompletionSummary(loaded).legalMindProfile)
-      .toEqual(buildChapterCompletionSummary(completed).legalMindProfile);
+    expect(buildChapterCompletionSummary(loaded).legalMindProfile).toEqual(
+      buildChapterCompletionSummary(completed).legalMindProfile,
+    );
 
     // An old payload with none of the newer fields still loads and profiles without error.
     const old = JSON.parse(JSON.stringify(createInitialSave())) as Record<string, any>;

@@ -29,7 +29,14 @@ describe('App render smoke test', () => {
 
   it('does not render canonical case truth in the initial HTML', () => {
     const lower = html.toLowerCase();
-    for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+    for (const forbidden of [
+      'canonicaltruth',
+      'actualevents',
+      'hiddenmotives',
+      'evidenceauthenticity',
+      'prior dispute',
+      '18:12',
+    ]) {
       expect(lower).not.toContain(forbidden);
     }
   });
@@ -57,7 +64,14 @@ describe('App render smoke test', () => {
     expect(theoryHtml).toContain('claimed (0)');
     expect(theoryHtml).toContain('disputed (0)');
     const lower = theoryHtml.toLowerCase();
-    for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+    for (const forbidden of [
+      'canonicaltruth',
+      'actualevents',
+      'hiddenmotives',
+      'evidenceauthenticity',
+      'prior dispute',
+      '18:12',
+    ]) {
       expect(lower).not.toContain(forbidden);
     }
   });
@@ -73,7 +87,14 @@ describe('App render smoke test', () => {
     expect(journalHtml).toContain('Joined the firm as an intern under Adv. Meera Kulkarni');
     expect(journalHtml).toContain('aria-label="Filter journal by kind"');
     const lower = journalHtml.toLowerCase();
-    for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+    for (const forbidden of [
+      'canonicaltruth',
+      'actualevents',
+      'hiddenmotives',
+      'evidenceauthenticity',
+      'prior dispute',
+      '18:12',
+    ]) {
       expect(lower).not.toContain(forbidden);
     }
   });
@@ -84,7 +105,14 @@ describe('App render smoke test', () => {
     expect(caseworkHtml).toContain('Authenticity remains undetermined');
     expect(caseworkHtml).toContain('Neither establishes authenticity');
     const lower = caseworkHtml.toLowerCase();
-    for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+    for (const forbidden of [
+      'canonicaltruth',
+      'actualevents',
+      'hiddenmotives',
+      'evidenceauthenticity',
+      'prior dispute',
+      '18:12',
+    ]) {
       expect(lower).not.toContain(forbidden);
     }
   });
@@ -94,7 +122,14 @@ describe('App render smoke test', () => {
     for (const forbidden of ['section 302', 'section 101', 'air 19', ' v. ', 'verified judgment']) {
       expect(lower).not.toContain(forbidden);
     }
-    for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+    for (const forbidden of [
+      'canonicaltruth',
+      'actualevents',
+      'hiddenmotives',
+      'evidenceauthenticity',
+      'prior dispute',
+      '18:12',
+    ]) {
       expect(lower).not.toContain(forbidden);
     }
   });
@@ -108,8 +143,12 @@ describe('App render smoke test', () => {
     globals.window = {
       localStorage: {
         getItem: (key: string) => data[key] ?? null,
-        setItem: (key: string, value: string) => { data[key] = value; },
-        removeItem: (key: string) => { delete data[key]; },
+        setItem: (key: string, value: string) => {
+          data[key] = value;
+        },
+        removeItem: (key: string) => {
+          delete data[key];
+        },
       },
     };
     let corridorHtml = '';
@@ -126,7 +165,14 @@ describe('App render smoke test', () => {
     expect(corridorHtml).toContain('Opposing Counsel');
     expect(corridorHtml).toContain('aria-label="Locations"');
     const lower = corridorHtml.toLowerCase();
-    for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+    for (const forbidden of [
+      'canonicaltruth',
+      'actualevents',
+      'hiddenmotives',
+      'evidenceauthenticity',
+      'prior dispute',
+      '18:12',
+    ]) {
       expect(lower).not.toContain(forbidden);
     }
   });
@@ -141,8 +187,12 @@ describe('App render smoke test', () => {
     globals.window = {
       localStorage: {
         getItem: (key: string) => data[key] ?? null,
-        setItem: (key: string, value: string) => { data[key] = value; },
-        removeItem: (key: string) => { delete data[key]; },
+        setItem: (key: string, value: string) => {
+          data[key] = value;
+        },
+        removeItem: (key: string) => {
+          delete data[key];
+        },
       },
     };
     let consultationHtml = '';
@@ -169,7 +219,14 @@ describe('App render smoke test', () => {
     expect(dialogueHtml).toContain('Ask, in plain terms, what the injury report can and cannot establish.');
     for (const html of [consultationHtml, deskHtml, dialogueHtml]) {
       const lower = html.toLowerCase();
-      for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+      for (const forbidden of [
+        'canonicaltruth',
+        'actualevents',
+        'hiddenmotives',
+        'evidenceauthenticity',
+        'prior dispute',
+        '18:12',
+      ]) {
         expect(lower).not.toContain(forbidden);
       }
     }
@@ -184,8 +241,12 @@ describe('App render smoke test', () => {
     globals.window = {
       localStorage: {
         getItem: (key: string) => data[key] ?? null,
-        setItem: (key: string, value: string) => { data[key] = value; },
-        removeItem: (key: string) => { delete data[key]; },
+        setItem: (key: string, value: string) => {
+          data[key] = value;
+        },
+        removeItem: (key: string) => {
+          delete data[key];
+        },
       },
     };
     let waitingHtml = '';
@@ -212,7 +273,14 @@ describe('App render smoke test', () => {
     expect(dialogueHtml).toContain('Ask what the roster records and what it cannot show.');
     for (const html of [waitingHtml, corridorHtml, dialogueHtml]) {
       const lower = html.toLowerCase();
-      for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+      for (const forbidden of [
+        'canonicaltruth',
+        'actualevents',
+        'hiddenmotives',
+        'evidenceauthenticity',
+        'prior dispute',
+        '18:12',
+      ]) {
         expect(lower).not.toContain(forbidden);
       }
     }

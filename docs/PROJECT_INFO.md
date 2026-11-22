@@ -2,15 +2,15 @@
 
 ## Summary
 
-| Field | Value |
-|---|---|
-| **Project name** | THE BAR |
-| **Type** | Immersive, persistent legal-career simulator (educational simulation) |
-| **Primary jurisdiction** | India (fictional firm/district/court environment initially) |
-| **Repository** | `/home/divyanshukumarsinha241/project-courtroom` |
-| **Status** | Phase 0 complete (2026-11-22). P0 prototype: "The First Brief — Office Prototype" (Vite + React + TS + Tailwind, localStorage), Day 1–10 playable slice, provenance/source-intake + deterministic corpus-validation workflow with no auto-verification, 166/166 tests passing, CI workflow added. Real corpus still blocked on the legal content owner (D-005/D-011). |
-| **Primary reference** | [`../THE_BAR_MASTER_CONTEXT.md`](../THE_BAR_MASTER_CONTEXT.md) |
-| **Audit date** | 2026-11-22 |
+| Field                    | Value                                                                                                                                                                                                                                                                                                                                                                 |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Project name**         | THE BAR                                                                                                                                                                                                                                                                                                                                                               |
+| **Type**                 | Immersive, persistent legal-career simulator (educational simulation)                                                                                                                                                                                                                                                                                                 |
+| **Primary jurisdiction** | India (fictional firm/district/court environment initially)                                                                                                                                                                                                                                                                                                           |
+| **Repository**           | `/home/divyanshukumarsinha241/project-courtroom`                                                                                                                                                                                                                                                                                                                      |
+| **Status**               | Phase 0 complete (2026-11-22). P0 prototype: "The First Brief — Office Prototype" (Vite + React + TS + Tailwind, localStorage), Day 1–10 playable slice, provenance/source-intake + deterministic corpus-validation workflow with no auto-verification, 166/166 tests passing, CI workflow added. Real corpus still blocked on the legal content owner (D-005/D-011). |
+| **Primary reference**    | [`../THE_BAR_MASTER_CONTEXT.md`](../THE_BAR_MASTER_CONTEXT.md)                                                                                                                                                                                                                                                                                                        |
+| **Audit date**           | 2026-11-22                                                                                                                                                                                                                                                                                                                                                            |
 
 ## Product vision
 

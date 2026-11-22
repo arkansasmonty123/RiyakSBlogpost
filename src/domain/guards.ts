@@ -35,7 +35,9 @@ export function checkDraftCitations(draft: string, sources: LegalSource[]): Cita
   const notAuthoritative = sources.filter((s) => !canCiteAsAuthoritative(s));
 
   if (verified.length === 0) {
-    blocked.push('Citation-like legal references detected, but no verified sources are registered. Add/verify sources before citing.');
+    blocked.push(
+      'Citation-like legal references detected, but no verified sources are registered. Add/verify sources before citing.',
+    );
   }
 
   for (const s of notAuthoritative) {
@@ -49,7 +51,10 @@ export function checkDraftCitations(draft: string, sources: LegalSource[]): Cita
   const sectionMatches = text.match(/\b(section\s+\d+[a-z]?|article\s+\d+[a-z]?)\b/gi) || [];
   for (const m of sectionMatches) {
     const allowed = verified.some((s) => s.citation.toLowerCase().includes(m.toLowerCase()));
-    if (!allowed) blocked.push(`Specific citation "${m}" is not in verified source registry. Do not fabricate or cite unverified provisions.`);
+    if (!allowed)
+      blocked.push(
+        `Specific citation "${m}" is not in verified source registry. Do not fabricate or cite unverified provisions.`,
+      );
   }
 
   const caseMatches = text.match(/\b[A-Z][A-Za-z. ]+ v\.? [A-Z][A-Za-z. ]+\b/g) || [];
@@ -58,7 +63,10 @@ export function checkDraftCitations(draft: string, sources: LegalSource[]): Cita
     if (!allowed) blocked.push(`Case citation "${m}" is not in verified source registry. Do not fabricate judgments.`);
   }
 
-  if (/BNS|BNSS|BSA|IPC|CrPC|Evidence Act/i.test(text) && verified.filter((s) => s.sourceType === 'statute').length === 0) {
+  if (
+    /BNS|BNSS|BSA|IPC|CrPC|Evidence Act/i.test(text) &&
+    verified.filter((s) => s.sourceType === 'statute').length === 0
+  ) {
     warnings.push('Statute name detected. Use only verified provision citations with provenance/effective date.');
   }
 

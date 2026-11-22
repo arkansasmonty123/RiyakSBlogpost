@@ -61,8 +61,11 @@ describe('theory ↔ reviewed evidence workflow', () => {
   it('flags stale links and never records fault assertions or canonical truth', () => {
     const save = withEvidence();
     save.caseTheory.claims.push({
-      id: 'stale', day: save.clock.day, text: 'The clip may be incomplete.',
-      status: 'claimed', evidenceIds: ['ev-2'],
+      id: 'stale',
+      day: save.clock.day,
+      text: 'The clip may be incomplete.',
+      status: 'claimed',
+      evidenceIds: ['ev-2'],
     });
 
     const support = getTheorySupport(save);

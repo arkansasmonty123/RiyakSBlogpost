@@ -20,15 +20,28 @@ function memoryStorage(initial: Record<string, string> = {}): StorageLike {
   const data = { ...initial };
   return {
     getItem: (key) => data[key] ?? null,
-    setItem: (key, value) => { data[key] = value; },
-    removeItem: (key) => { delete data[key]; },
+    setItem: (key, value) => {
+      data[key] = value;
+    },
+    removeItem: (key) => {
+      delete data[key];
+    },
   };
 }
 
 const CANONICAL_MARKERS = [
-  'canonicaltruth', 'actualevents', 'actualtimeline', 'responsibleparties',
-  'hiddenmotives', 'evidenceauthenticity', 'prior dispute',
-  '18:05', '18:10', '18:12', '18:15', '18:20',
+  'canonicaltruth',
+  'actualevents',
+  'actualtimeline',
+  'responsibleparties',
+  'hiddenmotives',
+  'evidenceauthenticity',
+  'prior dispute',
+  '18:05',
+  '18:10',
+  '18:12',
+  '18:15',
+  '18:20',
 ];
 
 /** Evidence added after the core chain (ev-1..3); optional for progression. */
@@ -38,11 +51,29 @@ describe('richer First Brief case content', () => {
   it('expands the cast and evidence set while keeping canonical truth stable', () => {
     const save = createInitialSave();
     expect(save.characters.map((c) => c.id)).toEqual([
-      'senior', 'peer', 'clerk', 'client', 'witness', 'specialist', 'opposing', 'receptionist', 'junior', 'medical',
-      'rival', 'supervisor',
+      'senior',
+      'peer',
+      'clerk',
+      'client',
+      'witness',
+      'specialist',
+      'opposing',
+      'receptionist',
+      'junior',
+      'medical',
+      'rival',
+      'supervisor',
     ]);
     expect(save.caseFile.evidence.map((e) => e.id)).toEqual([
-      'ev-1', 'ev-2', 'ev-3', 'ev-4', 'ev-5', 'ev-6', 'ev-7', 'ev-8', 'ev-9',
+      'ev-1',
+      'ev-2',
+      'ev-3',
+      'ev-4',
+      'ev-5',
+      'ev-6',
+      'ev-7',
+      'ev-8',
+      'ev-9',
     ]);
     // Original canonical facts remain unchanged; new detail is appended, never rewritten.
     expect(save.caseFile.canonicalTruth.actualEvents.slice(0, 3)).toEqual([
@@ -64,17 +95,25 @@ describe('richer First Brief case content', () => {
   it('keeps all new evidence hidden until discovered and never reveals canonical markers', () => {
     const save = createInitialSave();
     let view = toPlayerCaseView(save.caseFile);
-    expect(view.evidence.filter((e) => BONUS_EVIDENCE_IDS.includes(e.id)).every((e) => e.description === 'Not yet discovered.')).toBe(true);
+    expect(
+      view.evidence
+        .filter((e) => BONUS_EVIDENCE_IDS.includes(e.id))
+        .every((e) => e.description === 'Not yet discovered.'),
+    ).toBe(true);
 
     for (const id of BONUS_EVIDENCE_IDS) {
       expect(discoverEvidenceItem(save, id)).not.toBeNull();
       expect(reviewEvidence(save, id)).toBe(true);
     }
     view = toPlayerCaseView(save.caseFile);
-    expect(view.evidence.filter((e) => BONUS_EVIDENCE_IDS.includes(e.id)).every((e) => e.reviewed && e.assessment !== null)).toBe(true);
+    expect(
+      view.evidence.filter((e) => BONUS_EVIDENCE_IDS.includes(e.id)).every((e) => e.reviewed && e.assessment !== null),
+    ).toBe(true);
 
     const playerFacing = JSON.stringify({
-      view, notebook: save.notebook, memories: save.memories,
+      view,
+      notebook: save.notebook,
+      memories: save.memories,
     }).toLowerCase();
     expect(() => assertNoCanonicalTruthLeak(playerFacing)).not.toThrow();
     for (const marker of CANONICAL_MARKERS) expect(playerFacing).not.toContain(marker);
@@ -102,11 +141,10 @@ describe('character and event depth across Days 1–10', () => {
   it('adds at least two distinct, day-gated character interactions', () => {
     const save = createInitialSave();
     const newScenes = DIALOGUE_SCENES.filter((s) =>
-      ['d-witness-statement', 'd-specialist-metadata', 'd-peer-integrity'].includes(s.id));
+      ['d-witness-statement', 'd-specialist-metadata', 'd-peer-integrity'].includes(s.id),
+    );
     expect(newScenes.length).toBeGreaterThanOrEqual(2);
-    expect(newScenes.map((s) => s.id)).toEqual([
-      'd-witness-statement', 'd-specialist-metadata', 'd-peer-integrity',
-    ]);
+    expect(newScenes.map((s) => s.id)).toEqual(['d-witness-statement', 'd-specialist-metadata', 'd-peer-integrity']);
     expect(newScenes.map((s) => s.minDay)).toEqual([6, 7, 8]);
     // Not available on day 1.
     expect(availableDialogueScenes(save).map((s) => s.id)).not.toContain('d-witness-statement');
@@ -181,11 +219,17 @@ describe('character and event depth across Days 1–10', () => {
   it('keeps all authored dialogue content free of citations and canonical truth markers', () => {
     const save = createInitialSave();
     const newScenes = DIALOGUE_SCENES.filter((s) =>
-      ['d-witness-statement', 'd-specialist-metadata', 'd-peer-integrity'].includes(s.id));
+      ['d-witness-statement', 'd-specialist-metadata', 'd-peer-integrity'].includes(s.id),
+    );
     const authored = newScenes.flatMap((scene) =>
       scene.choices.flatMap((choice) => [
-        scene.prompt, choice.label, choice.reply, choice.memory, ...(choice.reveals ?? []),
-      ]));
+        scene.prompt,
+        choice.label,
+        choice.reply,
+        choice.memory,
+        ...(choice.reveals ?? []),
+      ]),
+    );
     for (const text of authored) {
       expect(looksLikeSpecificCitation(text)).toBe(false);
       expect(checkDraftCitations(text, save.legalSources).blocked).toEqual([]);
@@ -230,7 +274,9 @@ describe('evidence-linked case theory organisation', () => {
     expect(grouped.known).toHaveLength(0);
 
     const playerFacing = JSON.stringify({
-      claims: save.caseTheory.claims, notebook: save.notebook, memories: save.memories,
+      claims: save.caseTheory.claims,
+      notebook: save.notebook,
+      memories: save.memories,
     }).toLowerCase();
     expect(() => assertNoCanonicalTruthLeak(playerFacing)).not.toThrow();
     for (const marker of CANONICAL_MARKERS) expect(playerFacing).not.toContain(marker);
@@ -247,7 +293,15 @@ describe('save migration compatibility with expanded content', () => {
 
     const loaded = loadSave(storage);
     expect(loaded.caseFile.evidence.map((e: { id: string }) => e.id)).toEqual([
-      'ev-1', 'ev-2', 'ev-3', 'ev-4', 'ev-5', 'ev-6', 'ev-7', 'ev-8', 'ev-9',
+      'ev-1',
+      'ev-2',
+      'ev-3',
+      'ev-4',
+      'ev-5',
+      'ev-6',
+      'ev-7',
+      'ev-8',
+      'ev-9',
     ]);
     for (const id of BONUS_EVIDENCE_IDS) {
       const item = loaded.caseFile.evidence.find((e: { id: string }) => e.id === id)!;
@@ -257,7 +311,14 @@ describe('save migration compatibility with expanded content', () => {
     expect(loaded.caseTheory).toEqual({ claims: [] });
     // Existing progress and assignments survive unchanged.
     expect(loaded.assignments.map((a: { id: string }) => a.id)).toEqual([
-      'a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8',
+      'a1',
+      'a2',
+      'a3',
+      'a4',
+      'a5',
+      'a6',
+      'a7',
+      'a8',
     ]);
   });
 

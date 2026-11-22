@@ -29,24 +29,24 @@ player action) enforces the same gate described here.
   examples; it is never acceptable in a verified corpus record.
 - **No self-verification, no auto-verification.** `intakeSource` rejects a requested
   `verified` status. Only a named human content owner may verify, and only after the steps in
-  §6. The validator checks the *presence* of an attestation; it cannot confirm that the
+  §6. The validator checks the _presence_ of an attestation; it cannot confirm that the
   reviewer actually checked the text. That honesty is the reviewer's responsibility.
 - **Never promote stand-ins.** `placeholder` and `unverified` records can never be cited as
   authoritative. Excerpts and summaries are non-authoritative by construction and must stay
   labeled as such wherever they are displayed.
 - **No real citations in test/example data.** Tests use clearly fictional or internal
   identifiers. Strings that look like real citations appear only in tests that verify they are
-  *rejected*.
+  _rejected_.
 - THE BAR is an educational simulation, not legal advice or a substitute for legal education,
   qualification or supervised practice.
 
 ## 3. Roles
 
-| Role | Responsibility |
-|---|---|
-| Ingest operator (engineering) | Obtains text from an official source, records exact metadata, runs the validator, prepares the change. Does **not** sign off legal accuracy. |
+| Role                                 | Responsibility                                                                                                                                                                                          |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ingest operator (engineering)        | Obtains text from an official source, records exact metadata, runs the validator, prepares the change. Does **not** sign off legal accuracy.                                                            |
 | Legal content owner / named reviewer | Confirms the exact text, citation, jurisdiction, effective date and version against the official publication; signs off with name and date; authorises adding the identifier to the reviewed allowlist. |
-| Maintainer | Commits the corpus change together with the sign-off log entry (§8) and keeps the allowlist limited to reviewed identifiers. |
+| Maintainer                           | Commits the corpus change together with the sign-off log entry (§8) and keeps the allowlist limited to reviewed identifiers.                                                                            |
 
 The named reviewer is the owner of D-005/D-011. That owner is not yet assigned; until then the
 reviewer field in §8 stays empty and no real corpus record may be marked verified.
@@ -56,22 +56,22 @@ reviewer field in §8 stays empty and no real corpus record may be marked verifi
 Every record must provide the first group. The second group is required **in addition** when
 `verificationStatus` is `verified`.
 
-| Field | When required | Meaning / rule |
-|---|---|---|
-| `id` | always | Stable internal record id (not a legal citation). |
-| `title` | always | Player-facing label. |
-| `sourceName` | always | Name of the source as published; never an invented title. |
-| `citation` | always | Citation or stable identifier. Never invent one; use an internal placeholder id until the real one is known. |
-| `sourceType` | always | `statute`, `judgment`, `rule`, `commentary`, `summary`. |
-| `jurisdiction` | always | `India` or `Fictional`. |
-| `verificationStatus` | always | `verified`, `unverified`, `placeholder`. |
-| `provenance` | always | Non-authoritative note: where/how the record was obtained (publisher, publication, date/version retrieved). |
-| `sourceUrl` | verified real-world authority or specific-looking citation | Official publisher URL (`http(s)`). Internal fictional summaries may omit it (a warning is emitted). |
-| `effectiveDate` | when the authority has one | `YYYY-MM-DD` date on which the provision/rule took effect. |
-| `verifiedBy` | **verified only** | Name of the human/content owner who reviewed the exact text. |
-| `verificationDate` | **verified only** | `YYYY-MM-DD` date of that human review. |
-| `excerpt`, `notes` | optional | Non-authoritative; labeled as such in the UI. |
-| `intake` | optional | `seed` for content-owner supplied records, `player-draft` for in-game drafts. |
+| Field                | When required                                              | Meaning / rule                                                                                               |
+| -------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `id`                 | always                                                     | Stable internal record id (not a legal citation).                                                            |
+| `title`              | always                                                     | Player-facing label.                                                                                         |
+| `sourceName`         | always                                                     | Name of the source as published; never an invented title.                                                    |
+| `citation`           | always                                                     | Citation or stable identifier. Never invent one; use an internal placeholder id until the real one is known. |
+| `sourceType`         | always                                                     | `statute`, `judgment`, `rule`, `commentary`, `summary`.                                                      |
+| `jurisdiction`       | always                                                     | `India` or `Fictional`.                                                                                      |
+| `verificationStatus` | always                                                     | `verified`, `unverified`, `placeholder`.                                                                     |
+| `provenance`         | always                                                     | Non-authoritative note: where/how the record was obtained (publisher, publication, date/version retrieved).  |
+| `sourceUrl`          | verified real-world authority or specific-looking citation | Official publisher URL (`http(s)`). Internal fictional summaries may omit it (a warning is emitted).         |
+| `effectiveDate`      | when the authority has one                                 | `YYYY-MM-DD` date on which the provision/rule took effect.                                                   |
+| `verifiedBy`         | **verified only**                                          | Name of the human/content owner who reviewed the exact text.                                                 |
+| `verificationDate`   | **verified only**                                          | `YYYY-MM-DD` date of that human review.                                                                      |
+| `excerpt`, `notes`   | optional                                                   | Non-authoritative; labeled as such in the UI.                                                                |
+| `intake`             | optional                                                   | `seed` for content-owner supplied records, `player-draft` for in-game drafts.                                |
 
 A record whose `title`, `sourceName` or `citation` is marked as a `placeholder` can **never** be
 `verified`. A `citation` that matches a specific-citation pattern (a `Section`/`Article`
@@ -137,35 +137,35 @@ promoted to a verified statutory or judgment citation.
 
 ## 7. Tooling reference
 
-| Surface | Location |
-|---|---|
+| Surface                 | Location                                                                     |
+| ----------------------- | ---------------------------------------------------------------------------- |
 | Single-record validator | `validateSourceRecord(source, options?)` in `src/domain/sourceValidation.ts` |
-| Whole-corpus validator | `validateSourceRecords(input, options?)` in `src/domain/sourceValidation.ts` |
-| CLI / npm script | `scripts/validate-sources.ts`, run via `npm run validate:sources -- <args>` |
-| Runtime human step | `markSourceVerified` in `src/domain/legalSources.ts` |
+| Whole-corpus validator  | `validateSourceRecords(input, options?)` in `src/domain/sourceValidation.ts` |
+| CLI / npm script        | `scripts/validate-sources.ts`, run via `npm run validate:sources -- <args>`  |
+| Runtime human step      | `markSourceVerified` in `src/domain/legalSources.ts`                         |
 
 Key error codes emitted by the validator:
 
-| Code | Meaning |
-|---|---|
-| `INVALID_RECORD` | Input was not a JSON object. |
-| `MISSING_ID`, `MISSING_TITLE`, `MISSING_SOURCE_NAME`, `MISSING_CITATION`, `MISSING_PROVENANCE` | Required provenance field absent. |
-| `INVALID_SOURCE_TYPE`, `INVALID_JURISDICTION`, `INVALID_VERIFICATION_STATUS`, `INVALID_INTAKE` | Value outside the allowed set. |
-| `INVALID_SOURCE_URL`, `INVALID_EFFECTIVE_DATE`, `INVALID_VERIFICATION_DATE` | Malformed URL or `YYYY-MM-DD` date. |
-| `VERIFIED_WITHOUT_REVIEWER`, `VERIFIED_WITHOUT_DATE` | Missing human sign-off on a verified record. |
-| `VERIFIED_WITHOUT_OFFICIAL_URL` | Real-world authority/specific citation lacks an official URL. |
-| `UNREVIEWED_SPECIFIC_CITATION` | Specific-looking citation not in the reviewed allowlist. |
-| `PLACEHOLDER_CANNOT_BE_VERIFIED` | A stand-in was marked verified. |
-| `FIELD_TOO_LONG` (warning) | Field exceeds the app's cap and would be truncated. |
+| Code                                                                                           | Meaning                                                       |
+| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `INVALID_RECORD`                                                                               | Input was not a JSON object.                                  |
+| `MISSING_ID`, `MISSING_TITLE`, `MISSING_SOURCE_NAME`, `MISSING_CITATION`, `MISSING_PROVENANCE` | Required provenance field absent.                             |
+| `INVALID_SOURCE_TYPE`, `INVALID_JURISDICTION`, `INVALID_VERIFICATION_STATUS`, `INVALID_INTAKE` | Value outside the allowed set.                                |
+| `INVALID_SOURCE_URL`, `INVALID_EFFECTIVE_DATE`, `INVALID_VERIFICATION_DATE`                    | Malformed URL or `YYYY-MM-DD` date.                           |
+| `VERIFIED_WITHOUT_REVIEWER`, `VERIFIED_WITHOUT_DATE`                                           | Missing human sign-off on a verified record.                  |
+| `VERIFIED_WITHOUT_OFFICIAL_URL`                                                                | Real-world authority/specific citation lacks an official URL. |
+| `UNREVIEWED_SPECIFIC_CITATION`                                                                 | Specific-looking citation not in the reviewed allowlist.      |
+| `PLACEHOLDER_CANNOT_BE_VERIFIED`                                                               | A stand-in was marked verified.                               |
+| `FIELD_TOO_LONG` (warning)                                                                     | Field exceeds the app's cap and would be truncated.           |
 
 ## 8. Reviewer sign-off log
 
 No real source has been reviewed. This table is the human audit trail; append one row per
 reviewed corpus change.
 
-| Date (YYYY-MM-DD) | Reviewer name | Corpus file / commit | Identifiers reviewed | Official publication checked | Result |
-|---|---|---|---|---|---|
-| — | — | — | — | — | No real corpus reviewed yet (D-005/D-011 blocked) |
+| Date (YYYY-MM-DD) | Reviewer name | Corpus file / commit | Identifiers reviewed | Official publication checked | Result                                            |
+| ----------------- | ------------- | -------------------- | -------------------- | ---------------------------- | ------------------------------------------------- |
+| —                 | —             | —                    | —                    | —                            | No real corpus reviewed yet (D-005/D-011 blocked) |
 
 ## 9. Current corpus status
 

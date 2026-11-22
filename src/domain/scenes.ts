@@ -63,7 +63,8 @@ export const VIEWPOINTS: Record<string, SceneViewpoint> = {
     id: 'desk',
     locationId: 'chamber',
     label: 'Desk',
-    description: 'Case files, drafts, and notes are spread across the desk, with a junior advocate working at the neighbouring desk.',
+    description:
+      'Case files, drafts, and notes are spread across the desk, with a junior advocate working at the neighbouring desk.',
     hotspots: [
       { id: 'casefile', label: 'Case File', action: 'panel:case' },
       { id: 'assignments', label: 'Assignments', action: 'panel:assignments' },
@@ -102,7 +103,8 @@ export const VIEWPOINTS: Record<string, SceneViewpoint> = {
     id: 'reception-desk',
     locationId: 'reception',
     label: 'Reception Desk',
-    description: 'A low desk, a visitor diary and a waiting area beyond it. The front desk sees who comes and goes — not what is said in private.',
+    description:
+      'A low desk, a visitor diary and a waiting area beyond it. The front desk sees who comes and goes — not what is said in private.',
     hotspots: [
       { id: 'receptionist', label: 'Receptionist (Deepa)', action: 'dialogue:receptionist' },
       { id: 'diary', label: 'Visitor Diary', action: 'dialogue:receptionist' },
@@ -115,7 +117,8 @@ export const VIEWPOINTS: Record<string, SceneViewpoint> = {
     id: 'corridor',
     locationId: 'reception',
     label: 'Corridor',
-    description: 'A narrow corridor between the reception desk and the consulting rooms. Counsel from neighbouring chambers pass through here; time only moves when you choose to advance the in-game clock.',
+    description:
+      'A narrow corridor between the reception desk and the consulting rooms. Counsel from neighbouring chambers pass through here; time only moves when you choose to advance the in-game clock.',
     hotspots: [
       { id: 'opposing', label: 'Opposing Counsel', action: 'dialogue:opposing' },
       { id: 'rival', label: 'Adv. Nisha Deshmukh (Rival)', action: 'dialogue:rival' },
@@ -129,7 +132,8 @@ export const VIEWPOINTS: Record<string, SceneViewpoint> = {
     id: 'waiting-area',
     locationId: 'reception',
     label: 'Waiting Area',
-    description: 'Two chairs and a noticeboard. Clients and counsel wait here, and the canteen supervisor has come by with a duty roster; private conversations stay behind closed doors.',
+    description:
+      'Two chairs and a noticeboard. Clients and counsel wait here, and the canteen supervisor has come by with a duty roster; private conversations stay behind closed doors.',
     hotspots: [
       { id: 'receptionist', label: 'Receptionist (Deepa)', action: 'dialogue:receptionist' },
       { id: 'opposing', label: 'Opposing Counsel', action: 'dialogue:opposing' },
@@ -144,7 +148,8 @@ export const VIEWPOINTS: Record<string, SceneViewpoint> = {
     id: 'consultation-room',
     locationId: 'reception',
     label: 'Consultation Room',
-    description: 'A small room off the corridor where colleagues, visiting specialists and records custodians review a record together. A professional discussion here is not a finding on the case.',
+    description:
+      'A small room off the corridor where colleagues, visiting specialists and records custodians review a record together. A professional discussion here is not a finding on the case.',
     hotspots: [
       { id: 'medical', label: 'Medical Consultant (Dr. Kavita Iyer)', action: 'dialogue:medical' },
       { id: 'junior', label: 'Junior Advocate (Priya)', action: 'dialogue:junior' },

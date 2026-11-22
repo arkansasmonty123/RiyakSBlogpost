@@ -41,9 +41,7 @@ export function applyDialogueChoice(save: SaveGame, sceneId: string, choiceId: s
   if (!choice) return { ok: false, reason: 'Choice not found.' };
 
   for (const effect of choice.effects) {
-    const relationship = save.relationships.find(
-      (r) => r.fromId === 'player' && r.toId === effect.characterId,
-    );
+    const relationship = save.relationships.find((r) => r.fromId === 'player' && r.toId === effect.characterId);
     if (relationship) relationship[effect.dimension] = clamp(relationship[effect.dimension] + effect.amount);
   }
 
@@ -66,9 +64,8 @@ export function applyDialogueChoice(save: SaveGame, sceneId: string, choiceId: s
   const speakerName = save.characters.find((c) => c.id === scene.characterId)?.name ?? 'Conversation';
   // The client-interview label is retained for save/content compatibility; other scenes
   // attribute the player-knowledge fact to the person who actually stated it.
-  const revealTitle = scene.id === 'd-client-interview'
-    ? 'Client interview — fact stated'
-    : `${speakerName} — fact stated`;
+  const revealTitle =
+    scene.id === 'd-client-interview' ? 'Client interview — fact stated' : `${speakerName} — fact stated`;
   for (const fact of choice.reveals ?? []) {
     save.caseFile.playerKnowledge.push(fact);
     const entry: NotebookEntry = {

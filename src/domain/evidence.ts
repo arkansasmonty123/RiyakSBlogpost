@@ -38,11 +38,7 @@ export function reviewEvidence(save: SaveGame, evidenceId: string): boolean {
 }
 
 /** The player's provisional assessment can only be edited after discovery + review. */
-export function setEvidenceAssessment(
-  save: SaveGame,
-  evidenceId: string,
-  patch: AssessmentPatch,
-): boolean {
+export function setEvidenceAssessment(save: SaveGame, evidenceId: string, patch: AssessmentPatch): boolean {
   const item = save.caseFile.evidence.find((e: EvidenceItem) => e.id === evidenceId);
   if (!item || !item.discovered || !item.reviewed) return false;
   if (patch.admissibility) item.assessment.admissibility = patch.admissibility;

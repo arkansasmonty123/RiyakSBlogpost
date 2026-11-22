@@ -13,19 +13,20 @@ the acceptance surface.
 All commands run from the repository root. No command below installs browsers or
 downloads large artifacts into `$HOME`.
 
-| # | Area | Check | Command / method | Type | Gate |
-|---|------|-------|------------------|------|------|
-| 1 | Types | TypeScript project builds clean | `npm run typecheck` | Deterministic | Blocking |
-| 2 | Tests | Full suite green | `npm test` | Deterministic | Blocking |
-| 3 | Build | Production bundle builds | `npm run build` | Deterministic | Blocking |
-| 4 | Render smoke | App tree renders without crash / no canonical truth in SSR HTML | `npm test` → `src/tests/uiSmoke.test.tsx` | Deterministic (SSR) | Blocking |
-| 5 | A11y structure | Skip link, `<main>`/`<header>`/`<nav>`, single `h1`, ARIA reference targets resolve, all controls/form fields/links/buttons have accessible names, feedback is a polite live region | `npm test` → `src/tests/a11ySmoke.test.tsx` | Deterministic (SSR) | Blocking |
-| 6 | Guardrails | No canonical-truth leak, no fabricated provisions/judgments, citation guard, knowledge boundaries, save v1→v2 migration, audit log cap | `npm test` (domain + guard tests) | Deterministic | Blocking |
-| 7 | Legal sources | Provenance/verification gate on seed + example records | `npm run validate:sources -- --seed` | Deterministic | Non-blocking (corpus blocked by D-005/D-011) |
-| 8 | Layout / visual | Mobile 390×844 and desktop 1440×900; no console errors; skip link, `<main>` and `h1` present | Manual/Playwright browser smoke (see §4) | Browser | Previously observed; re-run when browser available |
-| 9 | Keyboard / screen reader | Tab order, focus-visible, SR announcements, real axe scan | Manual / axe | Browser + human | Not in CI — known gap (§5) |
+| #   | Area                     | Check                                                                                                                                                                               | Command / method                            | Type                | Gate                                               |
+| --- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------- | -------------------------------------------------- |
+| 1   | Types                    | TypeScript project builds clean                                                                                                                                                     | `npm run typecheck`                         | Deterministic       | Blocking                                           |
+| 2   | Tests                    | Full suite green                                                                                                                                                                    | `npm test`                                  | Deterministic       | Blocking                                           |
+| 3   | Build                    | Production bundle builds                                                                                                                                                            | `npm run build`                             | Deterministic       | Blocking                                           |
+| 4   | Render smoke             | App tree renders without crash / no canonical truth in SSR HTML                                                                                                                     | `npm test` → `src/tests/uiSmoke.test.tsx`   | Deterministic (SSR) | Blocking                                           |
+| 5   | A11y structure           | Skip link, `<main>`/`<header>`/`<nav>`, single `h1`, ARIA reference targets resolve, all controls/form fields/links/buttons have accessible names, feedback is a polite live region | `npm test` → `src/tests/a11ySmoke.test.tsx` | Deterministic (SSR) | Blocking                                           |
+| 6   | Guardrails               | No canonical-truth leak, no fabricated provisions/judgments, citation guard, knowledge boundaries, save v1→v2 migration, audit log cap                                              | `npm test` (domain + guard tests)           | Deterministic       | Blocking                                           |
+| 7   | Legal sources            | Provenance/verification gate on seed + example records                                                                                                                              | `npm run validate:sources -- --seed`        | Deterministic       | Non-blocking (corpus blocked by D-005/D-011)       |
+| 8   | Layout / visual          | Mobile 390×844 and desktop 1440×900; no console errors; skip link, `<main>` and `h1` present                                                                                        | Manual/Playwright browser smoke (see §4)    | Browser             | Previously observed; re-run when browser available |
+| 9   | Keyboard / screen reader | Tab order, focus-visible, SR announcements, real axe scan                                                                                                                           | Manual / axe                                | Browser + human     | Not in CI — known gap (§5)                         |
 
 Notes:
+
 - **SSR a11y checks are structural only.** They verify markup, not computed
   contrast, focus order or screen-reader behaviour. Dynamic interaction states
   (Source Intake form, expanded help/challenge panels) are internal React state
@@ -39,15 +40,16 @@ Notes:
 Run from `project-courtroom` with `node_modules` symlinked to
 `/tmp/opencode/project-courtroom/node_modules`.
 
-| Command | Result |
-|---------|--------|
-| `npx vitest run src/tests/a11ySmoke.test.tsx` | PASS — 5/5 tests |
-| `npm run typecheck` | PASS (no output, exit 0) |
-| `npm test` | PASS — **182/182 tests, 22 files** (up from 177/177, 21 files) |
-| `npm run build` | PASS — `dist/index.html` 0.42 kB, CSS 15.98 kB, JS 409.79 kB (gzip 115.12 kB) |
-| `df -h /home` | **2.8 G available** of 4.8 G (39% used) — above the >2 GB budget (D-019) |
+| Command                                       | Result                                                                        |
+| --------------------------------------------- | ----------------------------------------------------------------------------- |
+| `npx vitest run src/tests/a11ySmoke.test.tsx` | PASS — 5/5 tests                                                              |
+| `npm run typecheck`                           | PASS (no output, exit 0)                                                      |
+| `npm test`                                    | PASS — **182/182 tests, 22 files** (up from 177/177, 21 files)                |
+| `npm run build`                               | PASS — `dist/index.html` 0.42 kB, CSS 15.98 kB, JS 409.79 kB (gzip 115.12 kB) |
+| `df -h /home`                                 | **2.8 G available** of 4.8 G (39% used) — above the >2 GB budget (D-019)      |
 
 A11y changes made in this pass (all minimal, no UI churn):
+
 - `aria-controls` on the "How to play" and "Add Source / Source Intake" toggles
   is only emitted while the controlled panel is expanded, so it never points at
   an element that is not in the DOM.

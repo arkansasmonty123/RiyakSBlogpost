@@ -18,7 +18,8 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'separate-facts',
         label: 'Separate known facts, claims and unknowns; verify sources before citing.',
-        reply: 'Adv. Meera Kulkarni: "Good. Facts, claims and unknowns — never blur them, and never cite what you have not verified."',
+        reply:
+          'Adv. Meera Kulkarni: "Good. Facts, claims and unknowns — never blur them, and never cite what you have not verified."',
         effects: [
           { characterId: 'senior', dimension: 'trust', amount: 5 },
           { characterId: 'senior', dimension: 'respect', amount: 5 },
@@ -28,7 +29,8 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'cite-from-memory',
         label: 'Draft fast and cite statutes from memory to save time.',
-        reply: 'Adv. Meera Kulkarni: "No. Unverified citations harm the client and this firm. Verify first, then write."',
+        reply:
+          'Adv. Meera Kulkarni: "No. Unverified citations harm the client and this firm. Verify first, then write."',
         effects: [
           { characterId: 'senior', dimension: 'trust', amount: -6 },
           { characterId: 'senior', dimension: 'respect', amount: -4 },
@@ -134,7 +136,8 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
     characterId: 'client',
     minDay: 2,
     once: true,
-    prompt: 'The client in the canteen matter sits across the desk. Adv. Meera Kulkarni asks you to take a careful first statement — only what the client personally knows.',
+    prompt:
+      'The client in the canteen matter sits across the desk. Adv. Meera Kulkarni asks you to take a careful first statement — only what the client personally knows.',
     choices: [
       {
         id: 'ask-personal-observation',
@@ -188,13 +191,15 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'ask-personal-view',
         label: 'Ask the witness to describe only what they personally saw and heard.',
-        reply: 'Witness: "I heard raised voices and saw movement near the door. I cannot be certain of the exact order in the part the camera did not catch."',
+        reply:
+          'Witness: "I heard raised voices and saw movement near the door. I cannot be certain of the exact order in the part the camera did not catch."',
         effects: [
           { characterId: 'witness', dimension: 'trust', amount: 6 },
           { characterId: 'witness', dimension: 'respect', amount: 4 },
           { characterId: 'senior', dimension: 'respect', amount: 2 },
         ],
-        memory: 'Asked the eyewitness to confine their account to what they personally observed; they acknowledged uncertainty about the unrecorded interval.',
+        memory:
+          'Asked the eyewitness to confine their account to what they personally observed; they acknowledged uncertainty about the unrecorded interval.',
         reveals: [
           'Witness states they heard raised voices and saw movement near the canteen door.',
           'Witness states they cannot be certain of the exact sequence in the unrecorded interval.',
@@ -226,7 +231,8 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'ask-limits',
         label: 'Ask, in plain terms, what the export can and cannot establish.',
-        reply: 'Specialist: "An export shows what the device recorded at the time, but not whether anything was removed. I can explain that limit; I cannot certify completeness from the file alone."',
+        reply:
+          'Specialist: "An export shows what the device recorded at the time, but not whether anything was removed. I can explain that limit; I cannot certify completeness from the file alone."',
         effects: [
           { characterId: 'specialist', dimension: 'respect', amount: 6 },
           { characterId: 'specialist', dimension: 'trust', amount: 4 },
@@ -239,7 +245,8 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'ask-declare-fact',
         label: 'Ask the specialist to declare the accused’s position as proven fact.',
-        reply: 'Specialist: "That overstates what the file shows. I will not certify a fact the material cannot support."',
+        reply:
+          'Specialist: "That overstates what the file shows. I will not certify a fact the material cannot support."',
         effects: [
           { characterId: 'specialist', dimension: 'respect', amount: -4 },
           { characterId: 'specialist', dimension: 'resentment', amount: 3 },
@@ -293,19 +300,22 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'ask-diary-dates',
         label: 'Ask which dates are entered and who signed in — nothing about private conversations.',
-        reply: 'Deepa: "I can tell you the dates entered and who signed in. I cannot tell you what anyone discussed behind a closed door, because I was not in the room."',
+        reply:
+          'Deepa: "I can tell you the dates entered and who signed in. I cannot tell you what anyone discussed behind a closed door, because I was not in the room."',
         effects: [
           { characterId: 'receptionist', dimension: 'trust', amount: 5 },
           { characterId: 'receptionist', dimension: 'respect', amount: 3 },
         ],
-        memory: 'Asked Deepa for visitor-diary dates only; she gave the entries and declined to report private conversations.',
+        memory:
+          'Asked Deepa for visitor-diary dates only; she gave the entries and declined to report private conversations.',
         reveals: ['Reception diary records a sign-in entry for the client on their first visit.'],
         reputationEffects: [{ dimension: 'reliability', amount: 1 }],
       },
       {
         id: 'ask-private-meeting',
         label: 'Ask Deepa what the senior and the client discussed in private.',
-        reply: 'Deepa: "I was at the desk, not in the room. I do not know what was said, and I would not repeat it if I did."',
+        reply:
+          'Deepa: "I was at the desk, not in the room. I do not know what was said, and I would not repeat it if I did."',
         effects: [
           { characterId: 'receptionist', dimension: 'trust', amount: -4 },
           { characterId: 'receptionist', dimension: 'respect', amount: -5 },
@@ -326,7 +336,8 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'stick-to-disclosed',
         label: 'Confirm you will rely only on disclosed, reviewed material.',
-        reply: 'Adv. Vikram Rathore: "Sensible. I will do the same. Let us argue the material we actually have, not stories about what might be in a missing segment."',
+        reply:
+          'Adv. Vikram Rathore: "Sensible. I will do the same. Let us argue the material we actually have, not stories about what might be in a missing segment."',
         effects: [
           { characterId: 'opposing', dimension: 'respect', amount: 6 },
           { characterId: 'opposing', dimension: 'trust', amount: 3 },
@@ -339,7 +350,8 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'ask-client-confidence',
         label: 'Ask him what his client told him in confidence.',
-        reply: 'Adv. Vikram Rathore: "You know I cannot discuss privileged instructions. Ask me about the disclosed record instead."',
+        reply:
+          'Adv. Vikram Rathore: "You know I cannot discuss privileged instructions. Ask me about the disclosed record instead."',
         effects: [
           { characterId: 'opposing', dimension: 'respect', amount: -4 },
           { characterId: 'opposing', dimension: 'resentment', amount: 4 },
@@ -403,7 +415,8 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'overstate-clip',
         label: 'Say you will present the clip as complete.',
-        reply: 'Adv. Vikram Rathore: "That is not what the file shows. I will note the difference if you choose that route."',
+        reply:
+          'Adv. Vikram Rathore: "That is not what the file shows. I will note the difference if you choose that route."',
         effects: [
           { characterId: 'opposing', dimension: 'respect', amount: -5 },
           { characterId: 'opposing', dimension: 'rivalry', amount: 5 },
@@ -419,26 +432,32 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
     characterId: 'junior',
     minDay: 4,
     once: true,
-    prompt: 'Priya Nair, a junior advocate at the firm, asks how you are keeping the clinic record separate from the eyewitness account.',
+    prompt:
+      'Priya Nair, a junior advocate at the firm, asks how you are keeping the clinic record separate from the eyewitness account.',
     choices: [
       {
         id: 'compare-sources',
         label: 'Compare the two accounts and record only what each actually supports.',
-        reply: 'Priya Nair: "Agreed. The clinic record notes an injury; the witness describes movement. Neither tells us, on its own, who moved first."',
+        reply:
+          'Priya Nair: "Agreed. The clinic record notes an injury; the witness describes movement. Neither tells us, on its own, who moved first."',
         effects: [
           { characterId: 'junior', dimension: 'trust', amount: 5 },
           { characterId: 'junior', dimension: 'respect', amount: 4 },
           { characterId: 'junior', dimension: 'professionalDependence', amount: -2 },
         ],
-        memory: 'Compared the clinic record with the eyewitness account alongside Priya Nair, keeping each to its own limits.',
-        reveals: ['Priya Nair states the clinic record notes an injury and the eyewitness account describes movement; neither alone establishes who moved first.'],
+        memory:
+          'Compared the clinic record with the eyewitness account alongside Priya Nair, keeping each to its own limits.',
+        reveals: [
+          'Priya Nair states the clinic record notes an injury and the eyewitness account describes movement; neither alone establishes who moved first.',
+        ],
         reputationEffects: [{ dimension: 'competence', amount: 2 }],
         setsFlag: 'juniorConsulted',
       },
       {
         id: 'ask-fault',
         label: 'Ask Priya who she believes was really at fault.',
-        reply: 'Priya Nair: "I will not guess. We argue from the record; anything beyond it is not my file to hand you."',
+        reply:
+          'Priya Nair: "I will not guess. We argue from the record; anything beyond it is not my file to hand you."',
         effects: [
           { characterId: 'junior', dimension: 'respect', amount: -5 },
           { characterId: 'junior', dimension: 'trust', amount: -4 },
@@ -454,18 +473,22 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
     characterId: 'medical',
     minDay: 6,
     once: true,
-    prompt: 'Dr. Kavita Iyer, a visiting clinician, reviews what the clinic record can and cannot show about the reported injury.',
+    prompt:
+      'Dr. Kavita Iyer, a visiting clinician, reviews what the clinic record can and cannot show about the reported injury.',
     choices: [
       {
         id: 'ask-clinic-limits',
         label: 'Ask, in plain terms, what the injury report can and cannot establish.',
-        reply: 'Dr. Kavita Iyer: "It records a minor injury and the time of examination. It cannot fix the exact moment of injury, and it says nothing about who caused it. That is not a clinical conclusion."',
+        reply:
+          'Dr. Kavita Iyer: "It records a minor injury and the time of examination. It cannot fix the exact moment of injury, and it says nothing about who caused it. That is not a clinical conclusion."',
         effects: [
           { characterId: 'medical', dimension: 'trust', amount: 5 },
           { characterId: 'medical', dimension: 'respect', amount: 6 },
         ],
         memory: 'Consulted Dr. Kavita Iyer on what the injury report can and cannot establish.',
-        reveals: ['The clinician states the injury report records the injury and examination time but cannot fix the exact moment of injury or attribute fault.'],
+        reveals: [
+          'The clinician states the injury report records the injury and examination time but cannot fix the exact moment of injury or attribute fault.',
+        ],
         reputationEffects: [
           { dimension: 'competence', amount: 2 },
           { dimension: 'reliability', amount: 1 },
@@ -490,18 +513,21 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
     characterId: 'rival',
     minDay: 3,
     once: true,
-    prompt: 'Adv. Nisha Deshmukh, an advocate from a neighbouring chamber, meets you in the corridor and asks how you are building the canteen matter.',
+    prompt:
+      'Adv. Nisha Deshmukh, an advocate from a neighbouring chamber, meets you in the corridor and asks how you are building the canteen matter.',
     choices: [
       {
         id: 'stick-to-record',
         label: 'Say you are working only from disclosed, reviewed material.',
-        reply: 'Adv. Nisha Deshmukh: "Careful. Most people share their theory before they have reviewed anything. I will match your restraint — for now."',
+        reply:
+          'Adv. Nisha Deshmukh: "Careful. Most people share their theory before they have reviewed anything. I will match your restraint — for now."',
         effects: [
           { characterId: 'rival', dimension: 'respect', amount: 5 },
           { characterId: 'rival', dimension: 'trust', amount: 2 },
           { characterId: 'rival', dimension: 'rivalry', amount: -3 },
         ],
-        memory: 'Told Adv. Nisha Deshmukh you were working only from disclosed, reviewed material; she matched your restraint.',
+        memory:
+          'Told Adv. Nisha Deshmukh you were working only from disclosed, reviewed material; she matched your restraint.',
         reveals: ['Adv. Nisha Deshmukh states she will argue only from the disclosed record.'],
         reputationEffects: [{ dimension: 'integrity', amount: 1 }],
         setsFlag: 'rivalMet',
@@ -509,7 +535,8 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'share-hunch',
         label: 'Confide an unverified hunch about how the incident happened.',
-        reply: 'Adv. Nisha Deshmukh: "Interesting. I will remember you said that — and I will not treat an unverified hunch as a fact."',
+        reply:
+          'Adv. Nisha Deshmukh: "Interesting. I will remember you said that — and I will not treat an unverified hunch as a fact."',
         effects: [
           { characterId: 'rival', dimension: 'respect', amount: -5 },
           { characterId: 'rival', dimension: 'trust', amount: -4 },
@@ -526,7 +553,8 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
     characterId: 'rival',
     minDay: 8,
     once: true,
-    prompt: 'On the eve of the final brief, Adv. Nisha Deshmukh asks whether you will overstate the incomplete clip to gain an advantage.',
+    prompt:
+      'On the eve of the final brief, Adv. Nisha Deshmukh asks whether you will overstate the incomplete clip to gain an advantage.',
     choices: [
       {
         id: 'record-limits',
@@ -537,7 +565,8 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
           { characterId: 'rival', dimension: 'rivalry', amount: -4 },
           { characterId: 'rival', dimension: 'trust', amount: 3 },
         ],
-        memory: 'Told Adv. Nisha Deshmukh you would record the gap and argue only from reviewed material; she accepted the contest.',
+        memory:
+          'Told Adv. Nisha Deshmukh you would record the gap and argue only from reviewed material; she accepted the contest.',
         reveals: ['Adv. Nisha Deshmukh states she will not treat the missing segment as proven fact.'],
         reputationEffects: [
           { dimension: 'competence', amount: 2 },
@@ -548,13 +577,15 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'overstate',
         label: 'Say you will present the clip as complete if it helps.',
-        reply: 'Adv. Nisha Deshmukh: "I will note that you were willing to stretch the record. That is useful to know."',
+        reply:
+          'Adv. Nisha Deshmukh: "I will note that you were willing to stretch the record. That is useful to know."',
         effects: [
           { characterId: 'rival', dimension: 'respect', amount: -6 },
           { characterId: 'rival', dimension: 'rivalry', amount: 6 },
           { characterId: 'rival', dimension: 'resentment', amount: 4 },
         ],
-        memory: 'Told Adv. Nisha Deshmukh you would present the clip as complete; she noted the willingness to stretch the record.',
+        memory:
+          'Told Adv. Nisha Deshmukh you would present the clip as complete; she noted the willingness to stretch the record.',
         reputationEffects: [{ dimension: 'integrity', amount: -2 }],
       },
     ],
@@ -564,26 +595,32 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
     characterId: 'supervisor',
     minDay: 5,
     once: true,
-    prompt: 'Iqbal Sheikh, the canteen supervisor, brings the duty roster to the consultation room and offers to explain what it records.',
+    prompt:
+      'Iqbal Sheikh, the canteen supervisor, brings the duty roster to the consultation room and offers to explain what it records.',
     choices: [
       {
         id: 'ask-roster-limits',
         label: 'Ask what the roster records and what it cannot show.',
-        reply: 'Iqbal Sheikh: "It records who was rostered near the canteen and the hours. It does not record where anyone moved or what passed between them — that is not in a roster."',
+        reply:
+          'Iqbal Sheikh: "It records who was rostered near the canteen and the hours. It does not record where anyone moved or what passed between them — that is not in a roster."',
         effects: [
           { characterId: 'supervisor', dimension: 'trust', amount: 5 },
           { characterId: 'supervisor', dimension: 'respect', amount: 4 },
           { characterId: 'supervisor', dimension: 'professionalDependence', amount: -2 },
         ],
-        memory: 'Asked Iqbal Sheikh what the duty roster records; he confirmed it shows assignment and hours, not movements.',
-        reveals: ['Canteen supervisor states the duty roster records who was rostered near the canteen and the hours, not movements.'],
+        memory:
+          'Asked Iqbal Sheikh what the duty roster records; he confirmed it shows assignment and hours, not movements.',
+        reveals: [
+          'Canteen supervisor states the duty roster records who was rostered near the canteen and the hours, not movements.',
+        ],
         reputationEffects: [{ dimension: 'reliability', amount: 2 }],
         setsFlag: 'supervisorConsulted',
       },
       {
         id: 'ask-from-roster',
         label: 'Ask him to say from the roster who moved first.',
-        reply: 'Iqbal Sheikh: "A roster cannot answer that, and I will not make it say what it does not. Ask me what I actually know."',
+        reply:
+          'Iqbal Sheikh: "A roster cannot answer that, and I will not make it say what it does not. Ask me what I actually know."',
         effects: [
           { characterId: 'supervisor', dimension: 'respect', amount: -5 },
           { characterId: 'supervisor', dimension: 'trust', amount: -3 },
@@ -604,20 +641,25 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'ask-personal-observation',
         label: 'Ask him to describe only what he personally saw and heard.',
-        reply: 'Iqbal Sheikh: "I was at the counter for part of the evening. I heard raised voices and saw movement toward the door. I cannot say who acted first; I did not see the whole area at once."',
+        reply:
+          'Iqbal Sheikh: "I was at the counter for part of the evening. I heard raised voices and saw movement toward the door. I cannot say who acted first; I did not see the whole area at once."',
         effects: [
           { characterId: 'supervisor', dimension: 'trust', amount: 5 },
           { characterId: 'supervisor', dimension: 'respect', amount: 3 },
         ],
-        memory: 'Asked Iqbal Sheikh to confine his account to what he personally observed; he described raised voices and movement but could not identify who acted first.',
-        reveals: ['Canteen supervisor states he personally heard raised voices and saw movement toward the door, but cannot identify who acted first.'],
+        memory:
+          'Asked Iqbal Sheikh to confine his account to what he personally observed; he described raised voices and movement but could not identify who acted first.',
+        reveals: [
+          'Canteen supervisor states he personally heard raised voices and saw movement toward the door, but cannot identify who acted first.',
+        ],
         reputationEffects: [{ dimension: 'reliability', amount: 1 }],
         setsFlag: 'supervisorStatement',
       },
       {
         id: 'name-first-mover',
         label: 'Press him to name who he believes acted first.',
-        reply: 'Iqbal Sheikh: "I will not name anyone from a partial view. That would be a guess, and guesses do not belong in your file."',
+        reply:
+          'Iqbal Sheikh: "I will not name anyone from a partial view. That would be a guess, and guesses do not belong in your file."',
         effects: [
           { characterId: 'supervisor', dimension: 'respect', amount: -5 },
           { characterId: 'supervisor', dimension: 'trust', amount: -4 },
@@ -639,21 +681,25 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'provisional-view',
         label: 'Offer only a provisional view tied to what has actually been reviewed.',
-        reply: 'Client: "Then tell me what the material supports now, and what is still open. I would rather know that than be told more than you can show."',
+        reply:
+          'Client: "Then tell me what the material supports now, and what is still open. I would rather know that than be told more than you can show."',
         effects: [
           { characterId: 'client', dimension: 'trust', amount: 6 },
           { characterId: 'client', dimension: 'respect', amount: 3 },
           { characterId: 'senior', dimension: 'respect', amount: 3 },
         ],
         memory: 'Told the client you would give only a provisional, evidence-tied view; they accepted the limit.',
-        reveals: ['The client asked for a view before the review was complete and accepted a provisional, evidence-tied answer.'],
+        reveals: [
+          'The client asked for a view before the review was complete and accepted a provisional, evidence-tied answer.',
+        ],
         reputationEffects: [{ dimension: 'reliability', amount: 2 }],
         setsFlag: 'clientPressureHandled',
       },
       {
         id: 'promise-outcome',
         label: 'Promise the client the outcome they want to hear.',
-        reply: 'Client: "That sounds reassuring, but I would rather you did not promise what the file cannot support." Adv. Meera Kulkarni notes the exchange.',
+        reply:
+          'Client: "That sounds reassuring, but I would rather you did not promise what the file cannot support." Adv. Meera Kulkarni notes the exchange.',
         effects: [
           { characterId: 'client', dimension: 'trust', amount: -5 },
           { characterId: 'client', dimension: 'respect', amount: -3 },
@@ -680,7 +726,8 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'credit-note',
         label: 'Credit Priya’s note explicitly in the file and your notebook.',
-        reply: 'Priya Nair: "Thank you. The note records only which reviewed items support each point. It does not resolve the disputed sequence, and I would not want it to look like it does."',
+        reply:
+          'Priya Nair: "Thank you. The note records only which reviewed items support each point. It does not resolve the disputed sequence, and I would not want it to look like it does."',
         effects: [
           { characterId: 'junior', dimension: 'trust', amount: 6 },
           { characterId: 'junior', dimension: 'respect', amount: 4 },
@@ -688,7 +735,9 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
           { characterId: 'junior', dimension: 'professionalDependence', amount: -3 },
         ],
         memory: 'Credited Priya Nair’s research note in the file and notebook; she welcomed the attribution.',
-        reveals: ['Priya Nair’s research note records which reviewed items support each point; it does not resolve the disputed sequence.'],
+        reveals: [
+          'Priya Nair’s research note records which reviewed items support each point; it does not resolve the disputed sequence.',
+        ],
         reputationEffects: [
           { dimension: 'integrity', amount: 2 },
           { dimension: 'reliability', amount: 1 },
@@ -698,7 +747,8 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       {
         id: 'claim-note',
         label: 'Present the research as your own work without naming her.',
-        reply: 'Priya Nair: "I see. I will keep my own copy of the note. Please do not treat it as a conclusion about what happened."',
+        reply:
+          'Priya Nair: "I see. I will keep my own copy of the note. Please do not treat it as a conclusion about what happened."',
         effects: [
           { characterId: 'junior', dimension: 'trust', amount: -6 },
           { characterId: 'junior', dimension: 'respect', amount: -5 },
@@ -756,7 +806,10 @@ export function createInitialSave(): SaveGame {
         name: 'Adv. Meera Kulkarni',
         role: 'Senior Mentor',
         portrait: 'neutral',
-        knowledgeBoundaries: ['Knows office records, not player private thoughts', 'Does not know canonical hidden culprit before evidence'],
+        knowledgeBoundaries: [
+          'Knows office records, not player private thoughts',
+          'Does not know canonical hidden culprit before evidence',
+        ],
         goals: ['Train the intern', 'Protect firm reputation', 'Prepare a defensible case theory'],
       },
       {
@@ -764,7 +817,10 @@ export function createInitialSave(): SaveGame {
         name: 'Arjun',
         role: 'Peer / Friend',
         portrait: 'smiling',
-        knowledgeBoundaries: ['Knows shared office gossip', 'No access to confidential client admissions unless shared'],
+        knowledgeBoundaries: [
+          'Knows shared office gossip',
+          'No access to confidential client admissions unless shared',
+        ],
         goals: ['Learn quickly', 'Get recognized'],
       },
       {
@@ -817,7 +873,10 @@ export function createInitialSave(): SaveGame {
           'Knows only the material disclosed in the matter and their own client’s account',
           'Cannot know your private notes, unverified theories or the case’s canonical truth',
         ],
-        goals: ['Test the other side’s case against the disclosed material', 'Protect their client’s interests within the law'],
+        goals: [
+          'Test the other side’s case against the disclosed material',
+          'Protect their client’s interests within the law',
+        ],
       },
       {
         id: 'receptionist',
@@ -880,21 +939,146 @@ export function createInitialSave(): SaveGame {
       },
     ],
     relationships: [
-      { fromId: 'player', toId: 'senior', trust: 35, respect: 40, loyalty: 30, rivalry: 0, resentment: 0, affection: 10, professionalDependence: 60 },
-      { fromId: 'player', toId: 'peer', trust: 45, respect: 35, loyalty: 35, rivalry: 10, resentment: 0, affection: 20, professionalDependence: 20 },
-      { fromId: 'player', toId: 'clerk', trust: 30, respect: 30, loyalty: 20, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 25 },
-      { fromId: 'player', toId: 'client', trust: 25, respect: 30, loyalty: 20, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 15 },
-      { fromId: 'player', toId: 'witness', trust: 20, respect: 25, loyalty: 10, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 10 },
-      { fromId: 'player', toId: 'specialist', trust: 30, respect: 40, loyalty: 15, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 20 },
-      { fromId: 'player', toId: 'opposing', trust: 15, respect: 30, loyalty: 5, rivalry: 45, resentment: 0, affection: 0, professionalDependence: 15 },
-      { fromId: 'player', toId: 'receptionist', trust: 30, respect: 25, loyalty: 20, rivalry: 0, resentment: 0, affection: 10, professionalDependence: 20 },
-      { fromId: 'player', toId: 'junior', trust: 35, respect: 30, loyalty: 25, rivalry: 10, resentment: 0, affection: 10, professionalDependence: 25 },
-      { fromId: 'player', toId: 'medical', trust: 25, respect: 35, loyalty: 15, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 20 },
-      { fromId: 'player', toId: 'rival', trust: 20, respect: 35, loyalty: 5, rivalry: 50, resentment: 0, affection: 0, professionalDependence: 15 },
-      { fromId: 'player', toId: 'supervisor', trust: 20, respect: 30, loyalty: 15, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 20 },
+      {
+        fromId: 'player',
+        toId: 'senior',
+        trust: 35,
+        respect: 40,
+        loyalty: 30,
+        rivalry: 0,
+        resentment: 0,
+        affection: 10,
+        professionalDependence: 60,
+      },
+      {
+        fromId: 'player',
+        toId: 'peer',
+        trust: 45,
+        respect: 35,
+        loyalty: 35,
+        rivalry: 10,
+        resentment: 0,
+        affection: 20,
+        professionalDependence: 20,
+      },
+      {
+        fromId: 'player',
+        toId: 'clerk',
+        trust: 30,
+        respect: 30,
+        loyalty: 20,
+        rivalry: 0,
+        resentment: 0,
+        affection: 5,
+        professionalDependence: 25,
+      },
+      {
+        fromId: 'player',
+        toId: 'client',
+        trust: 25,
+        respect: 30,
+        loyalty: 20,
+        rivalry: 0,
+        resentment: 0,
+        affection: 5,
+        professionalDependence: 15,
+      },
+      {
+        fromId: 'player',
+        toId: 'witness',
+        trust: 20,
+        respect: 25,
+        loyalty: 10,
+        rivalry: 0,
+        resentment: 0,
+        affection: 5,
+        professionalDependence: 10,
+      },
+      {
+        fromId: 'player',
+        toId: 'specialist',
+        trust: 30,
+        respect: 40,
+        loyalty: 15,
+        rivalry: 0,
+        resentment: 0,
+        affection: 5,
+        professionalDependence: 20,
+      },
+      {
+        fromId: 'player',
+        toId: 'opposing',
+        trust: 15,
+        respect: 30,
+        loyalty: 5,
+        rivalry: 45,
+        resentment: 0,
+        affection: 0,
+        professionalDependence: 15,
+      },
+      {
+        fromId: 'player',
+        toId: 'receptionist',
+        trust: 30,
+        respect: 25,
+        loyalty: 20,
+        rivalry: 0,
+        resentment: 0,
+        affection: 10,
+        professionalDependence: 20,
+      },
+      {
+        fromId: 'player',
+        toId: 'junior',
+        trust: 35,
+        respect: 30,
+        loyalty: 25,
+        rivalry: 10,
+        resentment: 0,
+        affection: 10,
+        professionalDependence: 25,
+      },
+      {
+        fromId: 'player',
+        toId: 'medical',
+        trust: 25,
+        respect: 35,
+        loyalty: 15,
+        rivalry: 0,
+        resentment: 0,
+        affection: 5,
+        professionalDependence: 20,
+      },
+      {
+        fromId: 'player',
+        toId: 'rival',
+        trust: 20,
+        respect: 35,
+        loyalty: 5,
+        rivalry: 50,
+        resentment: 0,
+        affection: 0,
+        professionalDependence: 15,
+      },
+      {
+        fromId: 'player',
+        toId: 'supervisor',
+        trust: 20,
+        respect: 30,
+        loyalty: 15,
+        rivalry: 0,
+        resentment: 0,
+        affection: 5,
+        professionalDependence: 20,
+      },
     ],
     memories: [
-      { id: 'm1', day: 1, summary: 'Joined the firm as an intern under Adv. Meera Kulkarni.', participants: ['player', 'senior'] },
+      {
+        id: 'm1',
+        day: 1,
+        summary: 'Joined the firm as an intern under Adv. Meera Kulkarni.',
+        participants: ['player', 'senior'],
+      },
     ],
     legalSources: [
       {
@@ -905,7 +1089,8 @@ export function createInitialSave(): SaveGame {
         sourceType: 'statute',
         jurisdiction: 'India',
         verificationStatus: 'placeholder',
-        provenance: 'Placeholder only. Do not treat as authoritative citation. Verify against official enacted text and effective date before production use.',
+        provenance:
+          'Placeholder only. Do not treat as authoritative citation. Verify against official enacted text and effective date before production use.',
         notes: 'Use for workflow testing; real provision/citation must be verified.',
         intake: 'seed',
       },
@@ -943,7 +1128,8 @@ export function createInitialSave(): SaveGame {
         verifiedBy: 'Internal prototype review',
         verificationDate: '2026-11-22',
         notes: 'Safe to show in prototype as labeled summary; internal fictional summary, not real legal authority.',
-        excerpt: 'Non-authoritative educational summary: distinguish authenticity, chain of custody, admissibility and reliability. This is not a legal provision.',
+        excerpt:
+          'Non-authoritative educational summary: distinguish authenticity, chain of custody, admissibility and reliability. This is not a legal provision.',
         intake: 'seed',
       },
     ],
@@ -952,7 +1138,8 @@ export function createInitialSave(): SaveGame {
         id: 'a1',
         day: 1,
         title: 'Initial fact matrix',
-        description: 'Identify known facts, allegations, disputed points, and unknowns. Discover and review at least one piece of evidence.',
+        description:
+          'Identify known facts, allegations, disputed points, and unknowns. Discover and review at least one piece of evidence.',
         status: 'active',
         requiredEvidenceIds: ['ev-1'],
         requiredSourceIds: ['ls-4'],
@@ -962,7 +1149,8 @@ export function createInitialSave(): SaveGame {
         day: 3,
         unlockAfter: 'a1',
         title: 'Case brief draft',
-        description: 'Draft a short case brief with Issue, Facts, Verified Law/Source Notes, Analysis, and Conclusion. Do not fabricate citations.',
+        description:
+          'Draft a short case brief with Issue, Facts, Verified Law/Source Notes, Analysis, and Conclusion. Do not fabricate citations.',
         status: 'locked',
         requiredEvidenceIds: ['ev-1', 'ev-2'],
         requiredSourceIds: ['ls-4'],
@@ -972,7 +1160,8 @@ export function createInitialSave(): SaveGame {
         day: 5,
         unlockAfter: 'a2',
         title: 'Evidence contradiction note',
-        description: 'Review the evidence items and record a contradiction or corroboration note tied to an item in your notebook.',
+        description:
+          'Review the evidence items and record a contradiction or corroboration note tied to an item in your notebook.',
         status: 'locked',
         requiredEvidenceIds: ['ev-1', 'ev-2', 'ev-3'],
         requiredSourceIds: ['ls-4'],
@@ -983,7 +1172,8 @@ export function createInitialSave(): SaveGame {
         day: 6,
         unlockAfter: 'a3',
         title: 'Client interview record',
-        description: 'Interview the client (available from Day 2) and write up only what they personally know. Respect their knowledge boundaries; do not record conclusions they could not give.',
+        description:
+          'Interview the client (available from Day 2) and write up only what they personally know. Respect their knowledge boundaries; do not record conclusions they could not give.',
         status: 'locked',
         requiredEvidenceIds: ['ev-1'],
         requiredSourceIds: ['ls-4'],
@@ -995,7 +1185,8 @@ export function createInitialSave(): SaveGame {
         day: 7,
         unlockAfter: 'a4',
         title: 'Chain-of-custody log',
-        description: 'Review a discovered item and log at least one observation about how it was handled. Record gaps; do not guess at authenticity.',
+        description:
+          'Review a discovered item and log at least one observation about how it was handled. Record gaps; do not guess at authenticity.',
         status: 'locked',
         requiredEvidenceIds: ['ev-2'],
         requiredSourceIds: ['ls-4'],
@@ -1006,7 +1197,8 @@ export function createInitialSave(): SaveGame {
         day: 8,
         unlockAfter: 'a5',
         title: 'Admissibility challenge',
-        description: 'Challenge how a reviewed item may be relied upon, stating a legitimate ground and rationale. Authenticity stays undetermined.',
+        description:
+          'Challenge how a reviewed item may be relied upon, stating a legitimate ground and rationale. Authenticity stays undetermined.',
         status: 'locked',
         requiredEvidenceIds: ['ev-3'],
         requiredSourceIds: ['ls-4'],
@@ -1017,7 +1209,8 @@ export function createInitialSave(): SaveGame {
         day: 9,
         unlockAfter: 'a6',
         title: 'Senior review & revision',
-        description: 'Submit your brief to the senior, read the deterministic feedback, revise your work, and resubmit until it is accepted.',
+        description:
+          'Submit your brief to the senior, read the deterministic feedback, revise your work, and resubmit until it is accepted.',
         status: 'locked',
         requiredEvidenceIds: ['ev-1', 'ev-2', 'ev-3'],
         requiredSourceIds: ['ls-4'],
@@ -1029,7 +1222,8 @@ export function createInitialSave(): SaveGame {
         day: 10,
         unlockAfter: 'a7',
         title: 'Final brief submission',
-        description: 'Submit the final brief. Consequence is determined by your evidence-grounded work, verified sources, interview care, custody log and senior review.',
+        description:
+          'Submit the final brief. Consequence is determined by your evidence-grounded work, verified sources, interview care, custody log and senior review.',
         status: 'locked',
         requiredEvidenceIds: ['ev-1', 'ev-2', 'ev-3'],
         requiredSourceIds: ['ls-4'],
@@ -1067,7 +1261,17 @@ export function createInitialSave(): SaveGame {
           '18:20 clinic visit',
         ],
         // Append-only: new items receive hidden authenticity values; nothing above is rewritten.
-        evidenceAuthenticity: { 'ev-1': true, 'ev-2': true, 'ev-3': false, 'ev-4': true, 'ev-5': false, 'ev-6': true, 'ev-7': true, 'ev-8': false, 'ev-9': true },
+        evidenceAuthenticity: {
+          'ev-1': true,
+          'ev-2': true,
+          'ev-3': false,
+          'ev-4': true,
+          'ev-5': false,
+          'ev-6': true,
+          'ev-7': true,
+          'ev-8': false,
+          'ev-9': true,
+        },
         hiddenMotives: [
           'Witness had prior dispute with complainant',
           'A portion of the phone recording was removed before it was shared',
@@ -1094,56 +1298,114 @@ export function createInitialSave(): SaveGame {
       ],
       evidence: [
         {
-          id: 'ev-1', title: 'Medical report summary', type: 'medical', description: 'Minor injury noted; timing disputed.',
-          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          id: 'ev-1',
+          title: 'Medical report summary',
+          type: 'medical',
+          description: 'Minor injury noted; timing disputed.',
+          discovered: false,
+          reviewed: false,
+          admissibility: 'unknown',
+          reliability: 'unknown',
           assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
           provenance: 'Clinic record (fictional seed)',
         },
         {
-          id: 'ev-2', title: 'Canteen CCTV clip', type: 'digital', description: 'Partial footage; missing segment before shove.',
-          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          id: 'ev-2',
+          title: 'Canteen CCTV clip',
+          type: 'digital',
+          description: 'Partial footage; missing segment before shove.',
+          discovered: false,
+          reviewed: false,
+          admissibility: 'unknown',
+          reliability: 'unknown',
           assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
           provenance: 'Canteen camera export (fictional seed)',
         },
         {
-          id: 'ev-3', title: 'Witness statement', type: 'testimony', description: 'Eyewitness claims to have seen full incident; consistency untested.',
-          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          id: 'ev-3',
+          title: 'Witness statement',
+          type: 'testimony',
+          description: 'Eyewitness claims to have seen full incident; consistency untested.',
+          discovered: false,
+          reviewed: false,
+          admissibility: 'unknown',
+          reliability: 'unknown',
           assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
           provenance: 'Interview note (fictional seed)',
         },
         {
-          id: 'ev-4', title: 'Canteen duty roster', type: 'documentary', description: 'A staff duty roster showing who was posted near the canteen. It records presence, not movements.',
-          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          id: 'ev-4',
+          title: 'Canteen duty roster',
+          type: 'documentary',
+          description:
+            'A staff duty roster showing who was posted near the canteen. It records presence, not movements.',
+          discovered: false,
+          reviewed: false,
+          admissibility: 'unknown',
+          reliability: 'unknown',
           assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
           provenance: 'Fictional staff roster (fictional seed)',
         },
         {
-          id: 'ev-5', title: 'Phone location export', type: 'digital', description: 'A location-and-time export from a phone. Its completeness and integrity are not established.',
-          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          id: 'ev-5',
+          title: 'Phone location export',
+          type: 'digital',
+          description: 'A location-and-time export from a phone. Its completeness and integrity are not established.',
+          discovered: false,
+          reviewed: false,
+          admissibility: 'unknown',
+          reliability: 'unknown',
           assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
           provenance: 'Device export (fictional seed)',
         },
         {
-          id: 'ev-6', title: 'Clinic intake register extract', type: 'documentary', description: 'An extract noting arrival at the clinic. The person who reported the injury is not recorded.',
-          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          id: 'ev-6',
+          title: 'Clinic intake register extract',
+          type: 'documentary',
+          description: 'An extract noting arrival at the clinic. The person who reported the injury is not recorded.',
+          discovered: false,
+          reviewed: false,
+          admissibility: 'unknown',
+          reliability: 'unknown',
           assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
           provenance: 'Clinic register (fictional seed)',
         },
         {
-          id: 'ev-7', title: 'Camera clock synchronisation note', type: 'documentary', description: 'A short technical note recording that the canteen camera clock was not checked against a common time reference on the day. It bears on how the clip’s timing lines up with other records, but does not by itself establish when anything occurred.',
-          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          id: 'ev-7',
+          title: 'Camera clock synchronisation note',
+          type: 'documentary',
+          description:
+            'A short technical note recording that the canteen camera clock was not checked against a common time reference on the day. It bears on how the clip’s timing lines up with other records, but does not by itself establish when anything occurred.',
+          discovered: false,
+          reviewed: false,
+          admissibility: 'unknown',
+          reliability: 'unknown',
           assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
           provenance: 'Camera maintenance note (fictional seed)',
         },
         {
-          id: 'ev-8', title: 'Contemporaneous message screenshot', type: 'digital', description: 'A screenshot of a short message said to have been sent soon after the incident. It may support the account that the sender left the area, but the full thread and the device were not produced, so its context is incomplete.',
-          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          id: 'ev-8',
+          title: 'Contemporaneous message screenshot',
+          type: 'digital',
+          description:
+            'A screenshot of a short message said to have been sent soon after the incident. It may support the account that the sender left the area, but the full thread and the device were not produced, so its context is incomplete.',
+          discovered: false,
+          reviewed: false,
+          admissibility: 'unknown',
+          reliability: 'unknown',
           assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
           provenance: 'Screenshot supplied with the intake papers (fictional seed)',
         },
         {
-          id: 'ev-9', title: 'Earlier eyewitness account', type: 'testimony', description: 'A brief earlier account attributed to the eyewitness. It differs in emphasis from the later interview note. Neither version fixes the exact order of events, and the differences have not yet been put to the witness.',
-          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          id: 'ev-9',
+          title: 'Earlier eyewitness account',
+          type: 'testimony',
+          description:
+            'A brief earlier account attributed to the eyewitness. It differs in emphasis from the later interview note. Neither version fixes the exact order of events, and the differences have not yet been put to the witness.',
+          discovered: false,
+          reviewed: false,
+          admissibility: 'unknown',
+          reliability: 'unknown',
           assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
           provenance: 'Earlier interview note (fictional seed)',
         },

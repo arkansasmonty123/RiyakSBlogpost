@@ -1,4 +1,5 @@
 # THE BAR — Master Project Context
+
 **Purpose:** Handoff document for OpenCode and its development agents  
 **Status:** Product vision and architecture brief; not a claim that these features are already implemented.
 
@@ -37,6 +38,7 @@ THE BAR is an educational simulation, not legal advice and not a substitute for 
 ## 3. Player career and progression
 
 Possible progression:
+
 - Newcomer / law student
 - Intern
 - Junior advocate
@@ -47,6 +49,7 @@ Possible progression:
 This is a game progression model only. Real professional eligibility and enrolment requirements must be represented accurately and separately.
 
 Long-term career paths:
+
 - Courtroom specialist
 - Law-firm founder and practice manager
 - Mentor and institution builder
@@ -56,6 +59,7 @@ Players may combine paths over time.
 ## 4. Core gameplay loop
 
 A typical loop:
+
 1. Receive a case, assignment, client issue or professional responsibility.
 2. Understand the facts and identify what is known, claimed, disputed and unknown.
 3. Research relevant law and precedent using sourced legal material.
@@ -74,6 +78,7 @@ Avoid reducing the entire experience to multiple-choice dialogue. Use free-form 
 The world should not wait for the player. Characters and institutions have schedules, goals, workloads and independent events.
 
 Examples:
+
 - A senior receives a new case.
 - A colleague gets promoted or resigns.
 - A rival joins another firm.
@@ -90,6 +95,7 @@ Use an in-game clock. Do not force real-world waiting. The player should be able
 ## 6. Characters and relationships
 
 Start with approximately 8–12 important characters:
+
 - Senior mentor
 - Peer/friend
 - Professional rival
@@ -101,6 +107,7 @@ Start with approximately 8–12 important characters:
 - Later, judges and wider professional contacts
 
 Each persistent character should have:
+
 - Stable identity and personality
 - Expertise and professional role
 - Values, goals and ambitions
@@ -123,6 +130,7 @@ Romance/personal-life systems may be optional and should not displace profession
 ## 7. Legal work as gameplay
 
 Players should perform legal work through meaningful artifacts and decisions:
+
 - Legal research and case-law comparison
 - Case briefs and legal opinions
 - Legal notices
@@ -145,6 +153,7 @@ The game should evaluate legal reasoning, not just whether the player selected a
 Cases need coherent underlying facts and controlled information discovery.
 
 Keep separate:
+
 - **Canonical truth:** what actually happened in the fictional world.
 - **Character knowledge:** what each person knows or believes.
 - **Player knowledge:** what the player has legitimately discovered.
@@ -170,6 +179,7 @@ type CaseTruth = {
 Cases should not always have a perfectly provable answer. Some evidence may be inconclusive; some facts may remain unknown.
 
 Potential case categories:
+
 - Criminal
 - Civil and property
 - Contractual
@@ -185,6 +195,7 @@ Potential case categories:
 ## 9. Evidence and forensic investigation
 
 Evidence categories:
+
 - Physical evidence
 - Digital evidence
 - Medical evidence
@@ -193,6 +204,7 @@ Evidence categories:
 - Expert opinion
 
 Gameplay should cover:
+
 - Relevance
 - Authenticity
 - Admissibility
@@ -205,6 +217,7 @@ Gameplay should cover:
 - Procedural defects
 
 Possible actions:
+
 - Request and inspect documents
 - Interview witnesses
 - Ask for expert examination
@@ -219,6 +232,7 @@ Specialists should explain the relevant science at an appropriate level. For exa
 ## 10. Courtroom simulation
 
 Courtroom gameplay may include:
+
 - Preliminary and bail hearings
 - Interim applications
 - Examination-in-chief
@@ -232,6 +246,7 @@ Courtroom gameplay may include:
 - Appeals and review
 
 Player decisions may include:
+
 - Argument order
 - Which facts and authorities to emphasise
 - How to answer judicial questions
@@ -248,6 +263,7 @@ Opposing counsel should have their own case theory, research, strategy and knowl
 ## 11. Legal knowledge and learning
 
 Build a sourced legal knowledge system with:
+
 - Statutes and provisions
 - Amendments and effective dates
 - Judgments and relevant paragraphs
@@ -258,6 +274,7 @@ Build a sourced legal knowledge system with:
 - Source provenance and verification status
 
 The player should have a knowledge notebook for:
+
 - Provisions
 - Judgments
 - Principles
@@ -267,6 +284,7 @@ The player should have a knowledge notebook for:
 - Personal notes and questions
 
 Learning should be assessed through application:
+
 - Issue spotting
 - Fact analysis
 - Legal interpretation
@@ -283,6 +301,7 @@ Track demonstrated mastery over multiple tasks. Do not reward memorisation alone
 ## 12. Legal Mind Profile
 
 A persistent profile should track growth in:
+
 - Issue spotting
 - Fact analysis
 - Logical consistency
@@ -300,6 +319,7 @@ These are illustrative dimensions, not a single overall intelligence score. Asse
 ## 13. Ethics and professional judgment
 
 Include difficult decisions involving:
+
 - Client admissions
 - Confidentiality
 - Unethical instructions from a senior
@@ -315,6 +335,7 @@ Distinguish legality, professional responsibility, personal morality and strateg
 ## 14. Firm, finances and professional reputation
 
 Eventually allow the player to:
+
 - Establish a chamber or firm
 - Choose practice areas
 - Recruit juniors and staff
@@ -327,6 +348,7 @@ Eventually allow the player to:
 - Develop firm standards and reputation
 
 Reputation should be multidimensional:
+
 - Competence
 - Integrity
 - Reliability
@@ -341,6 +363,7 @@ A brilliant but unreliable lawyer should be different from a meticulous, trusted
 ## 15. Interdisciplinary knowledge
 
 Cases should naturally connect law with:
+
 - Forensic science
 - Medicine
 - Psychology
@@ -380,6 +403,7 @@ A single foundation model can initially serve several roles through different pr
 Explore a small fine-tuned model as the default in-app intelligence. Candidate sizes to benchmark include approximately 1.5B–3B parameters initially, then compare with 7B–8B models. Do not assume a small model will be capable enough without testing.
 
 Fine-tuning should primarily teach:
+
 - Legal workflow patterns
 - Issue-spotting and structured analysis formats
 - Legal terminology
@@ -391,6 +415,7 @@ Fine-tuning should primarily teach:
 Do not rely on fine-tuning to memorise all current Indian law. Legal knowledge should remain external, sourced and updateable.
 
 Use four separate layers:
+
 1. Fine-tuned model: behaviour and domain adaptation.
 2. Retrieval-augmented generation (RAG): access to current verified legal sources.
 3. Game database: persistent facts, characters, cases, player history and world state.
@@ -414,6 +439,7 @@ Local mobile inference has RAM, storage, latency and battery constraints. Consid
 The desired visual approach is not 3D and does not require animated frames. Use static illustrated scenes with selectable viewpoints.
 
 Examples:
+
 - Senior's chamber: entrance, desk, bookshelf, window.
 - Office: reception, shared workspace, conference room, library.
 - Court: corridor, courtroom, waiting area, canteen.
@@ -422,6 +448,7 @@ Examples:
 Each viewpoint is a static background image. Overlay clickable hotspots on objects and characters. Selecting a hotspot can open a detail view, dialogue, document, interaction panel or another viewpoint.
 
 Example senior chamber interactions:
+
 - Desk: inspect documents, assignments and case files.
 - Bookshelf: access legal books and research.
 - Senior's chair: speak to mentor.
@@ -450,6 +477,7 @@ Maintain visual consistency through an art direction guide, fixed character desc
 Keep the first release small enough to complete.
 
 Suggested scope:
+
 - One fictional Indian law firm
 - One fictional district
 - 8–12 important characters
@@ -481,6 +509,7 @@ A fictional criminal matter involving a disputed physical altercation, conflicti
 ## 19. Development priorities
 
 ### P0 — Foundation
+
 - Player profile and career state
 - One firm and core locations
 - 8–12 persistent characters
@@ -494,6 +523,7 @@ A fictional criminal matter involving a disputed physical altercation, conflicti
 - Basic illustrated scene interaction
 
 ### P1 — First chapter expansion
+
 - Courtroom system
 - Opposing counsel
 - Client management
@@ -504,6 +534,7 @@ A fictional criminal matter involving a disputed physical altercation, conflicti
 - Specialisations
 
 ### P2 — Full legal world
+
 - Independent practice and firm ownership
 - Advanced litigation
 - Higher-court pathways
@@ -513,6 +544,7 @@ A fictional criminal matter involving a disputed physical altercation, conflicti
 - Evolving legal events
 
 ### P3 — Experiments
+
 - Multiplayer
 - Player-run firms
 - Moot court and tournaments
@@ -541,6 +573,7 @@ A fictional criminal matter involving a disputed physical altercation, conflicti
 OpenCode should first inspect the existing repository before making architectural decisions.
 
 Recommended first task:
+
 1. Audit repository structure, existing implementation, framework, database, tests and runtime inference setup.
 2. Identify existing working features and broken/incomplete features.
 3. Compare the repository against this product context.
@@ -549,6 +582,7 @@ Recommended first task:
 6. Only then begin implementation in small, testable phases.
 
 Use specialised agents where useful:
+
 - Product Architect
 - World / Simulation Architect
 - Case Architect

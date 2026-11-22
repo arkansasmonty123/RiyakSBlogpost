@@ -14,6 +14,7 @@ Master context defines a large product. We need a small, testable first slice wh
 Build **"The First Brief — Office Prototype"** as P0:
 
 ### In scope
+
 - Mobile-first web UI with one illustrated-style scene prototype (can start with placeholder/static composed backgrounds).
 - 1 senior chamber location, 4 viewpoints, 5 hotspots, 1 character with expression variants.
 - In-game clock + save/load (SQLite/file-backed).
@@ -26,6 +27,7 @@ Build **"The First Brief — Office Prototype"** as P0:
 - Verified legal source model with provenance fields; seed only minimal required references, marked verified/unverified appropriately.
 
 ### Out of scope (P0)
+
 - Full courtroom hearings, opposing counsel AI, firm economy, advanced litigation.
 - Local/bundled AI models, large RAG corpus.
 - Audio/video/animation.

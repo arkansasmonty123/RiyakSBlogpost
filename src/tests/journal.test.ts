@@ -9,15 +9,25 @@ function recordEvidenceNotes(save: SaveGame): void {
   const item = save.caseFile.evidence[0];
   save.clock.day = 2;
   save.notebook.unshift({
-    id: 'n-discovered', day: save.clock.day, kind: 'fact',
-    title: `Evidence: ${item.title}`, content: item.description,
-    source: item.provenance, evidenceId: item.id, verified: false,
+    id: 'n-discovered',
+    day: save.clock.day,
+    kind: 'fact',
+    title: `Evidence: ${item.title}`,
+    content: item.description,
+    source: item.provenance,
+    evidenceId: item.id,
+    verified: false,
   });
   save.clock.day = 3;
   save.notebook.unshift({
-    id: 'n-reviewed', day: save.clock.day, kind: 'fact',
-    title: `Reviewed: ${item.title}`, content: 'Recorded a provisional assessment; authenticity undetermined.',
-    source: item.provenance, evidenceId: item.id, verified: false,
+    id: 'n-reviewed',
+    day: save.clock.day,
+    kind: 'fact',
+    title: `Reviewed: ${item.title}`,
+    content: 'Recorded a provisional assessment; authenticity undetermined.',
+    source: item.provenance,
+    evidenceId: item.id,
+    verified: false,
   });
 }
 

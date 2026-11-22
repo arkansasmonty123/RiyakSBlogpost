@@ -124,8 +124,9 @@ function mergeRelationships(base: Relationship[], parsed: unknown): Relationship
   if (!Array.isArray(parsed) || parsed.length === 0) return base;
   const defaults = new Map(base.map((item) => [relationshipKey(item), item]));
   const merged = (parsed as Relationship[])
-    .filter((item) => item && typeof item === 'object'
-      && typeof item.fromId === 'string' && typeof item.toId === 'string')
+    .filter(
+      (item) => item && typeof item === 'object' && typeof item.fromId === 'string' && typeof item.toId === 'string',
+    )
     .map((item) => ({ ...(defaults.get(relationshipKey(item)) ?? ({} as Relationship)), ...item }));
   const seen = new Set(merged.map(relationshipKey));
   for (const item of base) {
@@ -175,9 +176,7 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
       notebook: parsed.notebook?.length ? (parsed.notebook as SaveGame['notebook']) : base.notebook,
       flags: { ...base.flags, ...(parsed.flags ?? {}) },
       // A stale or unknown viewpoint id must never leave the scene panel without a view.
-      selectedViewpoint: isValidViewpoint(parsed.selectedViewpoint)
-        ? parsed.selectedViewpoint
-        : base.selectedViewpoint,
+      selectedViewpoint: isValidViewpoint(parsed.selectedViewpoint) ? parsed.selectedViewpoint : base.selectedViewpoint,
       usedDialogueSceneIds: Array.isArray(parsed.usedDialogueSceneIds)
         ? parsed.usedDialogueSceneIds.filter((id): id is string => typeof id === 'string')
         : base.usedDialogueSceneIds,
@@ -189,10 +188,15 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
       // Case theory is absent in older saves; fall back to an empty, player-authored file.
       caseTheory: {
         claims: Array.isArray(parsed.caseTheory?.claims)
-          ? parsed.caseTheory!.claims.filter((c) =>
-              c && typeof c.id === 'string' && typeof c.text === 'string' && typeof c.day === 'number'
-              && (c.status === 'known' || c.status === 'claimed' || c.status === 'disputed')
-              && Array.isArray(c.evidenceIds))
+          ? parsed.caseTheory!.claims.filter(
+              (c) =>
+                c &&
+                typeof c.id === 'string' &&
+                typeof c.text === 'string' &&
+                typeof c.day === 'number' &&
+                (c.status === 'known' || c.status === 'claimed' || c.status === 'disputed') &&
+                Array.isArray(c.evidenceIds),
+            )
           : base.caseTheory.claims,
       },
       // Audit log is absent in older saves; sanitize untrusted stored entries on load.

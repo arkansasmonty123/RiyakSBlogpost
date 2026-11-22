@@ -75,9 +75,13 @@ describe('evidence interactions and truth boundaries', () => {
 
     expect(reviewEvidence(save, 'ev-1')).toBe(true);
     expect(reviewEvidence(save, 'ev-1')).toBe(false);
-    expect(setEvidenceAssessment(save, 'ev-1', {
-      admissibility: 'questionable', reliability: 'medium', rationale: 'Timing disputed in the report.',
-    })).toBe(true);
+    expect(
+      setEvidenceAssessment(save, 'ev-1', {
+        admissibility: 'questionable',
+        reliability: 'medium',
+        rationale: 'Timing disputed in the report.',
+      }),
+    ).toBe(true);
 
     view = toPlayerCaseView(save.caseFile);
     expect(view.evidence[0].assessment?.rationale).toBe('Timing disputed in the report.');

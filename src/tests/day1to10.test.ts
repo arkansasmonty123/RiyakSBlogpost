@@ -105,12 +105,21 @@ describe('Day 1–10 chapter flow', () => {
 
     // Day 7 — chain of custody.
     advanceToDay(save, 7);
-    expect(recordCustodyObservation(save, 'ev-2', 'The clip export has no sealing record; note the gap.').ok).toBe(true);
+    expect(recordCustodyObservation(save, 'ev-2', 'The clip export has no sealing record; note the gap.').ok).toBe(
+      true,
+    );
     expect(reviewAssignment(save, 'a5').ok).toBe(true);
 
     // Day 8 — admissibility challenge.
     advanceToDay(save, 8);
-    expect(challengeEvidenceAdmissibility(save, 'ev-3', 'reliability', 'The consistency of the account was never tested against the recording.').ok).toBe(true);
+    expect(
+      challengeEvidenceAdmissibility(
+        save,
+        'ev-3',
+        'reliability',
+        'The consistency of the account was never tested against the recording.',
+      ).ok,
+    ).toBe(true);
     expect(reviewAssignment(save, 'a6').ok).toBe(true);
 
     // Day 9 — senior review loop.
@@ -231,7 +240,9 @@ describe('evidence custody and admissibility decisions', () => {
     expect(playerFacing).not.toContain('evidenceauthenticity');
     expect(playerFacing).not.toContain('"ev-3":false');
     expect(playerFacing).not.toContain('prior dispute');
-    expect(() => assertNoCanonicalTruthLeak({ custodyLog: save.custodyLog, challenges: save.challenges })).not.toThrow();
+    expect(() =>
+      assertNoCanonicalTruthLeak({ custodyLog: save.custodyLog, challenges: save.challenges }),
+    ).not.toThrow();
   });
 });
 

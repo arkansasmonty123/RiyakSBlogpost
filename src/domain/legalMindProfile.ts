@@ -53,11 +53,11 @@ interface Signal {
 
 function assess(id: string, label: string, signals: Signal[]): LegalMindDimension {
   const present = signals.filter((s) => s.present);
-  const level: LegalMindLevel =
-    present.length >= 3 ? 'consistent' : present.length >= 1 ? 'developing' : 'emerging';
-  const rationale = present.length > 0
-    ? `Rated ${LEGAL_MIND_LEVEL_LABELS[level]} on the strength of ${present.length} recorded action${present.length === 1 ? '' : 's'}: ${present.map((s) => s.action).join(' ')}`
-    : 'Rated emerging: no supporting actions were recorded in this area during the chapter.';
+  const level: LegalMindLevel = present.length >= 3 ? 'consistent' : present.length >= 1 ? 'developing' : 'emerging';
+  const rationale =
+    present.length > 0
+      ? `Rated ${LEGAL_MIND_LEVEL_LABELS[level]} on the strength of ${present.length} recorded action${present.length === 1 ? '' : 's'}: ${present.map((s) => s.action).join(' ')}`
+      : 'Rated emerging: no supporting actions were recorded in this area during the chapter.';
   return {
     id,
     label,
@@ -65,8 +65,9 @@ function assess(id: string, label: string, signals: Signal[]): LegalMindDimensio
     levelLabel: LEGAL_MIND_LEVEL_LABELS[level],
     rationale,
     evidence: present.map((s) => s.action),
-    nextStep: signals.find((s) => !s.present)?.nextStep
-      ?? 'Keep grounding each point in the material you have actually reviewed.',
+    nextStep:
+      signals.find((s) => !s.present)?.nextStep ??
+      'Keep grounding each point in the material you have actually reviewed.',
   };
 }
 
@@ -80,9 +81,10 @@ function assignmentReviewed(save: SaveGame, id: string): boolean {
 
 function acceptedWithStrength(save: SaveGame, assignmentId: string, fragment: string): boolean {
   return save.reviewRounds.some(
-    (r) => r.assignmentId === assignmentId
-      && r.status === 'accepted'
-      && r.strengths.some((s) => s.toLowerCase().includes(fragment)),
+    (r) =>
+      r.assignmentId === assignmentId &&
+      r.status === 'accepted' &&
+      r.strengths.some((s) => s.toLowerCase().includes(fragment)),
   );
 }
 
@@ -93,11 +95,14 @@ export function buildLegalMindProfile(save: SaveGame): LegalMindProfile {
   // until the player has actually submitted a draft for the case brief assignment.
   const draftEngaged = save.flags.assignment2Submitted === true;
   const hasVerifiedSourceNote = save.notebook.some(
-    (n) => n.verified === true && !!n.sourceId
-      && save.legalSources.some((s) => s.id === n.sourceId && s.verificationStatus === 'verified'),
+    (n) =>
+      n.verified === true &&
+      !!n.sourceId &&
+      save.legalSources.some((s) => s.id === n.sourceId && s.verificationStatus === 'verified'),
   );
-  const keptFaultOutOfSubmissions = save.reviewRounds.length > 0
-    && save.reviewRounds.every((r) => !r.gaps.some((g) => /at fault|guilty|culprit/i.test(g)));
+  const keptFaultOutOfSubmissions =
+    save.reviewRounds.length > 0 &&
+    save.reviewRounds.every((r) => !r.gaps.some((g) => /at fault|guilty|culprit/i.test(g)));
 
   const dimensions: LegalMindDimension[] = [
     assess('issue-spotting', 'Issue spotting', [
