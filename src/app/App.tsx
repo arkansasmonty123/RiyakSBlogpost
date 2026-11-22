@@ -47,6 +47,8 @@ const DIALOGUE_GREETINGS: Record<string, string> = {
   opposing: 'Adv. Vikram Rathore: "I argue from the material that has been disclosed. Let us keep it that way."',
   junior: 'Priya Nair: "I work from the record and the disclosed material. Ask me what I actually know."',
   medical: 'Dr. Kavita Iyer: "I can explain what the clinic record shows. I cannot tell you who caused the injury."',
+  rival: 'Adv. Nisha Deshmukh: "I argue from the disclosed record too. I will not treat a hunch as a fact — and I expect the same from you."',
+  supervisor: 'Iqbal Sheikh: "I can explain what the duty roster records and what I personally saw. I cannot say who moved first."',
 };
 
 type WorkPanel = (typeof PANELS)[number];

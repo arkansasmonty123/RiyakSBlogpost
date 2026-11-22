@@ -30,6 +30,15 @@ const NEW_SCENE_IDS = [
   'd-medical-record',
 ] as const;
 const JUNIOR_MEDICAL_SCENE_IDS = ['d-junior-review', 'd-medical-record'] as const;
+/** The latest expansion (cast 10 → 12): a professional rival and a canteen supervisor. */
+const LATEST_CHARACTER_IDS = ['rival', 'supervisor'] as const;
+const LATEST_SCENE_IDS = [
+  'd-rival-intro', 'd-rival-final', 'd-supervisor-roster', 'd-supervisor-recollection',
+] as const;
+const ALL_CAST_IDS = [
+  'senior', 'peer', 'clerk', 'client', 'witness', 'specialist', 'opposing', 'receptionist',
+  'junior', 'medical', 'rival', 'supervisor',
+];
 const CANONICAL_MARKERS = [
   'canonicaltruth', 'actualevents', 'actualtimeline', 'responsibleparties',
   'hiddenmotives', 'evidenceauthenticity', 'prior dispute',
@@ -55,13 +64,11 @@ function memoryStorage(initial: Record<string, string> = {}): StorageLike {
   };
 }
 
-describe('expanded cast (10 persistent characters)', () => {
-  it('defines ten characters with identity, role, portrait, boundaries and goals', () => {
+describe('expanded cast (12 persistent characters)', () => {
+  it('defines twelve characters with identity, role, portrait, boundaries and goals', () => {
     const save = createInitialSave();
-    expect(save.characters).toHaveLength(10);
-    expect(save.characters.map((c) => c.id)).toEqual([
-      'senior', 'peer', 'clerk', 'client', 'witness', 'specialist', 'opposing', 'receptionist', 'junior', 'medical',
-    ]);
+    expect(save.characters).toHaveLength(12);
+    expect(save.characters.map((c) => c.id)).toEqual(ALL_CAST_IDS);
     for (const character of save.characters) {
       expect(character.name.length).toBeGreaterThan(0);
       expect(character.role.length).toBeGreaterThan(0);
@@ -91,7 +98,7 @@ describe('expanded cast (10 persistent characters)', () => {
 
   it('gives every new character a multidimensional relationship with the player', () => {
     const save = createInitialSave();
-    expect(save.relationships.filter((r) => r.fromId === 'player')).toHaveLength(10);
+    expect(save.relationships.filter((r) => r.fromId === 'player')).toHaveLength(12);
     for (const id of NEW_CHARACTER_IDS) {
       const rel = relationship(save, id);
       for (const dimension of ['trust', 'respect', 'loyalty', 'rivalry', 'resentment', 'affection', 'professionalDependence'] as const) {
@@ -317,17 +324,17 @@ describe('save migration compatibility with the expanded cast and locations', ()
   it('appends new characters and relationships to an older save without losing stored values', () => {
     const payload = JSON.parse(JSON.stringify(createInitialSave())) as Record<string, any>;
     payload.version = 2;
-    payload.characters = payload.characters.filter((c: any) => !NEW_CHARACTER_IDS.includes(c.id));
-    payload.relationships = payload.relationships.filter((r: any) => !NEW_CHARACTER_IDS.includes(r.toId));
+    // Simulate a save predating both expansions; missing characters are appended in default order.
+    const expansionIds = [...NEW_CHARACTER_IDS, ...LATEST_CHARACTER_IDS];
+    payload.characters = payload.characters.filter((c: any) => !expansionIds.includes(c.id));
+    payload.relationships = payload.relationships.filter((r: any) => !expansionIds.includes(r.toId));
     payload.characters.find((c: any) => c.id === 'senior').name = 'Mentor Renamed';
     delete payload.characters.find((c: any) => c.id === 'senior').goals;
     payload.relationships.find((r: any) => r.toId === 'senior').trust = 88;
 
     const loaded = loadSave(memoryStorage({ [SAVE_KEY]: JSON.stringify(payload) }));
 
-    expect(loaded.characters.map((c) => c.id)).toEqual([
-      'senior', 'peer', 'clerk', 'client', 'witness', 'specialist', 'opposing', 'receptionist', 'junior', 'medical',
-    ]);
+    expect(loaded.characters.map((c) => c.id)).toEqual(ALL_CAST_IDS);
     expect(loaded.characters.find((c) => c.id === 'senior')!.name).toBe('Mentor Renamed');
     // Missing fields on stored characters are backfilled from the new defaults.
     expect(loaded.characters.find((c) => c.id === 'senior')!.goals.length).toBeGreaterThan(0);
@@ -348,8 +355,8 @@ describe('save migration compatibility with the expanded cast and locations', ()
     const loaded = loadSave(memoryStorage({ [SAVE_KEY]: JSON.stringify(payload) }));
 
     expect(loaded.version).toBe(2);
-    expect(loaded.characters).toHaveLength(10);
-    expect(loaded.relationships).toHaveLength(10);
+    expect(loaded.characters).toHaveLength(12);
+    expect(loaded.relationships).toHaveLength(12);
     expect(loaded.flags.juniorConsulted).toBe(false);
     expect(loaded.flags.medicalConsulted).toBe(false);
     expect(loaded.selectedViewpoint).toBe('entrance');
@@ -379,7 +386,7 @@ describe('save migration compatibility with the expanded cast and locations', ()
     payload.clock = { day: 6, slot: 'morning' };
     const loaded = loadSave(memoryStorage({ [SAVE_KEY]: JSON.stringify(payload) }));
 
-    expect(loaded.characters).toHaveLength(10);
+    expect(loaded.characters).toHaveLength(12);
     expect(loaded.flags.juniorConsulted).toBe(false);
     expect(applyDialogueChoice(loaded, 'd-junior-review', 'compare-sources').ok).toBe(true);
     expect(loaded.flags.juniorConsulted).toBe(true);
@@ -484,5 +491,224 @@ describe('new cast interactions (junior advocate and medical consultant)', () =>
     for (const marker of CANONICAL_MARKERS) {
       expect(JSON.stringify(playerFacing).toLowerCase()).not.toContain(marker);
     }
+  });
+});
+
+describe('12-character cast: professional rival and canteen supervisor', () => {
+  it('defines both new characters with distinct identity, boundaries and goals', () => {
+    const save = createInitialSave();
+    expect(save.characters.map((c) => c.id)).toEqual(ALL_CAST_IDS);
+
+    const rival = save.characters.find((c) => c.id === 'rival')!;
+    expect(rival.name).toBe('Adv. Nisha Deshmukh');
+    expect(rival.role).toContain('Professional Rival');
+    expect(['neutral', 'thinking', 'smiling', 'disappointed', 'angry', 'surprised']).toContain(rival.portrait);
+    expect(rival.knowledgeBoundaries.join(' ').toLowerCase()).toContain('disclosed record');
+    expect(rival.knowledgeBoundaries.join(' ').toLowerCase()).toContain('canonical truth');
+    expect(rival.goals.length).toBeGreaterThan(0);
+
+    const supervisor = save.characters.find((c) => c.id === 'supervisor')!;
+    expect(supervisor.name).toBe('Iqbal Sheikh');
+    expect(supervisor.role).toContain('Canteen Supervisor');
+    expect(['neutral', 'thinking', 'smiling', 'disappointed', 'angry', 'surprised']).toContain(supervisor.portrait);
+    expect(supervisor.knowledgeBoundaries.join(' ').toLowerCase()).toContain('duty roster');
+    expect(supervisor.knowledgeBoundaries.join(' ').toLowerCase()).toContain('canonical truth');
+    expect(supervisor.goals.length).toBeGreaterThan(0);
+
+    for (const id of LATEST_CHARACTER_IDS) {
+      const rel = relationship(save, id);
+      for (const dimension of ['trust', 'respect', 'loyalty', 'rivalry', 'resentment', 'affection', 'professionalDependence'] as const) {
+        expect(typeof rel[dimension]).toBe('number');
+      }
+    }
+    expect(relationship(save, 'rival').rivalry).toBeGreaterThan(0);
+    expect(relationship(save, 'supervisor').respect).toBeGreaterThan(0);
+  });
+
+  it('gives each new character day-gated interactions with relationship, memory, reputation and knowledge effects', () => {
+    const save = createInitialSave();
+    const scenes = DIALOGUE_SCENES.filter((s) => (LATEST_SCENE_IDS as readonly string[]).includes(s.id));
+    expect(scenes).toHaveLength(4);
+    expect(scenes.map((s) => s.minDay).sort((a, b) => a - b)).toEqual([3, 5, 7, 8]);
+    for (const id of LATEST_CHARACTER_IDS) {
+      const forCharacter = scenes.filter((s) => s.characterId === id);
+      expect(forCharacter.length).toBeGreaterThanOrEqual(1);
+      for (const scene of forCharacter) {
+        expect(scene.once).toBe(true);
+        expect(scene.choices.length).toBeGreaterThanOrEqual(2);
+      }
+    }
+
+    // Day 1/2: neither new character's conversation is available yet.
+    expect(availableDialogueScenes(save).map((s) => s.id)).not.toContain('d-rival-intro');
+    expect(availableDialogueScenes(save).map((s) => s.id)).not.toContain('d-supervisor-roster');
+
+    advanceToDay(save, 3);
+    expect(availableDialogueScenes(save).map((s) => s.id)).toContain('d-rival-intro');
+    const rival = relationship(save, 'rival');
+    const integrityBefore = save.player.reputation.integrity;
+    const knowledgeBefore = save.caseFile.playerKnowledge.length;
+    const intro = applyDialogueChoice(save, 'd-rival-intro', 'stick-to-record');
+    expect(intro.ok).toBe(true);
+    expect(intro.characterId).toBe('rival');
+    expect(intro.characterName).toBe('Adv. Nisha Deshmukh');
+    expect(rival.respect).toBe(40);
+    expect(rival.trust).toBe(22);
+    expect(rival.rivalry).toBe(47);
+    expect(save.player.reputation.integrity).toBe(integrityBefore + 1);
+    expect(save.flags.rivalMet).toBe(true);
+    expect(save.caseFile.playerKnowledge).toHaveLength(knowledgeBefore + 1);
+    expect(save.caseFile.playerKnowledge.at(-1)).toContain('disclosed record');
+    expect(save.notebook[0].title).toBe('Adv. Nisha Deshmukh — fact stated');
+    expect(save.memories[0].participants).toEqual(['player', 'rival']);
+    expect(applyDialogueChoice(save, 'd-rival-intro', 'stick-to-record').ok).toBe(false); // once only
+
+    advanceToDay(save, 5);
+    expect(availableDialogueScenes(save).map((s) => s.id)).toContain('d-supervisor-roster');
+    expect(availableDialogueScenes(save).map((s) => s.id)).not.toContain('d-supervisor-recollection');
+    const supervisor = relationship(save, 'supervisor');
+    const reliabilityBefore = save.player.reputation.reliability;
+    const roster = applyDialogueChoice(save, 'd-supervisor-roster', 'ask-roster-limits');
+    expect(roster.ok).toBe(true);
+    expect(roster.characterId).toBe('supervisor');
+    expect(roster.characterName).toBe('Iqbal Sheikh');
+    expect(supervisor.trust).toBe(25);
+    expect(supervisor.respect).toBe(34);
+    expect(supervisor.professionalDependence).toBe(18);
+    expect(save.player.reputation.reliability).toBe(reliabilityBefore + 2);
+    expect(roster.reputationEffects).toEqual([{ dimension: 'reliability', amount: 2 }]);
+    expect(save.flags.supervisorConsulted).toBe(true);
+    expect(save.caseFile.playerKnowledge.at(-1)).toContain('duty roster records');
+    expect(save.notebook[0].title).toBe('Iqbal Sheikh — fact stated');
+
+    advanceToDay(save, 7);
+    expect(availableDialogueScenes(save).map((s) => s.id)).toContain('d-supervisor-recollection');
+    expect(applyDialogueChoice(save, 'd-supervisor-recollection', 'ask-personal-observation').ok).toBe(true);
+    expect(save.flags.supervisorStatement).toBe(true);
+    expect(save.caseFile.playerKnowledge.at(-1)).toContain('cannot identify who acted first');
+
+    advanceToDay(save, 8);
+    expect(availableDialogueScenes(save).map((s) => s.id)).toContain('d-rival-final');
+    const competenceBefore = save.player.reputation.competence;
+    const finalRival = applyDialogueChoice(save, 'd-rival-final', 'record-limits');
+    expect(finalRival.ok).toBe(true);
+    expect(rival.respect).toBe(45);
+    expect(rival.rivalry).toBe(43);
+    expect(save.player.reputation.competence).toBe(competenceBefore + 2);
+    expect(save.flags.rivalRespect).toBe(true);
+  });
+
+  it('respects knowledge boundaries: outside knowledge reveals nothing and costs standing', () => {
+    const save = createInitialSave();
+    const before = [...save.caseFile.playerKnowledge];
+
+    advanceToDay(save, 3);
+    const hunch = applyDialogueChoice(save, 'd-rival-intro', 'share-hunch');
+    expect(hunch.ok).toBe(true);
+    expect(hunch.reveals).toBeUndefined();
+    expect(hunch.reply).toContain('not treat an unverified hunch as a fact');
+    expect(relationship(save, 'rival').rivalry).toBe(56);
+    expect(relationship(save, 'rival').resentment).toBe(3);
+    expect(save.player.reputation.integrity).toBe(8);
+    expect(save.flags.rivalMet).toBe(false); // boundary-respecting choices only
+    expect(save.caseFile.playerKnowledge).toEqual(before);
+
+    advanceToDay(save, 5);
+    const rosterGuess = applyDialogueChoice(save, 'd-supervisor-roster', 'ask-from-roster');
+    expect(rosterGuess.ok).toBe(true);
+    expect(rosterGuess.reveals).toBeUndefined();
+    expect(rosterGuess.reply).toContain('A roster cannot answer that');
+    expect(relationship(save, 'supervisor').resentment).toBe(4);
+    expect(save.flags.supervisorConsulted).toBe(false);
+    expect(save.caseFile.playerKnowledge).toEqual(before);
+
+    advanceToDay(save, 7);
+    const nameFirst = applyDialogueChoice(save, 'd-supervisor-recollection', 'name-first-mover');
+    expect(nameFirst.ok).toBe(true);
+    expect(nameFirst.reveals).toBeUndefined();
+    expect(nameFirst.reply).toContain('will not name anyone');
+    expect(relationship(save, 'supervisor').resentment).toBe(9);
+    expect(save.flags.supervisorStatement).toBe(false);
+    expect(save.caseFile.playerKnowledge).toEqual(before);
+
+    advanceToDay(save, 8);
+    const overstate = applyDialogueChoice(save, 'd-rival-final', 'overstate');
+    expect(overstate.ok).toBe(true);
+    expect(overstate.reveals).toBeUndefined();
+    expect(relationship(save, 'rival').resentment).toBe(7);
+    expect(save.flags.rivalRespect).toBe(false);
+    expect(save.caseFile.playerKnowledge).toEqual(before);
+  });
+
+  it('never leaks canonical truth or fabricated citations through the new content', () => {
+    const save = createInitialSave();
+    const scenes = DIALOGUE_SCENES.filter((s) => (LATEST_SCENE_IDS as readonly string[]).includes(s.id));
+    const authored = scenes.flatMap((scene) => [
+      scene.prompt,
+      ...scene.choices.flatMap((choice) => [
+        choice.label, choice.reply, choice.memory, ...(choice.reveals ?? []),
+      ]),
+    ]);
+    for (const text of authored) {
+      expect(looksLikeSpecificCitation(text)).toBe(false);
+      expect(checkDraftCitations(text, save.legalSources).blocked).toEqual([]);
+    }
+    const authoredJson = JSON.stringify(authored).toLowerCase();
+    for (const marker of CANONICAL_MARKERS) expect(authoredJson).not.toContain(marker);
+    expect(() => assertNoCanonicalTruthLeak(authored)).not.toThrow();
+
+    advanceToDay(save, 8);
+    applyDialogueChoice(save, 'd-rival-intro', 'stick-to-record');
+    applyDialogueChoice(save, 'd-supervisor-roster', 'ask-roster-limits');
+    applyDialogueChoice(save, 'd-supervisor-recollection', 'ask-personal-observation');
+    applyDialogueChoice(save, 'd-rival-final', 'record-limits');
+    const playerFacing = {
+      knowledge: save.caseFile.playerKnowledge,
+      notebook: save.notebook,
+      memories: save.memories,
+    };
+    expect(() => assertNoCanonicalTruthLeak(playerFacing)).not.toThrow();
+    for (const marker of CANONICAL_MARKERS) {
+      expect(JSON.stringify(playerFacing).toLowerCase()).not.toContain(marker);
+    }
+  });
+
+  it('places both new characters in reachable, static hotspots', () => {
+    expect(VIEWPOINTS.corridor.hotspots.find((h) => h.id === 'rival')?.action).toBe('dialogue:rival');
+    expect(VIEWPOINTS['waiting-area'].hotspots.find((h) => h.id === 'rival')?.action).toBe('dialogue:rival');
+    expect(VIEWPOINTS['waiting-area'].hotspots.find((h) => h.id === 'supervisor')?.action).toBe('dialogue:supervisor');
+    expect(VIEWPOINTS['consultation-room'].hotspots.find((h) => h.id === 'supervisor')?.action).toBe('dialogue:supervisor');
+    // No new viewpoint or asset is required; all placements reuse existing static scenes.
+    expect(ALL_VIEWPOINT_IDS).toHaveLength(8);
+  });
+
+  it('appends the new cast, relationships and flags when loading an older save', () => {
+    const payload = JSON.parse(JSON.stringify(createInitialSave())) as Record<string, any>;
+    payload.version = 2;
+    payload.characters = payload.characters.filter((c: any) => !LATEST_CHARACTER_IDS.includes(c.id));
+    payload.relationships = payload.relationships.filter((r: any) => !LATEST_CHARACTER_IDS.includes(r.toId));
+    for (const key of ['rivalMet', 'rivalRespect', 'supervisorConsulted', 'supervisorStatement']) delete payload.flags[key];
+    payload.characters.find((c: any) => c.id === 'senior').name = 'Mentor Renamed';
+    payload.relationships.find((r: any) => r.toId === 'senior').trust = 88;
+    payload.clock = { day: 5, slot: 'morning' };
+
+    const loaded = loadSave(memoryStorage({ [SAVE_KEY]: JSON.stringify(payload) }));
+
+    expect(loaded.characters.map((c) => c.id)).toEqual(ALL_CAST_IDS);
+    expect(loaded.relationships.filter((r) => r.fromId === 'player')).toHaveLength(12);
+    expect(loaded.characters.find((c) => c.id === 'senior')!.name).toBe('Mentor Renamed');
+    expect(loaded.relationships.find((r) => r.toId === 'senior')!.trust).toBe(88);
+    for (const id of LATEST_CHARACTER_IDS) {
+      expect(loaded.characters.find((c) => c.id === id)).toBeDefined();
+      expect(loaded.relationships.find((r) => r.toId === id)).toBeDefined();
+    }
+    expect(loaded.flags.rivalMet).toBe(false);
+    expect(loaded.flags.supervisorConsulted).toBe(false);
+
+    // New conversations remain usable after the migration.
+    expect(applyDialogueChoice(loaded, 'd-rival-intro', 'stick-to-record').ok).toBe(true);
+    expect(relationship(loaded, 'rival').respect).toBe(40);
+    expect(applyDialogueChoice(loaded, 'd-supervisor-roster', 'ask-roster-limits').ok).toBe(true);
+    expect(loaded.flags.supervisorConsulted).toBe(true);
   });
 });

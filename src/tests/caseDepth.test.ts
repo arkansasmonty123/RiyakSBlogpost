@@ -36,6 +36,7 @@ describe('richer First Brief case content', () => {
     const save = createInitialSave();
     expect(save.characters.map((c) => c.id)).toEqual([
       'senior', 'peer', 'clerk', 'client', 'witness', 'specialist', 'opposing', 'receptionist', 'junior', 'medical',
+      'rival', 'supervisor',
     ]);
     expect(save.caseFile.evidence.map((e) => e.id)).toEqual([
       'ev-1', 'ev-2', 'ev-3', 'ev-4', 'ev-5', 'ev-6',

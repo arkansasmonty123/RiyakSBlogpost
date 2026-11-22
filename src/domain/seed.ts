@@ -485,6 +485,149 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       },
     ],
   },
+  {
+    id: 'd-rival-intro',
+    characterId: 'rival',
+    minDay: 3,
+    once: true,
+    prompt: 'Adv. Nisha Deshmukh, an advocate from a neighbouring chamber, meets you in the corridor and asks how you are building the canteen matter.',
+    choices: [
+      {
+        id: 'stick-to-record',
+        label: 'Say you are working only from disclosed, reviewed material.',
+        reply: 'Adv. Nisha Deshmukh: "Careful. Most people share their theory before they have reviewed anything. I will match your restraint — for now."',
+        effects: [
+          { characterId: 'rival', dimension: 'respect', amount: 5 },
+          { characterId: 'rival', dimension: 'trust', amount: 2 },
+          { characterId: 'rival', dimension: 'rivalry', amount: -3 },
+        ],
+        memory: 'Told Adv. Nisha Deshmukh you were working only from disclosed, reviewed material; she matched your restraint.',
+        reveals: ['Adv. Nisha Deshmukh states she will argue only from the disclosed record.'],
+        reputationEffects: [{ dimension: 'integrity', amount: 1 }],
+        setsFlag: 'rivalMet',
+      },
+      {
+        id: 'share-hunch',
+        label: 'Confide an unverified hunch about how the incident happened.',
+        reply: 'Adv. Nisha Deshmukh: "Interesting. I will remember you said that — and I will not treat an unverified hunch as a fact."',
+        effects: [
+          { characterId: 'rival', dimension: 'respect', amount: -5 },
+          { characterId: 'rival', dimension: 'trust', amount: -4 },
+          { characterId: 'rival', dimension: 'rivalry', amount: 6 },
+          { characterId: 'rival', dimension: 'resentment', amount: 3 },
+        ],
+        memory: 'Shared an unverified hunch with Adv. Nisha Deshmukh; she noted it would not be treated as fact.',
+        reputationEffects: [{ dimension: 'integrity', amount: -2 }],
+      },
+    ],
+  },
+  {
+    id: 'd-rival-final',
+    characterId: 'rival',
+    minDay: 8,
+    once: true,
+    prompt: 'On the eve of the final brief, Adv. Nisha Deshmukh asks whether you will overstate the incomplete clip to gain an advantage.',
+    choices: [
+      {
+        id: 'record-limits',
+        label: 'Say you will record the gap and argue only from the reviewed material.',
+        reply: 'Adv. Nisha Deshmukh: "Then we will disagree on the law, not on the record. That is a fair contest."',
+        effects: [
+          { characterId: 'rival', dimension: 'respect', amount: 5 },
+          { characterId: 'rival', dimension: 'rivalry', amount: -4 },
+          { characterId: 'rival', dimension: 'trust', amount: 3 },
+        ],
+        memory: 'Told Adv. Nisha Deshmukh you would record the gap and argue only from reviewed material; she accepted the contest.',
+        reveals: ['Adv. Nisha Deshmukh states she will not treat the missing segment as proven fact.'],
+        reputationEffects: [
+          { dimension: 'competence', amount: 2 },
+          { dimension: 'integrity', amount: 1 },
+        ],
+        setsFlag: 'rivalRespect',
+      },
+      {
+        id: 'overstate',
+        label: 'Say you will present the clip as complete if it helps.',
+        reply: 'Adv. Nisha Deshmukh: "I will note that you were willing to stretch the record. That is useful to know."',
+        effects: [
+          { characterId: 'rival', dimension: 'respect', amount: -6 },
+          { characterId: 'rival', dimension: 'rivalry', amount: 6 },
+          { characterId: 'rival', dimension: 'resentment', amount: 4 },
+        ],
+        memory: 'Told Adv. Nisha Deshmukh you would present the clip as complete; she noted the willingness to stretch the record.',
+        reputationEffects: [{ dimension: 'integrity', amount: -2 }],
+      },
+    ],
+  },
+  {
+    id: 'd-supervisor-roster',
+    characterId: 'supervisor',
+    minDay: 5,
+    once: true,
+    prompt: 'Iqbal Sheikh, the canteen supervisor, brings the duty roster to the consultation room and offers to explain what it records.',
+    choices: [
+      {
+        id: 'ask-roster-limits',
+        label: 'Ask what the roster records and what it cannot show.',
+        reply: 'Iqbal Sheikh: "It records who was rostered near the canteen and the hours. It does not record where anyone moved or what passed between them — that is not in a roster."',
+        effects: [
+          { characterId: 'supervisor', dimension: 'trust', amount: 5 },
+          { characterId: 'supervisor', dimension: 'respect', amount: 4 },
+          { characterId: 'supervisor', dimension: 'professionalDependence', amount: -2 },
+        ],
+        memory: 'Asked Iqbal Sheikh what the duty roster records; he confirmed it shows assignment and hours, not movements.',
+        reveals: ['Canteen supervisor states the duty roster records who was rostered near the canteen and the hours, not movements.'],
+        reputationEffects: [{ dimension: 'reliability', amount: 2 }],
+        setsFlag: 'supervisorConsulted',
+      },
+      {
+        id: 'ask-from-roster',
+        label: 'Ask him to say from the roster who moved first.',
+        reply: 'Iqbal Sheikh: "A roster cannot answer that, and I will not make it say what it does not. Ask me what I actually know."',
+        effects: [
+          { characterId: 'supervisor', dimension: 'respect', amount: -5 },
+          { characterId: 'supervisor', dimension: 'trust', amount: -3 },
+          { characterId: 'supervisor', dimension: 'resentment', amount: 4 },
+        ],
+        memory: 'Asked Iqbal Sheikh to draw a conclusion about fault from the duty roster; he declined.',
+        reputationEffects: [{ dimension: 'integrity', amount: -1 }],
+      },
+    ],
+  },
+  {
+    id: 'd-supervisor-recollection',
+    characterId: 'supervisor',
+    minDay: 7,
+    once: true,
+    prompt: 'Iqbal Sheikh is asked what he personally observed while on duty near the canteen.',
+    choices: [
+      {
+        id: 'ask-personal-observation',
+        label: 'Ask him to describe only what he personally saw and heard.',
+        reply: 'Iqbal Sheikh: "I was at the counter for part of the evening. I heard raised voices and saw movement toward the door. I cannot say who acted first; I did not see the whole area at once."',
+        effects: [
+          { characterId: 'supervisor', dimension: 'trust', amount: 5 },
+          { characterId: 'supervisor', dimension: 'respect', amount: 3 },
+        ],
+        memory: 'Asked Iqbal Sheikh to confine his account to what he personally observed; he described raised voices and movement but could not identify who acted first.',
+        reveals: ['Canteen supervisor states he personally heard raised voices and saw movement toward the door, but cannot identify who acted first.'],
+        reputationEffects: [{ dimension: 'reliability', amount: 1 }],
+        setsFlag: 'supervisorStatement',
+      },
+      {
+        id: 'name-first-mover',
+        label: 'Press him to name who he believes acted first.',
+        reply: 'Iqbal Sheikh: "I will not name anyone from a partial view. That would be a guess, and guesses do not belong in your file."',
+        effects: [
+          { characterId: 'supervisor', dimension: 'respect', amount: -5 },
+          { characterId: 'supervisor', dimension: 'trust', amount: -4 },
+          { characterId: 'supervisor', dimension: 'resentment', amount: 5 },
+        ],
+        memory: 'Pressed Iqbal Sheikh to name a first mover from a partial view; he refused to guess.',
+        reputationEffects: [{ dimension: 'integrity', amount: -1 }],
+      },
+    ],
+  },
 ];
 
 export function createInitialSave(): SaveGame {
@@ -517,6 +660,10 @@ export function createInitialSave(): SaveGame {
       chapterOneComplete: false,
       juniorConsulted: false,
       medicalConsulted: false,
+      rivalMet: false,
+      rivalRespect: false,
+      supervisorConsulted: false,
+      supervisorStatement: false,
     },
     characters: [
       {
@@ -622,6 +769,30 @@ export function createInitialSave(): SaveGame {
         ],
         goals: ['State clinical findings accurately', 'Avoid overstating what an injury report proves'],
       },
+      {
+        id: 'rival',
+        name: 'Adv. Nisha Deshmukh',
+        role: 'Professional Rival (neighbouring chamber)',
+        portrait: 'smiling',
+        knowledgeBoundaries: [
+          'Knows only the material disclosed in the matter and general professional reputation',
+          'Does not know your private notes, unverified theories or privileged client instructions',
+          'Cannot know the case’s canonical truth or facts outside the disclosed record',
+        ],
+        goals: ['Build a reputation for careful advocacy', 'Win the confidence of seniors and secure more work'],
+      },
+      {
+        id: 'supervisor',
+        name: 'Iqbal Sheikh',
+        role: 'Canteen Supervisor (duty roster)',
+        portrait: 'neutral',
+        knowledgeBoundaries: [
+          'Can speak to the duty roster and who was rostered near the canteen; a roster records presence, not movements',
+          'Cannot say who moved first, what the recording showed or what happened at the clinic',
+          'Does not know the case’s canonical truth or facts outside personal observation and the roster',
+        ],
+        goals: ['Keep the duty roster accurate', 'Give an accurate account without speculating about the altercation'],
+      },
     ],
     relationships: [
       { fromId: 'player', toId: 'senior', trust: 35, respect: 40, loyalty: 30, rivalry: 0, resentment: 0, affection: 10, professionalDependence: 60 },
@@ -634,6 +805,8 @@ export function createInitialSave(): SaveGame {
       { fromId: 'player', toId: 'receptionist', trust: 30, respect: 25, loyalty: 20, rivalry: 0, resentment: 0, affection: 10, professionalDependence: 20 },
       { fromId: 'player', toId: 'junior', trust: 35, respect: 30, loyalty: 25, rivalry: 10, resentment: 0, affection: 10, professionalDependence: 25 },
       { fromId: 'player', toId: 'medical', trust: 25, respect: 35, loyalty: 15, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 20 },
+      { fromId: 'player', toId: 'rival', trust: 20, respect: 35, loyalty: 5, rivalry: 50, resentment: 0, affection: 0, professionalDependence: 15 },
+      { fromId: 'player', toId: 'supervisor', trust: 20, respect: 30, loyalty: 15, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 20 },
     ],
     memories: [
       { id: 'm1', day: 1, summary: 'Joined the firm as an intern under Adv. Meera Kulkarni.', participants: ['player', 'senior'] },

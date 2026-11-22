@@ -173,4 +173,47 @@ describe('App render smoke test', () => {
       }
     }
   });
+
+  it('renders the 12-character cast hotspots and the new day-gated conversations', () => {
+    const save = createInitialSave();
+    save.clock.day = 8;
+    const data: Record<string, string> = { [SAVE_KEY]: JSON.stringify(save) };
+    const globals = globalThis as Record<string, unknown>;
+    const previousWindow = globals.window;
+    globals.window = {
+      localStorage: {
+        getItem: (key: string) => data[key] ?? null,
+        setItem: (key: string, value: string) => { data[key] = value; },
+        removeItem: (key: string) => { delete data[key]; },
+      },
+    };
+    let waitingHtml = '';
+    let corridorHtml = '';
+    let dialogueHtml = '';
+    try {
+      save.selectedViewpoint = 'waiting-area';
+      data[SAVE_KEY] = JSON.stringify(save);
+      waitingHtml = renderToString(<App />).replace(/<!-- -->/g, '');
+      save.selectedViewpoint = 'corridor';
+      data[SAVE_KEY] = JSON.stringify(save);
+      corridorHtml = renderToString(<App />).replace(/<!-- -->/g, '');
+      dialogueHtml = renderToString(<App initialPanel="dialogue" />).replace(/<!-- -->/g, '');
+    } finally {
+      globals.window = previousWindow;
+    }
+
+    expect(waitingHtml).toContain('Adv. Nisha Deshmukh (Rival)');
+    expect(waitingHtml).toContain('Canteen Supervisor (Iqbal Sheikh)');
+    expect(corridorHtml).toContain('Adv. Nisha Deshmukh (Rival)');
+    expect(dialogueHtml).toContain('Adv. Nisha Deshmukh, an advocate from a neighbouring chamber');
+    expect(dialogueHtml).toContain('Say you are working only from disclosed, reviewed material.');
+    expect(dialogueHtml).toContain('Iqbal Sheikh, the canteen supervisor');
+    expect(dialogueHtml).toContain('Ask what the roster records and what it cannot show.');
+    for (const html of [waitingHtml, corridorHtml, dialogueHtml]) {
+      const lower = html.toLowerCase();
+      for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+        expect(lower).not.toContain(forbidden);
+      }
+    }
+  });
 });
