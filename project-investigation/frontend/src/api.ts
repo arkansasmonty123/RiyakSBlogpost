@@ -62,6 +62,25 @@ function post<T>(path: string, body: unknown): Promise<T> {
   return request<T>(path, { method: 'POST', body: JSON.stringify(body) });
 }
 
+/** Fetch a text response (used by the Markdown notebook export). */
+async function requestText(path: string): Promise<string> {
+  let res: Response;
+  try {
+    res = await fetch(path, { credentials: 'include' });
+  } catch {
+    throw new ApiError(0, 'Network error. Please check your connection.');
+  }
+  if (!res.ok) {
+    const data: unknown = await res.json().catch(() => null);
+    const details = data && typeof data === 'object' && !Array.isArray(data)
+      ? (data as Record<string, unknown>)
+      : null;
+    const message = details && 'error' in details ? String(details.error) : `Request failed (${res.status})`;
+    throw new ApiError(res.status, message, details);
+  }
+  return res.text();
+}
+
 // --- Player-facing domain types ------------------------------------------------
 
 export interface Case {
@@ -191,6 +210,30 @@ export interface PublicSpecialist {
   displayOrder: number;
 }
 
+export type VerificationStatus =
+  | 'draft'
+  | 'pending_review'
+  | 'verified'
+  | 'rejected'
+  | 'needs_reverification';
+
+export type SourceType =
+  | 'government_guidance'
+  | 'standards_body'
+  | 'peer_reviewed'
+  | 'reputable_org'
+  | 'textbook'
+  | 'news'
+  | 'legal_reference'
+  | 'in_world_document'
+  | 'other';
+
+export interface ArtifactDepthContent {
+  plain?: string;
+  working?: string;
+  technical?: string;
+}
+
 export interface PublicArtifactSummary {
   id: string;
   artifactKey: string;
@@ -201,12 +244,47 @@ export interface PublicArtifactSummary {
   knowledgeClass: string;
   reliability: string;
   sourceAuthor: string;
+  /** Null unless sourceVerified AND verificationStatus === 'verified'. */
   sourceUrl: string | null;
   bibliographyRef: string;
   publicationDate: string;
   sourceVerified: boolean;
   isFictional: boolean;
   relatedConcepts: string[];
+  // M3 provenance / pedagogy fields.
+  sourceType: SourceType | null;
+  verificationStatus: VerificationStatus;
+  verificationNotes: string;
+  lastVerifiedAt: string | null;
+  claimsSupported: string[];
+  learningObjectives: string[];
+  relatedEvidenceRefs: string[];
+  suggestedConversations: string[];
+  depthContent: ArtifactDepthContent;
+}
+
+/** M3 per-case pack metadata with simple content counts (no canonical data). */
+export interface PublicCaseKnowledgePack {
+  id: string;
+  caseId: string;
+  version: string;
+  packStatus: 'draft' | 'pending_review' | 'verified' | 'needs_reverification';
+  learningObjectives: string[];
+  summary: string;
+  createdAt?: string;
+  updatedAt?: string;
+  counts: {
+    specialists: number;
+    artifacts: number;
+    disagreements: number;
+  };
+}
+
+export interface NotebookExport {
+  caseTitle: string;
+  investigationId: string;
+  exportedAt: string;
+  entries: PublicNotebookEntry[];
 }
 
 export interface PublicArtifactDetail extends PublicArtifactSummary {
@@ -254,6 +332,11 @@ export interface NotebookSourceSnapshot {
   bibliographyRef?: string;
   publicationDate?: string;
   sourceVerified?: boolean;
+  verificationStatus?: VerificationStatus;
+  verificationNotes?: string;
+  sourceType?: SourceType | null;
+  claimsSupported?: string[];
+  relatedEvidenceRefs?: string[];
   isFictional?: boolean;
   relatedConcepts?: string[];
   contentExcerpt?: string;
@@ -549,6 +632,10 @@ export const api = {
   getDisagreements: (caseId: string) =>
     request<PublicDisagreement[]>(`/api/cases/${encodeURIComponent(caseId)}/disagreements`),
 
+  // M3: case knowledge-pack metadata. A 404 means the case has no pack.
+  getCaseKnowledgePack: (caseId: string) =>
+    request<PublicCaseKnowledgePack>(`/api/cases/${encodeURIComponent(caseId)}/knowledge-pack`),
+
   getNotificationSettings: () =>
     request<NotificationSettings>('/api/me/notification-settings'),
 
@@ -700,6 +787,16 @@ export const api = {
       `/api/investigations/${encodeURIComponent(id)}/notebook/${encodeURIComponent(entryId)}`,
       { method: 'DELETE' }
     ),
+
+  // M3: owner-scoped notebook export. JSON returns a typed envelope; Markdown
+  // returns a formatted document. Both are built from safe notebook DTOs.
+  exportNotebookJson: (id: string) =>
+    request<NotebookExport>(
+      `/api/investigations/${encodeURIComponent(id)}/notebook/export?format=json`
+    ),
+
+  exportNotebookMarkdown: (id: string) =>
+    requestText(`/api/investigations/${encodeURIComponent(id)}/notebook/export?format=markdown`),
 };
 
 /** Convert an unknown error into a short, user-facing message. */

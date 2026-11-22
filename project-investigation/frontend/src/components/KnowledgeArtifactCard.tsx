@@ -25,6 +25,7 @@ export function KnowledgeArtifactCard({ artifact, onView, onSave, onAsk, saving 
         ) : (
           <span className="badge badge--warning">Source unverified</span>
         )}
+        <span className="badge badge--soft">Review: {artifact.verificationStatus?.replace(/_/g, ' ') ?? 'draft'}</span>
       </div>
 
       <h4>{artifact.title}</h4>

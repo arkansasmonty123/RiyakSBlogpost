@@ -1619,6 +1619,16 @@ export interface KnowledgeArtifact {
   relatedConcepts: unknown;
   isFictional: boolean;
   usageNote: string;
+  // M3 provenance / pedagogy metadata (migration 007).
+  sourceType: string | null;
+  verificationStatus: string;
+  verificationNotes: string;
+  lastVerifiedAt: string | null;
+  claimsSupported: unknown;
+  learningObjectives: unknown;
+  relatedEvidenceRefs: unknown;
+  suggestedConversations: unknown;
+  depthContent: unknown;
   specialistKey?: string;
   createdAt?: Date;
   updatedAt?: Date;
@@ -1628,6 +1638,9 @@ const ARTIFACT_COLUMNS = `a.id, a.artifact_key, a.title, a.artifact_type, a.desc
   a.specialist_id, a.case_id, a.source_author, a.source_url, a.source_verified,
   a.bibliography_ref, a.publication_date, a.knowledge_class, a.reliability,
   a.related_concepts, a.is_fictional, a.usage_note, a.created_at, a.updated_at,
+  a.source_type, a.verification_status, a.verification_notes, a.last_verified_at,
+  a.claims_supported, a.learning_objectives, a.related_evidence_refs,
+  a.suggested_conversations, a.depth_content,
   s.specialist_key`;
 
 const ARTIFACT_JOIN = ` FROM knowledge_artifacts a
@@ -1694,6 +1707,27 @@ export async function getKnowledgeDisagreementsByCase(caseId: string): Promise<K
     [caseId]
   );
   return mapRows<KnowledgeDisagreement>(result.rows);
+}
+
+export interface CaseKnowledgePack {
+  id: string;
+  caseId: string;
+  version: string;
+  packStatus: string;
+  learningObjectives: unknown;
+  summary: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+/** M3 case knowledge-pack metadata. No canonical truth is selected here. */
+export async function getCaseKnowledgePack(caseId: string): Promise<CaseKnowledgePack | null> {
+  const result = await query(
+    `SELECT id, case_id, version, pack_status, learning_objectives, summary, created_at, updated_at
+       FROM case_knowledge_packs WHERE case_id = $1 LIMIT 1`,
+    [caseId]
+  );
+  return result.rows[0] ? mapRow<CaseKnowledgePack>(result.rows[0]) : null;
 }
 
 export interface NotebookEntry {

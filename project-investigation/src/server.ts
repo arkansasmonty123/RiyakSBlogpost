@@ -55,6 +55,7 @@ import {
   getKnowledgeArtifactsByCase,
   getKnowledgeArtifactById,
   getKnowledgeDisagreementsByCase,
+  getCaseKnowledgePack,
   createNotebookEntry,
   getNotebookEntries,
   updateNotebookEntry,
@@ -72,6 +73,8 @@ import {
   toPublicArtifactDetail,
   toPublicDisagreement,
   toPublicNotebookEntry,
+  toPublicCaseKnowledgePack,
+  renderNotebookMarkdown,
   retrieveRelevantArtifacts,
   buildSpecialistContext,
   deterministicSpecialistReply,
@@ -700,6 +703,34 @@ app.get('/api/cases/:caseId/disagreements', authMiddleware, asyncRoute(async (re
   }
   const disagreements = await getKnowledgeDisagreementsByCase(caseId);
   res.json(disagreements.map(toPublicDisagreement));
+}));
+
+// M3: safe per-case knowledge-pack metadata with simple content counts. A case
+// without a pack returns 404; callers treat that as "no pack for this case".
+app.get('/api/cases/:caseId/knowledge-pack', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  const caseId = req.params.caseId;
+  if (!isUuid(caseId) || !(await caseExists(caseId))) {
+    res.status(404).json({ error: 'Case not found' });
+    return;
+  }
+  const pack = await getCaseKnowledgePack(caseId);
+  if (!pack) {
+    res.status(404).json({ error: 'Knowledge pack not found' });
+    return;
+  }
+  const [specialists, artifacts, disagreements] = await Promise.all([
+    getSpecialistsByCase(caseId),
+    getKnowledgeArtifactsByCase(caseId),
+    getKnowledgeDisagreementsByCase(caseId),
+  ]);
+  res.json({
+    ...toPublicCaseKnowledgePack(pack),
+    counts: {
+      specialists: specialists.length,
+      artifacts: artifacts.length,
+      disagreements: disagreements.length,
+    },
+  });
 }));
 
 app.get('/api/evidence/:evidenceId', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
@@ -1584,22 +1615,74 @@ function buildNotebookSourceSnapshot(artifact: any): Record<string, unknown> {
   const detail = toPublicArtifactDetail(artifact);
   const snapshot: Record<string, unknown> = {
     ...detail,
+    verificationNotes: clip(detail.verificationNotes, 280),
+    claimsSupported: detail.claimsSupported.slice(0, 5).map((c: string) => clip(c, 160)),
+    relatedEvidenceRefs: detail.relatedEvidenceRefs.slice(0, 5).map((r: string) => clip(r, 160)),
     contentExcerpt: clip(detail.content, 240),
   };
   delete (snapshot as Record<string, unknown>).content;
-  const serialized = JSON.stringify(snapshot);
+  // suggestedConversations and depthContent are useful in the drawer, but too
+  // verbose for a stored provenance snapshot; keep the snapshot compact.
+  delete (snapshot as Record<string, unknown>).suggestedConversations;
+  delete (snapshot as Record<string, unknown>).depthContent;
+  let serialized = JSON.stringify(snapshot);
   if (serialized.length <= KNOWLEDGE_LIMITS.maxSourceSnapshotChars) return snapshot;
-  return {
+  const compact = {
     ...snapshot,
     description: clip(detail.description, 120),
+    verificationNotes: '',
     contentExcerpt: '',
     usageNote: '',
+  };
+  serialized = JSON.stringify(compact);
+  if (serialized.length <= KNOWLEDGE_LIMITS.maxSourceSnapshotChars) return compact;
+  // Final fallback: keep identity + provenance essentials only.
+  return {
+    id: detail.id,
+    artifactKey: detail.artifactKey,
+    title: detail.title,
+    artifactType: detail.artifactType,
+    knowledgeClass: detail.knowledgeClass,
+    reliability: detail.reliability,
+    sourceAuthor: detail.sourceAuthor,
+    bibliographyRef: clip(detail.bibliographyRef, 240),
+    sourceVerified: detail.sourceVerified,
+    verificationStatus: detail.verificationStatus,
+    isFictional: detail.isFictional,
   };
 }
 
 investigationRouter.get('/notebook', asyncRoute(async (_req: Request, res: Response) => {
   const entries = await getNotebookEntries(res.locals.investigation.id, res.locals.userId as string);
   res.json(entries.map(toPublicNotebookEntry));
+}));
+
+// M3: export the owner's notebook. Both shapes are built exclusively from the
+// safe PublicNotebookEntry DTO (source snapshots never contain raw artifact
+// content or canonical data). Auth + ownership come from investigationRouter.
+investigationRouter.get('/notebook/export', asyncRoute(async (req: Request, res: Response) => {
+  const rawFormat = typeof req.query.format === 'string' ? req.query.format.toLowerCase() : 'json';
+  if (rawFormat !== 'json' && rawFormat !== 'markdown') {
+    res.status(400).json({ error: "format must be 'json' or 'markdown'" });
+    return;
+  }
+  const investigation = res.locals.investigation;
+  const entries = (await getNotebookEntries(investigation.id, res.locals.userId as string))
+    .map(toPublicNotebookEntry);
+  const caseData = await getCaseById(investigation.caseId as string);
+  const meta = {
+    caseTitle: caseData?.title ?? 'Unknown case',
+    investigationId: String(investigation.id),
+    exportedAt: new Date().toISOString(),
+  };
+  if (rawFormat === 'markdown') {
+    const markdown = renderNotebookMarkdown(entries, meta);
+    res.setHeader('Content-Type', 'text/markdown; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="notebook-${investigation.id}.md"`);
+    res.send(markdown);
+    return;
+  }
+  res.json({ ...meta, entries });
 }));
 
 investigationRouter.post('/notebook', writeLimiter, asyncRoute(async (req: Request, res: Response) => {

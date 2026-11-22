@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "updated_at": "2026-11-23T06:00:00Z",
+  "updated_at": "2026-11-23T07:30:00Z",
   "status": "idle",
   "objective": "Deliver PRD MVP for THE INVESTIGATION (project-investigation) with autonomous orchestration.",
-  "current_milestone": "Milestone 2 complete: Knowledge, Expertise & Perspective System (showcase Midnight Heist)",
+  "current_milestone": "Milestone 3 complete: Research, Case Expansion & Knowledge Quality (3 case packs)",
   "active_task_id": null,
   "active_agent": null,
-  "last_completed_task_id": "M2-KNOWLEDGE",
-  "next_action": "Await next milestone direction. Optional: push branch, add Gemini key, enrich more cases with M2 knowledge.",
+  "last_completed_task_id": "M3-KNOWLEDGE",
+  "next_action": "Await next milestone direction. Optional: expand knowledge packs to more cases, add Gemini key for AI quality, run Playwright UI pass on request.",
   "model_policy": {
     "active_model": "opencode/iceman-free",
     "fallback_models": [
@@ -210,10 +210,50 @@
       "status": "done",
       "result_summary": "Experts/Notebook tabs, specialist chat controls, artifact drawer/cards, notebook CRUD UI integrated into InvestigationRoomPage; api.ts types/methods added. Frontend build and all backend verifications pass.",
       "next_action": null
+    },
+    {
+      "task_id": "M3-AUDIT",
+      "title": "Audit M2 and plan Milestone 3",
+      "agent": "orchestrator+architect",
+      "status": "done",
+      "result_summary": "Audited M2 schema/code/routes/UI/validators; identified provenance, classification, authoring, validation, notebook, leakage-guard gaps. Selected Midnight Heist, Code Blue at the Clinic, Blaze at Dawn Bakery.",
+      "next_action": null
+    },
+    {
+      "task_id": "M3-RESEARCH",
+      "title": "Verify M3 case sources",
+      "agent": "researcher",
+      "status": "done",
+      "result_summary": "Verified 8 real-source candidates (4 Code Blue, 4 Blaze) with conservative citations/URLs/status notes; no fabricated refs.",
+      "next_action": "Feed into M3-CONTENT packs."
+    },
+    {
+      "task_id": "M3-FOUNDATION",
+      "title": "Build M3 knowledge foundation",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Migration 007 provenance/pack schema, DTO/DB/server/validator updates, pack authoring framework, Midnight Heist M3 upgrade, notebook export, frontend provenance UI, smoke/schema/CI updates. 71/71 at foundation.",
+      "next_action": null
+    },
+    {
+      "task_id": "M3-CONTENT",
+      "title": "Author Code Blue and Blaze knowledge packs",
+      "agent": "orchestrator+builder",
+      "status": "done",
+      "result_summary": "Added Code Blue at the Clinic and Blaze at Dawn Bakery packs (3 specialists, 5 artifacts, 1 disagreement each), registered in pack registry, seeded, case-aware leakage/smoke tests added. Research-verified citations used; no fabricated URLs.",
+      "next_action": null
+    },
+    {
+      "task_id": "M3-VERIFY",
+      "title": "M3 verification and report",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Verified: typecheck PASS, db:schema:verify PASS (25/25,258), smoke-db PASS, knowledge:validate PASS, case:validate PASS, frontend build PASS, test:http 73/73 PASS.",
+      "next_action": null
     }
   ],
   "recovery": {
-    "last_checkpoint": "2026-11-23T06:00:00Z",
+    "last_checkpoint": "2026-11-23T07:30:00Z",
     "resume_instructions": "Read ORCHESTRATION-STATE.json, ORCHESTRATION-LOG.md, RECOVERY.md, DEV-STATUS.md, TASKS.md, BUGS.md, MODEL-POLICY.md; validate state against repo; continue from next_action.",
     "open_blockers": [],
     "validation_notes": [

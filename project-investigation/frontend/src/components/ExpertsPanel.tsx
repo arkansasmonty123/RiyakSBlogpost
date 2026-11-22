@@ -1,7 +1,14 @@
 import { useState } from 'react';
-import type { KnowledgeDepth, KnowledgeIntent, PublicDisagreement, PublicSpecialist } from '../api';
+import type {
+  KnowledgeDepth,
+  KnowledgeIntent,
+  PublicCaseKnowledgePack,
+  PublicDisagreement,
+  PublicSpecialist,
+} from '../api';
 
 interface ExpertsPanelProps {
+  pack?: PublicCaseKnowledgePack | null;
   specialists: PublicSpecialist[];
   disagreements: PublicDisagreement[];
   selectedSpecialistKey: string | null;
@@ -34,6 +41,7 @@ const DEPTHS: Array<{ id: KnowledgeDepth; label: string }> = [
 ];
 
 export function ExpertsPanel({
+  pack,
   specialists,
   disagreements,
   selectedSpecialistKey,
@@ -58,6 +66,27 @@ export function ExpertsPanel({
         Specialists offer discipline-grounded perspectives on evidence and methods. Their views can
         disagree, and disagreement is informative — not a verdict.
       </p>
+
+      {pack && (
+        <section className="detail-card knowledge-pack-summary" aria-label="Case knowledge pack">
+          <div className="badges">
+            <span className="badge">Knowledge pack v{pack.version}</span>
+            <span className="badge badge--soft">Review: {pack.packStatus.replace(/_/g, ' ')}</span>
+          </div>
+          {pack.summary && <p className="muted">{pack.summary}</p>}
+          {pack.learningObjectives.length > 0 && (
+            <>
+              <h4>Learning objectives for this case</h4>
+              <ul className="specialist-list">
+                {pack.learningObjectives.map((objective) => <li key={objective}>{objective}</li>)}
+              </ul>
+            </>
+          )}
+          <p className="muted small-note">
+            Reference material: {pack.counts.specialists} specialists · {pack.counts.artifacts} artifacts · {pack.counts.disagreements} disagreements
+          </p>
+        </section>
+      )}
 
       {specialists.length === 0 ? (
         <p className="empty-state">No specialists are assigned to this case.</p>

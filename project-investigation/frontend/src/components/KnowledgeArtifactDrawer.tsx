@@ -15,6 +15,16 @@ function label(value: string): string {
   return value.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+function badgeClassForStatus(status: string): string {
+  switch (status) {
+    case 'verified': return 'badge badge--confirmed';
+    case 'rejected': return 'badge badge--incorrect';
+    case 'pending_review':
+    case 'needs_reverification': return 'badge badge--warning';
+    default: return 'badge badge--soft';
+  }
+}
+
 export function KnowledgeArtifactDrawer({
   caseId,
   artifact,
@@ -26,6 +36,7 @@ export function KnowledgeArtifactDrawer({
   const [detail, setDetail] = useState<PublicArtifactDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [depthTab, setDepthTab] = useState<'plain' | 'working' | 'technical'>('working');
 
   useEffect(() => {
     let cancelled = false;
@@ -87,6 +98,9 @@ export function KnowledgeArtifactDrawer({
           ) : (
             <span className="badge badge--warning">Source unverified</span>
           )}
+          <span className={`badge ${badgeClassForStatus(current.verificationStatus)}`}>
+            Review: {label(current.verificationStatus || 'draft')}
+          </span>
         </div>
 
         <p>{current.description}</p>
@@ -100,6 +114,22 @@ export function KnowledgeArtifactDrawer({
             <dd>{current.publicationDate || 'Not provided'}</dd>
             <dt>Bibliography</dt>
             <dd>{current.bibliographyRef || 'Not provided'}</dd>
+            <dt>Source type</dt>
+            <dd>{current.sourceType ? label(current.sourceType) : 'Not specified'}</dd>
+            <dt>Review status</dt>
+            <dd>{label(current.verificationStatus || 'draft')}</dd>
+            {current.verificationNotes && (
+              <>
+                <dt>Verification notes</dt>
+                <dd>{current.verificationNotes}</dd>
+              </>
+            )}
+            {current.lastVerifiedAt && (
+              <>
+                <dt>Last verified</dt>
+                <dd>{current.lastVerifiedAt}</dd>
+              </>
+            )}
             <dt>Source verified</dt>
             <dd>{current.sourceVerified ? 'Yes — link verified by the case file' : 'No — no verified external link is provided'}</dd>
             <dt>External link</dt>
@@ -131,6 +161,71 @@ export function KnowledgeArtifactDrawer({
               </div>
             )}
           </>
+        )}
+
+        {current.learningObjectives.length > 0 && (
+          <div className="artifact-detail-section">
+            <h4>What you can learn</h4>
+            <ul className="specialist-list">
+              {current.learningObjectives.map((objective) => <li key={objective}>{objective}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {current.claimsSupported.length > 0 && (
+          <div className="artifact-detail-section">
+            <h4>Claims this supports</h4>
+            <ul className="specialist-list">
+              {current.claimsSupported.map((claim) => <li key={claim}>{claim}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {current.relatedEvidenceRefs.length > 0 && (
+          <div className="artifact-detail-section">
+            <h4>Related case material</h4>
+            <p className="muted">
+              Cross-references by stable source label (not by hidden evidence):
+            </p>
+            <div className="badges">
+              {current.relatedEvidenceRefs.map((ref) => (
+                <span key={ref} className="badge badge--soft">{ref}</span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {current.suggestedConversations.length > 0 && (
+          <div className="artifact-detail-section">
+            <h4>Ask a specialist about</h4>
+            <ul className="specialist-list">
+              {current.suggestedConversations.map((prompt) => <li key={prompt}>{prompt}</li>)}
+            </ul>
+          </div>
+        )}
+
+        {Object.keys(current.depthContent ?? {}).length > 0 && (
+          <div className="artifact-detail-section">
+            <h4>Explanation depth</h4>
+            <div className="chip-row" role="tablist" aria-label="Explanation depth">
+              {(['plain', 'working', 'technical'] as const).map((level) => {
+                if (!current.depthContent?.[level]) return null;
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    role="tab"
+                    aria-selected={depthTab === level}
+                    className={depthTab === level ? 'chip chip--active' : 'chip'}
+                    onClick={() => setDepthTab(level)}
+                  >
+                    {label(level)}
+                  </button>
+                );
+              })}
+            </div>
+            <p>{current.depthContent?.[depthTab] ?? current.depthContent?.plain ?? current.depthContent?.working ?? current.depthContent?.technical}</p>
+          </div>
         )}
 
         {current.relatedConcepts.length > 0 && (

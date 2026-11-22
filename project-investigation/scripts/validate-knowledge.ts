@@ -1,15 +1,24 @@
-// M2 knowledge validation (READ-ONLY).
+// M3 knowledge validation (READ-ONLY).
 //
 //   npm run knowledge:validate
 //
-// Checks schema presence, specialist/artifact/disagreement content rules, the
-// showcase-case minimums, and a leakage guard against canonical solution
-// strings and evidence UUIDs. Runs only SELECT statements; never writes.
+// Validates every case that has M2 knowledge data and/or an M3 case knowledge
+// pack. Checks schema presence, provenance/classification rules, pack rules,
+// duplicate keys, content depth and per-case canonical-leakage guards. Runs
+// only SELECT statements; never writes. Canonical solution strings are used
+// only for in-memory matching and are NEVER printed in check messages.
 
 import { pool, query } from '../src/db';
-import { toPublicArtifactSummary } from '../src/knowledge';
-
-const CASE_ID = 'fba51632-6d0d-4736-8200-2fd6df5ba1cc';
+import {
+  toPublicArtifactSummary,
+  KNOWLEDGE_CLASSES,
+  PACK_STATUSES,
+  SOURCE_TYPES,
+  VERIFICATION_STATUSES,
+  isKnowledgeClass,
+  asStringArray,
+} from '../src/knowledge';
+import { KNOWLEDGE_PACKS } from '../src/knowledge-packs';
 
 const EXPECTED_COLUMNS: Record<string, string[]> = {
   specialists: [
@@ -24,6 +33,14 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
     'specialist_id', 'case_id', 'source_author', 'source_url', 'source_verified',
     'bibliography_ref', 'publication_date', 'knowledge_class', 'reliability',
     'related_concepts', 'is_fictional', 'usage_note', 'created_at', 'updated_at',
+    // M3 (migration 007).
+    'source_type', 'verification_status', 'verification_notes', 'last_verified_at',
+    'claims_supported', 'learning_objectives', 'related_evidence_refs',
+    'suggested_conversations', 'depth_content',
+  ],
+  case_knowledge_packs: [
+    'id', 'case_id', 'version', 'pack_status', 'learning_objectives', 'summary',
+    'created_at', 'updated_at',
   ],
   knowledge_disagreements: [
     'id', 'disagreement_key', 'case_id', 'topic', 'specialist_a_id', 'specialist_b_id',
@@ -36,15 +53,20 @@ const EXPECTED_COLUMNS: Record<string, string[]> = {
   ],
 };
 
-const FORBIDDEN_STRINGS = ['Victor Sterling', 'hollow base', 'silver trophy'];
-
 let failures = 0;
+let warnings = 0;
 function check(condition: boolean, message: string): void {
   if (condition) {
     console.log(`  ✅ ${message}`);
   } else {
     console.log(`  ❌ ${message}`);
     failures += 1;
+  }
+}
+function warn(condition: boolean, message: string): void {
+  if (!condition) {
+    console.log(`  ⚠️  ${message}`);
+    warnings += 1;
   }
 }
 
@@ -56,8 +78,25 @@ function parseJson(value: unknown): any {
   return null;
 }
 
+function isTrue(value: unknown): boolean {
+  return value === true || value === 't' || value === 'true' || value === 1;
+}
+
+function text(value: unknown): string {
+  return typeof value === 'string' ? value : value == null ? '' : String(value);
+}
+
+function hasContent(value: unknown, min = 20): boolean {
+  return text(value).trim().length >= min;
+}
+
+function depth(value: unknown): boolean {
+  const obj = parseJson(value);
+  return !!obj && ['plain', 'working', 'technical'].every((k) => typeof obj[k] === 'string' && obj[k].trim().length > 0);
+}
+
 async function main(): Promise<void> {
-  console.log('M2 knowledge validation (read-only)\n');
+  console.log('M3 knowledge validation (read-only)\n');
 
   console.log('== Schema ==');
   const colsResult = await query(
@@ -79,74 +118,158 @@ async function main(): Promise<void> {
     }
   }
 
-  console.log('\n== Showcase case: The Midnight Heist ==');
-  const caseCheck = await query('SELECT id FROM cases WHERE id = $1', [CASE_ID]);
-  check(caseCheck.rows.length === 1, 'showcase case exists');
+  // All cases with any knowledge data (M2 rows or an M3 pack).
+  const casesResult = await query(
+    `SELECT DISTINCT c.id, c.title FROM cases c
+      WHERE c.id IN (SELECT case_id FROM case_specialists)
+         OR c.id IN (SELECT case_id FROM knowledge_artifacts)
+         OR c.id IN (SELECT case_id FROM knowledge_disagreements)
+         OR c.id IN (SELECT case_id FROM case_knowledge_packs)
+      ORDER BY c.title`
+  );
+  const cases = casesResult.rows as Array<{ id: string; title: string }>;
+  check(cases.length > 0, `at least one case has knowledge data (found ${cases.length})`);
 
-  // SELECT s.* (not *) so the join does not shadow s.id with cs.id.
-  const specialists = (await query('SELECT s.* FROM specialists s JOIN case_specialists cs ON cs.specialist_id = s.id WHERE cs.case_id = $1', [CASE_ID])).rows;
-  const artifacts = (await query('SELECT * FROM knowledge_artifacts WHERE case_id = $1', [CASE_ID])).rows;
-  const disagreements = (await query('SELECT * FROM knowledge_disagreements WHERE case_id = $1', [CASE_ID])).rows;
-  const evidenceIds = (await query('SELECT id FROM evidence WHERE case_id = $1', [CASE_ID])).rows.map((r: any) => String(r.id));
+  const leakageByTitle = new Map(KNOWLEDGE_PACKS.map((p) => [p.caseTitle, p.leakageTerms]));
+  const allArtifactKeys = new Set<string>();
+  const allDisagreementKeys = new Set<string>();
+  let duplicateArtifactKeys = 0;
+  let duplicateDisagreementKeys = 0;
 
-  check(specialists.length >= 3, `>=3 specialists (found ${specialists.length})`);
-  check(artifacts.length >= 5, `>=5 knowledge artifacts (found ${artifacts.length})`);
-  check(disagreements.length >= 1, `>=1 disagreement (found ${disagreements.length})`);
+  for (const target of cases) {
+    const caseId = String(target.id);
+    const label = target.title;
+    console.log(`\n== Case: ${label} ==`);
 
-  console.log('\n== Specialist content rules ==');
-  const specialistIds = new Set(specialists.map((s: any) => String(s.id)));
-  for (const s of specialists) {
-    const limitations = parseJson(s.limitations);
-    const guidance = parseJson(s.depth_guidance);
-    const label = s.specialist_key;
-    check(Array.isArray(limitations) && limitations.length > 0, `${label}: has explicit limitations`);
-    check(
-      !!guidance && ['plain', 'working', 'technical'].every((k) => typeof guidance[k] === 'string' && guidance[k].length > 0),
-      `${label}: has plain/working/technical depth guidance`,
-    );
-    check(s.is_fictional === true || s.is_fictional === 't' || s.is_fictional === 'true', `${label}: marked fictional persona`);
-    check(typeof s.real_discipline_basis === 'string' && s.real_discipline_basis.trim().length > 0, `${label}: has real discipline basis`);
-  }
+    // SELECT s.* (not *) so the join does not shadow s.id with cs.id.
+    const specialists = (await query('SELECT s.* FROM specialists s JOIN case_specialists cs ON cs.specialist_id = s.id WHERE cs.case_id = $1', [caseId])).rows;
+    const artifacts = (await query('SELECT * FROM knowledge_artifacts WHERE case_id = $1', [caseId])).rows;
+    const disagreements = (await query('SELECT * FROM knowledge_disagreements WHERE case_id = $1', [caseId])).rows;
+    const packRows = (await query('SELECT * FROM case_knowledge_packs WHERE case_id = $1', [caseId])).rows;
+    const evidence = (await query('SELECT id, source, description FROM evidence WHERE case_id = $1', [caseId])).rows as Array<{ id: string; source: string; description: string }>;
 
-  console.log('\n== Artifact metadata rules ==');
-  for (const a of artifacts) {
-    const label = a.artifact_key;
-    if (a.is_fictional === true || a.is_fictional === 't' || a.is_fictional === 'true') {
-      check(a.knowledge_class === 'fictional' && a.reliability === 'fiction', `${label}: fictional artifact marked class=fictional, reliability=fiction`);
+    check(specialists.length >= 3, `${label}: >=3 specialists (found ${specialists.length})`);
+    check(artifacts.length >= 5, `${label}: >=5 knowledge artifacts (found ${artifacts.length})`);
+    check(disagreements.length >= 1, `${label}: >=1 disagreement (found ${disagreements.length})`);
+
+    console.log(`-- Specialist content rules (${label}) --`);
+    const specialistIds = new Set(specialists.map((s: any) => String(s.id)));
+    for (const s of specialists) {
+      const key = text(s.specialist_key);
+      const limitations = parseJson(s.limitations);
+      check(Array.isArray(limitations) && limitations.length > 0, `${key}: has explicit limitations`);
+      check(depth(s.depth_guidance), `${key}: has plain/working/technical depth guidance`);
+      check(isTrue(s.is_fictional), `${key}: marked fictional persona`);
+      check(hasContent(s.real_discipline_basis, 10), `${key}: has real discipline basis`);
+      check(hasContent(s.expertise_summary, 30), `${key}: has substantive expertise summary`);
+    }
+
+    console.log(`-- Artifact metadata rules (${label}) --`);
+    for (const a of artifacts) {
+      const key = text(a.artifact_key);
+      if (allArtifactKeys.has(key)) duplicateArtifactKeys += 1;
+      allArtifactKeys.add(key);
+
+      check(VERIFICATION_STATUSES.includes(text(a.verification_status) as any), `${key}: valid verification_status`);
+      if (a.source_type !== null && a.source_type !== undefined && a.source_type !== '') {
+        check(SOURCE_TYPES.includes(text(a.source_type) as any), `${key}: valid source_type`);
+      }
+      check(isKnowledgeClass(a.knowledge_class), `${key}: valid knowledge_class (legacy aliases accepted)`);
+
+      const verified = isTrue(a.source_verified);
+      const reviewStatus = text(a.verification_status);
+      const url = text(a.source_url);
+      const validUrl = /^https?:\/\/\S+/i.test(url);
+      const fictional = isTrue(a.is_fictional);
+      const bibliography = text(a.bibliography_ref);
+
+      if (verified) {
+        check(reviewStatus === 'verified', `${key}: source_verified implies verification_status=verified`);
+        check(validUrl, `${key}: verified source has an http(s) source_url`);
+      }
+      if (reviewStatus === 'verified') {
+        const sufficientRef = validUrl || fictional || bibliography.trim().length >= 40;
+        check(hasContent(a.verification_notes, 10) && sufficientRef,
+          `${key}: verified status has verification notes + sufficient provenance`);
+      }
+      if (!fictional) {
+        check(bibliography.trim().length > 0, `${key}: non-fictional artifact has bibliography_ref`);
+        warn(asStringArray(a.claims_supported).length > 0, `${key}: no claims_supported recorded (recommended)`);
+      } else {
+        check(text(a.knowledge_class) === 'fictional_in_world' || text(a.knowledge_class) === 'fictional',
+          `${key}: fictional artifact uses fictional class`);
+        check(text(a.reliability) === 'fiction', `${key}: fictional artifact uses fiction reliability`);
+      }
+
+      check(hasContent(a.title, 8), `${key}: substantive title`);
+      check(hasContent(a.description, 30), `${key}: substantive description`);
+      check(hasContent(a.content, 60), `${key}: substantive content`);
+
+      // DTO rules: verified-only URL, normalized class, no content in summary.
+      const dto = toPublicArtifactSummary(a);
+      check(!('content' in dto), `${key}: summary DTO omits content`);
+      if (!verified || reviewStatus !== 'verified') {
+        check(dto.sourceUrl === null, `${key}: DTO withholds non-verified source_url`);
+      } else {
+        check(dto.sourceUrl === a.source_url, `${key}: DTO exposes verified source_url`);
+      }
+
+      // Evidence refs are stable text snippets; confirm they fuzzy-match this
+      // case's evidence source/description strings.
+      const refs = asStringArray(a.related_evidence_refs);
+      for (const ref of refs) {
+        const needle = ref.toLowerCase().trim();
+        const matched = needle.length === 0 || evidence.some((e) =>
+          text(e.source).toLowerCase().includes(needle) ||
+          text(e.description).toLowerCase().includes(needle) ||
+          needle.includes(text(e.source).toLowerCase())
+        );
+        warn(matched, `${key}: evidence ref does not match any case evidence (${needle.slice(0, 40)})`);
+      }
+    }
+
+    console.log(`-- Pack rules (${label}) --`);
+    if (packRows.length === 0) {
+      warn(false, `${label}: no case_knowledge_packs row (learning objectives missing at pack level)`);
     } else {
-      check(typeof a.bibliography_ref === 'string' && a.bibliography_ref.trim().length > 0, `${label}: non-fictional artifact has bibliography_ref`);
+      const pack = packRows[0] as any;
+      check(PACK_STATUSES.includes(text(pack.pack_status) as any), `${label}: valid pack_status`);
+      const objectives = asStringArray(pack.learning_objectives).filter((o) => o.trim().length > 0);
+      check(objectives.length > 0, `${label}: pack has learning_objectives`);
+      check(hasContent(pack.summary, 30), `${label}: pack has a substantive summary`);
+      check(hasContent(pack.version, 3), `${label}: pack has a version`);
     }
-    if (a.source_verified === true || a.source_verified === 't' || a.source_verified === 'true') {
-      check(typeof a.source_url === 'string' && /^https?:\/\//i.test(a.source_url), `${label}: verified source has an http(s) source_url`);
+
+    console.log(`-- Disagreement rules (${label}) --`);
+    for (const d of disagreements) {
+      const key = text(d.disagreement_key);
+      if (allDisagreementKeys.has(key)) duplicateDisagreementKeys += 1;
+      allDisagreementKeys.add(key);
+      check(text(d.specialist_a_id) !== text(d.specialist_b_id), `${key}: distinct specialists`);
+      check(specialistIds.has(String(d.specialist_a_id)) && specialistIds.has(String(d.specialist_b_id)), `${key}: both specialists belong to this case`);
+      check(hasContent(d.uncertainty_note, 15), `${key}: records uncertainty`);
+      check(hasContent(d.distinguishing_evidence, 15), `${key}: records distinguishing evidence`);
+      check(hasContent(d.topic, 8), `${key}: substantive topic`);
     }
-    // DTO rule: an unverified source_url must never be exposed as verified.
-    const dto = toPublicArtifactSummary(a);
-    if (a.source_verified !== true && a.source_verified !== 't' && a.source_verified !== 'true') {
-      check(dto.sourceUrl === null, `${label}: DTO hides unverified source_url`);
-    } else {
-      check(dto.sourceUrl === a.source_url, `${label}: DTO exposes verified source_url`);
+
+    console.log(`-- Leakage guard (${label}) --`);
+    const allText = JSON.stringify([...specialists, ...artifacts, ...disagreements, ...packRows]);
+    const forbidden = leakageByTitle.get(label) ?? [];
+    for (let i = 0; i < forbidden.length; i += 1) {
+      // Message never includes the canonical string itself.
+      check(!allText.includes(forbidden[i] as string), `${label}: no canonical leakage (guard term ${i + 1})`);
     }
-    check(!('content' in dto), `${label}: summary DTO omits content`);
+    const evidenceUuids = evidence.map((e) => String(e.id));
+    const leakedUuids = evidenceUuids.filter((id) => allText.includes(id));
+    check(leakedUuids.length === 0, `${label}: no evidence UUID appears in seeded knowledge`);
   }
 
-  console.log('\n== Disagreement rules ==');
-  for (const d of disagreements) {
-    const label = d.disagreement_key;
-    check(String(d.specialist_a_id) !== String(d.specialist_b_id), `${label}: distinct specialists`);
-    check(specialistIds.has(String(d.specialist_a_id)) && specialistIds.has(String(d.specialist_b_id)), `${label}: both specialists belong to the showcase case`);
-    check(typeof d.uncertainty_note === 'string' && d.uncertainty_note.trim().length > 0, `${label}: records uncertainty`);
-    check(typeof d.distinguishing_evidence === 'string' && d.distinguishing_evidence.trim().length > 0, `${label}: records distinguishing evidence`);
-  }
+  console.log('\n== Global uniqueness ==');
+  check(duplicateArtifactKeys === 0, `no duplicate artifact_key (found ${duplicateArtifactKeys})`);
+  check(duplicateDisagreementKeys === 0, `no duplicate disagreement_key (found ${duplicateDisagreementKeys})`);
+  check(KNOWLEDGE_CLASSES.length === 7, 'M3 knowledge_class allowlist has 7 classes');
 
-  console.log('\n== Leakage guard ==');
-  const allText = JSON.stringify([...specialists, ...artifacts, ...disagreements]);
-  for (const forbidden of FORBIDDEN_STRINGS) {
-    check(!allText.includes(forbidden), `no seeded knowledge text contains "${forbidden}"`);
-  }
-  const leakedUuids = evidenceIds.filter((id) => allText.includes(id));
-  check(leakedUuids.length === 0, `no evidence UUID appears in seeded knowledge${leakedUuids.length ? ` (found ${leakedUuids.length})` : ''}`);
-
-  console.log(`\nKNOWLEDGE VALIDATE: ${failures === 0 ? 'PASS' : `FAIL (${failures} issue(s))`}`);
+  console.log(`\nKNOWLEDGE VALIDATE: ${failures === 0 ? 'PASS' : `FAIL (${failures} issue(s))`}${warnings > 0 ? ` with ${warnings} warning(s)` : ''}`);
   if (failures > 0) process.exitCode = 1;
 }
 

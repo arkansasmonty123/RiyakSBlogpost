@@ -7,6 +7,7 @@ interface KnowledgeNotebookProps {
   onCreateNote: (input: { entryType: string; title: string; content: string; concept: string }) => Promise<void>;
   onUpdate: (entryId: string, patch: { title?: string; content?: string; concept?: string; entryType?: string }) => Promise<void>;
   onDelete: (entryId: string) => Promise<void>;
+  onExport: (format: 'json' | 'markdown') => Promise<void>;
   busy?: boolean;
 }
 
@@ -22,8 +23,9 @@ function label(value: string): string {
   return value.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function KnowledgeNotebook({ entries, specialists, onCreateNote, onUpdate, onDelete, busy }: KnowledgeNotebookProps) {
+export function KnowledgeNotebook({ entries, specialists, onCreateNote, onUpdate, onDelete, onExport, busy }: KnowledgeNotebookProps) {
   const [search, setSearch] = useState('');
+  const [exporting, setExporting] = useState<'json' | 'markdown' | null>(null);
   const [typeFilter, setTypeFilter] = useState('all');
   const [draftType, setDraftType] = useState<string>('note');
   const [draftTitle, setDraftTitle] = useState('');
@@ -116,11 +118,43 @@ export function KnowledgeNotebook({ entries, specialists, onCreateNote, onUpdate
     }
   }
 
+  async function handleExport(format: 'json' | 'markdown') {
+    setLocalError(null);
+    setExporting(format);
+    try {
+      await onExport(format);
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Failed to export notebook.');
+    } finally {
+      setExporting(null);
+    }
+  }
+
   return (
     <section className="knowledge-notebook" aria-label="Knowledge notebook">
       <div className="section-heading">
         <h3>Knowledge Notebook</h3>
-        <span className="muted">{entries.length} entr{entries.length === 1 ? 'y' : 'ies'}</span>
+        <div className="button-row">
+          <span className="muted">{entries.length} entr{entries.length === 1 ? 'y' : 'ies'}</span>
+          <button
+            type="button"
+            className="small-button"
+            onClick={() => void handleExport('json')}
+            disabled={entries.length === 0 || exporting !== null}
+            title="Download your notebook as JSON"
+          >
+            {exporting === 'json' ? 'Preparing…' : 'Export JSON'}
+          </button>
+          <button
+            type="button"
+            className="small-button"
+            onClick={() => void handleExport('markdown')}
+            disabled={entries.length === 0 || exporting !== null}
+            title="Download your notebook as Markdown"
+          >
+            {exporting === 'markdown' ? 'Preparing…' : 'Export Markdown'}
+          </button>
+        </div>
       </div>
       <p className="muted">
         Your personal case notebook. Saved artifacts include source provenance; explanation and note
@@ -229,9 +263,20 @@ export function KnowledgeNotebook({ entries, specialists, onCreateNote, onUpdate
                     {snapshot.bibliographyRef && <p className="muted"><strong>Bibliography:</strong> {String(snapshot.bibliographyRef)}</p>}
                     <p className="muted">
                       <strong>Verified:</strong> {snapshot.sourceVerified ? 'Yes' : 'No'}
+                      {snapshot.verificationStatus ? ` · Review: ${label(String(snapshot.verificationStatus))}` : ''}
+                      {snapshot.sourceType ? ` · ${label(String(snapshot.sourceType))}` : ''}
                       {snapshot.knowledgeClass ? ` · ${label(String(snapshot.knowledgeClass))}` : ''}
                       {snapshot.reliability ? ` · ${label(String(snapshot.reliability))}` : ''}
                     </p>
+                    {snapshot.verificationNotes && (
+                      <p className="muted"><strong>Verification notes:</strong> {String(snapshot.verificationNotes)}</p>
+                    )}
+                    {Array.isArray(snapshot.claimsSupported) && snapshot.claimsSupported.length > 0 && (
+                      <p className="muted"><strong>Claims:</strong> {snapshot.claimsSupported.map(String).join('; ')}</p>
+                    )}
+                    {Array.isArray(snapshot.relatedEvidenceRefs) && snapshot.relatedEvidenceRefs.length > 0 && (
+                      <p className="muted"><strong>Related material:</strong> {snapshot.relatedEvidenceRefs.map(String).join('; ')}</p>
+                    )}
                     {snapshot.sourceVerified && snapshot.sourceUrl ? (
                       <p className="muted"><a href={String(snapshot.sourceUrl)} target="_blank" rel="noopener noreferrer">Verified source</a></p>
                     ) : null}

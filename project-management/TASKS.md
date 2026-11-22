@@ -50,3 +50,11 @@
 | PROD-012 | Abandon/reset investigation flow (GAP-10) | builder | done | Owned user can abandon active investigation with confirmation; lock released safely; smoke tests | 2026-11-22: POST /abandon confirm:true, owner-only, completed/abandoned guarded, lock released, frontend dialog, archive visible. Verified: typecheck PASS, smoke-db PASS, frontend build PASS, test:http 42/42 PASS. Scrutinizer APPROVED. |
 | PROD-013 | Suspect board depth (GAP-08) | builder | done | Safe suspect DTO adds public motive/relationships/linked evidence/suspicion/unanswered questions; no secret leakage | 2026-11-22: GET /api/investigations/:id/suspects, sanitized public motive/relationships, linked discovered evidence, suspicion, unanswered questions. Verified: typecheck PASS, smoke-db PASS, frontend build PASS, test:http 45/45 PASS. Scrutinizer APPROVED. |
 | PROD-014 | AI grounding & context discipline (GAP-09) | builder | done | Role-aware context, suspect knowledge projection, rolling summary/retrieval, token/length controls, leakage tests | 2026-11-22: role-aware grounding, safe suspect projection, rolling summary, bounded retrieval, deterministic fallback. Verified: typecheck PASS, smoke-db PASS, frontend build PASS, test:http 49/49 PASS. Scrutinizer APPROVED. |
+
+## M3 - Knowledge Quality & Case Expansion (active)
+
+- [x] **M3-AUDIT**: Audit complete; gaps identified; cases selected.
+- [x] **M3-RESEARCH**: 8 real-source candidates verified (4 Code Blue, 4 Blaze); conservative citations/URLs/notes.
+- [x] **M3-FOUNDATION**: Migration 007, pack framework, provenance DTO/DB/server/validator/UI/export, Midnight Heist upgraded.
+- [x] **M3-CONTENT**: Code Blue at the Clinic and Blaze at Dawn Bakery packs authored and seeded.
+- [x] **M3-VERIFY**: typecheck PASS, db:schema:verify PASS (25/25,258), smoke-db PASS, knowledge:validate PASS, case:validate PASS, frontend build PASS, test:http 73/73 PASS.

@@ -50,6 +50,14 @@ const EXPECTED_TABLES: Record<string, string[]> = {
     'specialist_id', 'case_id', 'source_author', 'source_url', 'source_verified',
     'bibliography_ref', 'publication_date', 'knowledge_class', 'reliability',
     'related_concepts', 'is_fictional', 'usage_note', 'created_at', 'updated_at',
+    // M3 knowledge quality (migration 007).
+    'source_type', 'verification_status', 'verification_notes', 'last_verified_at',
+    'claims_supported', 'learning_objectives', 'related_evidence_refs',
+    'suggested_conversations', 'depth_content',
+  ],
+  case_knowledge_packs: [
+    'id', 'case_id', 'version', 'pack_status', 'learning_objectives', 'summary',
+    'created_at', 'updated_at',
   ],
   knowledge_disagreements: [
     'id', 'disagreement_key', 'case_id', 'topic', 'specialist_a_id', 'specialist_b_id',

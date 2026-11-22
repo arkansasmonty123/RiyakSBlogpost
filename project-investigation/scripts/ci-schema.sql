@@ -849,3 +849,36 @@ CREATE TABLE public.notebook_entries (
 );
 
 CREATE INDEX idx_notebook_entries_investigation_created ON public.notebook_entries USING btree (investigation_id, created_at DESC);
+
+
+-- =============================================================================
+-- M3 knowledge quality (migration 007) - additive provenance metadata and
+-- case knowledge packs. Mirrors migrations/007_m3_knowledge_quality.sql.
+-- =============================================================================
+
+ALTER TABLE public.knowledge_artifacts
+    ADD COLUMN source_type text,
+    ADD COLUMN verification_status text DEFAULT 'draft'::text NOT NULL,
+    ADD COLUMN verification_notes text DEFAULT ''::text,
+    ADD COLUMN last_verified_at text,
+    ADD COLUMN claims_supported jsonb DEFAULT '[]'::jsonb NOT NULL,
+    ADD COLUMN learning_objectives jsonb DEFAULT '[]'::jsonb NOT NULL,
+    ADD COLUMN related_evidence_refs jsonb DEFAULT '[]'::jsonb NOT NULL,
+    ADD COLUMN suggested_conversations jsonb DEFAULT '[]'::jsonb NOT NULL,
+    ADD COLUMN depth_content jsonb DEFAULT '{}'::jsonb NOT NULL;
+
+CREATE TABLE public.case_knowledge_packs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    case_id uuid NOT NULL,
+    version text DEFAULT '1.0.0'::text,
+    pack_status text DEFAULT 'draft'::text NOT NULL,
+    learning_objectives jsonb DEFAULT '[]'::jsonb NOT NULL,
+    summary text DEFAULT ''::text,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT case_knowledge_packs_pkey PRIMARY KEY (id),
+    CONSTRAINT case_knowledge_packs_case_id_key UNIQUE (case_id)
+);
+
+COMMENT ON TABLE public.case_knowledge_packs IS 'M3. Versioned, case-scoped knowledge-pack metadata (learning objectives, review status). No canonical truth.';
+COMMENT ON COLUMN public.knowledge_artifacts.verification_status IS 'M3. draft|pending_review|verified|rejected|needs_reverification. Server-controlled; real sources are never auto-verified.';

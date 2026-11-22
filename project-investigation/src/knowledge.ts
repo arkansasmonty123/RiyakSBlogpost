@@ -61,6 +61,84 @@ export function isNotebookEntryType(value: unknown): value is NotebookEntryType 
 }
 
 // ---------------------------------------------------------------------------
+// M3: provenance / classification allowlists and normalization.
+// ---------------------------------------------------------------------------
+
+/** Server-controlled verification states. Never set to `verified` automatically. */
+export const VERIFICATION_STATUSES = [
+  'draft',
+  'pending_review',
+  'verified',
+  'rejected',
+  'needs_reverification',
+] as const;
+export type VerificationStatus = (typeof VERIFICATION_STATUSES)[number];
+
+export const PACK_STATUSES = ['draft', 'pending_review', 'verified', 'needs_reverification'] as const;
+export type PackStatus = (typeof PACK_STATUSES)[number];
+
+export const KNOWLEDGE_CLASSES = [
+  'established_scientific',
+  'contested_scientific',
+  'historical',
+  'legal',
+  'philosophical',
+  'religious_spiritual',
+  'fictional_in_world',
+] as const;
+export type KnowledgeClass = (typeof KNOWLEDGE_CLASSES)[number];
+
+export const SOURCE_TYPES = [
+  'government_guidance',
+  'standards_body',
+  'peer_reviewed',
+  'reputable_org',
+  'textbook',
+  'news',
+  'legal_reference',
+  'in_world_document',
+  'other',
+] as const;
+export type SourceType = (typeof SOURCE_TYPES)[number];
+
+/** Legacy M2 values remain readable on historical rows and in older clients. */
+export const LEGACY_KNOWLEDGE_CLASSES: Record<string, KnowledgeClass> = {
+  established: 'established_scientific',
+  'methodology-caution': 'contested_scientific',
+  methodology_caution: 'contested_scientific',
+  fictional: 'fictional_in_world',
+};
+
+export function isVerificationStatus(value: unknown): value is VerificationStatus {
+  return typeof value === 'string' && (VERIFICATION_STATUSES as readonly string[]).includes(value);
+}
+
+export function isPackStatus(value: unknown): value is PackStatus {
+  return typeof value === 'string' && (PACK_STATUSES as readonly string[]).includes(value);
+}
+
+export function isSourceType(value: unknown): value is SourceType {
+  return typeof value === 'string' && (SOURCE_TYPES as readonly string[]).includes(value);
+}
+
+/** True for both M3 classes and the legacy M2 aliases. */
+export function isKnowledgeClass(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  return (KNOWLEDGE_CLASSES as readonly string[]).includes(value)
+    || Object.prototype.hasOwnProperty.call(LEGACY_KNOWLEDGE_CLASSES, value);
+}
+
+/** Normalize a legacy class to its M3 equivalent for display/DTOs. */
+export function normalizeKnowledgeClass(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  return LEGACY_KNOWLEDGE_CLASSES[value] ?? value;
+}
+
+export function normalizeVerificationStatus(value: unknown): VerificationStatus {
+  return isVerificationStatus(value) ? value : 'draft';
+}
+
+// ---------------------------------------------------------------------------
 // Small coercion helpers (tolerate both mapRow camelCase and raw snake_case).
 // ---------------------------------------------------------------------------
 
@@ -108,12 +186,25 @@ function bool(value: unknown): boolean {
   return value === true || value === 'true' || value === 1;
 }
 
-// A non-verified source URL is never exposed. This is the only place the API
-// surfaces source_url, so the rule cannot be bypassed by a route.
+// A source URL is exposed only when BOTH the source is flagged verified AND
+// the server-controlled verification status is `verified`. This is the only
+// place the API surfaces source_url, so the rule cannot be bypassed by a route.
 function safeSourceUrl(row: AnyRow): string | null {
   const verified = bool(pick(row, 'sourceVerified', 'source_verified'));
+  const status = normalizeVerificationStatus(pick(row, 'verificationStatus', 'verification_status'));
   const url = pick(row, 'sourceUrl', 'source_url');
-  return verified && typeof url === 'string' && url.trim().length > 0 ? url : null;
+  return verified && status === 'verified' && typeof url === 'string' && url.trim().length > 0 ? url : null;
+}
+
+/** Bound depth content to the three supported keys with string values. */
+export function asDepthContent(value: unknown): { plain?: string; working?: string; technical?: string } {
+  const record = asRecord(value);
+  const result: { plain?: string; working?: string; technical?: string } = {};
+  for (const key of ['plain', 'working', 'technical'] as const) {
+    const text = record[key];
+    if (typeof text === 'string' && text.trim().length > 0) result[key] = clip(text, 1200);
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -150,7 +241,7 @@ export function toPublicArtifactSummary(row: AnyRow) {
     artifactType: str(pick(row, 'artifactType', 'artifact_type')),
     description: str(pick(row, 'description', 'description')),
     specialistKey: str(pick(row, 'specialistKey', 'specialist_key')),
-    knowledgeClass: str(pick(row, 'knowledgeClass', 'knowledge_class')),
+    knowledgeClass: normalizeKnowledgeClass(pick(row, 'knowledgeClass', 'knowledge_class')),
     reliability: str(pick(row, 'reliability', 'reliability')),
     sourceAuthor: str(pick(row, 'sourceAuthor', 'source_author')),
     // Exposed only when verified; otherwise explicitly null.
@@ -160,6 +251,23 @@ export function toPublicArtifactSummary(row: AnyRow) {
     sourceVerified: bool(pick(row, 'sourceVerified', 'source_verified')),
     isFictional: bool(pick(row, 'isFictional', 'is_fictional')),
     relatedConcepts: asStringArray(pick(row, 'relatedConcepts', 'related_concepts')),
+    // M3 provenance / pedagogy fields. All are safely authored strings or
+    // string arrays; no canonical truth is ever part of these lists.
+    sourceType: (() => {
+      const value = pick(row, 'sourceType', 'source_type');
+      return isSourceType(value) ? value : null;
+    })(),
+    verificationStatus: normalizeVerificationStatus(pick(row, 'verificationStatus', 'verification_status')),
+    verificationNotes: str(pick(row, 'verificationNotes', 'verification_notes')),
+    lastVerifiedAt: (() => {
+      const value = pick(row, 'lastVerifiedAt', 'last_verified_at');
+      return typeof value === 'string' && value.length > 0 ? value : null;
+    })(),
+    claimsSupported: asStringArray(pick(row, 'claimsSupported', 'claims_supported')),
+    learningObjectives: asStringArray(pick(row, 'learningObjectives', 'learning_objectives')),
+    relatedEvidenceRefs: asStringArray(pick(row, 'relatedEvidenceRefs', 'related_evidence_refs')),
+    suggestedConversations: asStringArray(pick(row, 'suggestedConversations', 'suggested_conversations')),
+    depthContent: asDepthContent(pick(row, 'depthContent', 'depth_content')),
   };
 }
 
@@ -204,6 +312,90 @@ export function toPublicNotebookEntry(row: AnyRow) {
     createdAt: pick(row, 'createdAt', 'created_at'),
     updatedAt: pick(row, 'updatedAt', 'updated_at'),
   };
+}
+
+// ---------------------------------------------------------------------------
+// M3: case knowledge pack DTO + safe notebook export rendering
+// ---------------------------------------------------------------------------
+
+export function toPublicCaseKnowledgePack(row: AnyRow) {
+  const status = pick(row, 'packStatus', 'pack_status');
+  return {
+    id: str(pick(row, 'id', 'id')),
+    caseId: str(pick(row, 'caseId', 'case_id')),
+    version: str(pick(row, 'version', 'version')) || '1.0.0',
+    packStatus: isPackStatus(status) ? status : 'draft',
+    learningObjectives: asStringArray(pick(row, 'learningObjectives', 'learning_objectives')),
+    summary: str(pick(row, 'summary', 'summary')),
+    createdAt: pick(row, 'createdAt', 'created_at'),
+    updatedAt: pick(row, 'updatedAt', 'updated_at'),
+  };
+}
+
+function markdownText(value: unknown, max: number = KNOWLEDGE_LIMITS.maxReplyChars): string {
+  // Flatten newlines so a single notebook field cannot forge export structure.
+  const flat = str(value).replace(/\r?\n+/g, ' ').trim();
+  return flat ? clip(flat, max) : '—';
+}
+
+/**
+ * Render already-safe notebook DTOs as a readable Markdown document. The input
+ * rows must come from `toPublicNotebookEntry`; this function never reads the
+ * database or canonical truth, so it cannot leak hidden solution content.
+ */
+export function renderNotebookMarkdown(
+  entries: AnyRow[],
+  meta: { caseTitle?: string; investigationId?: string; exportedAt?: string } = {},
+): string {
+  const lines: string[] = [];
+  lines.push('# Investigation Notebook');
+  lines.push('');
+  lines.push(`- Case: ${markdownText(meta.caseTitle ?? 'Unknown case', 160)}`);
+  lines.push(`- Investigation: ${markdownText(meta.investigationId ?? '—', 80)}`);
+  lines.push(`- Exported: ${markdownText(meta.exportedAt ?? new Date().toISOString(), 40)}`);
+  lines.push(`- Entries: ${Array.isArray(entries) ? entries.length : 0}`);
+  lines.push('');
+  if (!Array.isArray(entries) || entries.length === 0) {
+    lines.push('_No notebook entries yet._');
+    return lines.join('\n');
+  }
+  entries.forEach((raw, index) => {
+    const entry = 'entryType' in raw || 'entry_type' in raw ? toPublicNotebookEntry(raw) : raw;
+    lines.push(`## ${index + 1}. ${markdownText(entry.title, 160)}`);
+    lines.push('');
+    lines.push(`**Type:** ${markdownText(entry.entryType, 40)}`);
+    if (entry.concept) lines.push(`**Concept:** ${markdownText(entry.concept, 120)}`);
+    if (entry.createdAt) lines.push(`**Recorded:** ${markdownText(entry.createdAt, 40)}`);
+    lines.push('');
+    if (entry.content) lines.push(markdownText(entry.content, KNOWLEDGE_LIMITS.maxContentChars));
+    const snapshot = entry.sourceSnapshot && typeof entry.sourceSnapshot === 'object' ? entry.sourceSnapshot : {};
+    if (Object.keys(snapshot).length > 0) {
+      lines.push('');
+      lines.push('### Source provenance');
+      lines.push(`- **Artifact:** ${markdownText(snapshot.title || snapshot.artifactKey || 'Artifact', 160)}`);
+      if (snapshot.sourceAuthor) lines.push(`- **Author:** ${markdownText(snapshot.sourceAuthor, 160)}`);
+      if (snapshot.publicationDate) lines.push(`- **Publication:** ${markdownText(snapshot.publicationDate, 80)}`);
+      if (snapshot.bibliographyRef) lines.push(`- **Bibliography:** ${markdownText(snapshot.bibliographyRef, 600)}`);
+      if (snapshot.sourceType) lines.push(`- **Source type:** ${markdownText(snapshot.sourceType, 60)}`);
+      if (snapshot.verificationStatus) lines.push(`- **Review status:** ${markdownText(snapshot.verificationStatus, 60)}`);
+      if (snapshot.verificationNotes) lines.push(`- **Verification notes:** ${markdownText(snapshot.verificationNotes, 600)}`);
+      lines.push(`- **Source verified:** ${snapshot.sourceVerified === true ? 'yes' : 'no'}`);
+      if (snapshot.sourceVerified === true && snapshot.sourceUrl) {
+        lines.push(`- **Source URL:** ${markdownText(snapshot.sourceUrl, 300)}`);
+      }
+      if (Array.isArray(snapshot.claimsSupported) && snapshot.claimsSupported.length > 0) {
+        lines.push(`- **Claims supported:** ${snapshot.claimsSupported.map((c: unknown) => markdownText(c, 200)).join('; ')}`);
+      }
+      if (Array.isArray(snapshot.relatedEvidenceRefs) && snapshot.relatedEvidenceRefs.length > 0) {
+        lines.push(`- **Related evidence refs:** ${snapshot.relatedEvidenceRefs.map((r: unknown) => markdownText(r, 200)).join('; ')}`);
+      }
+      if (snapshot.contentExcerpt) lines.push(`- **Excerpt:** ${markdownText(snapshot.contentExcerpt, 320)}`);
+    }
+    lines.push('');
+    lines.push('---');
+    lines.push('');
+  });
+  return lines.join('\n');
 }
 
 // ---------------------------------------------------------------------------

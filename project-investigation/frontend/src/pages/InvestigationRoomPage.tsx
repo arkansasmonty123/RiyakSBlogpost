@@ -37,6 +37,7 @@ import type {
   NotificationSettings,
   PublicArtifactDetail,
   PublicArtifactSummary,
+  PublicCaseKnowledgePack,
   PublicDisagreement,
   PublicNotebookEntry,
   PublicSpecialist,
@@ -169,6 +170,8 @@ export const InvestigationRoomPage = () => {
   const [specialists, setSpecialists] = useState<PublicSpecialist[]>([]);
   const [artifacts, setArtifacts] = useState<PublicArtifactSummary[]>([]);
   const [disagreements, setDisagreements] = useState<PublicDisagreement[]>([]);
+  // M3: per-case knowledge-pack metadata (null when the case has no pack).
+  const [knowledgePack, setKnowledgePack] = useState<PublicCaseKnowledgePack | null>(null);
   const [notebookEntries, setNotebookEntries] = useState<PublicNotebookEntry[]>([]);
   const [selectedSpecialistKey, setSelectedSpecialistKey] = useState<string | null>(null);
   const [selectedIntent, setSelectedIntent] = useState<KnowledgeIntent>('explain');
@@ -381,7 +384,7 @@ export const InvestigationRoomPage = () => {
         setDiscoveredIds(new Set(inv.discoveredEvidenceIds ?? []));
         setSeenDevelopmentIds(loadSeenDevelopmentIds(inv.id));
 
-        const [evidenceData, suspectBoardData, conversation, journalData, eventData, accusationData, checkpointData, developmentData, notificationSettingsData, specialistsData, artifactsData, disagreementsData, notebookData] =
+        const [evidenceData, suspectBoardData, conversation, journalData, eventData, accusationData, checkpointData, developmentData, notificationSettingsData, specialistsData, artifactsData, disagreementsData, notebookData, knowledgePackData] =
           await Promise.all([
             api.getEvidence(caseId),
             api.getSuspectBoard(inv.id),
@@ -402,6 +405,7 @@ export const InvestigationRoomPage = () => {
             api.getArtifacts(caseId).catch(() => []),
             api.getDisagreements(caseId).catch(() => []),
             api.getNotebook(inv.id).catch(() => []),
+            api.getCaseKnowledgePack(caseId).catch(() => null),
           ]);
 
         if (cancelled) return;
@@ -419,6 +423,7 @@ export const InvestigationRoomPage = () => {
         setSpecialists(Array.isArray(specialistsData) ? specialistsData : []);
         setArtifacts(Array.isArray(artifactsData) ? artifactsData : []);
         setDisagreements(Array.isArray(disagreementsData) ? disagreementsData : []);
+        setKnowledgePack(knowledgePackData ?? null);
         setNotebookEntries(Array.isArray(notebookData) ? notebookData : []);
         const firstOpen = checkpointData?.checkpoints.find((cp) => !cp.completed);
         setSelectedCheckpoint(firstOpen?.id ?? checkpointData?.checkpoints[0]?.id ?? '');
@@ -863,6 +868,7 @@ export const InvestigationRoomPage = () => {
         {activeTab === 'experts' && (
           <div className="experts-tab">
             <ExpertsPanel
+              pack={knowledgePack}
               specialists={specialists}
               disagreements={disagreements}
               selectedSpecialistKey={selectedSpecialistKey}
@@ -1011,6 +1017,7 @@ export const InvestigationRoomPage = () => {
               onCreateNote={handleNotebookCreate}
               onUpdate={handleNotebookUpdate}
               onDelete={handleNotebookDelete}
+              onExport={handleNotebookExport}
               busy={notebookBusy}
             />
           </div>
@@ -1338,6 +1345,32 @@ export const InvestigationRoomPage = () => {
       setNotebookError(errorMessage(err));
     } finally {
       setNotebookBusy(false);
+    }
+  }
+
+  async function handleNotebookExport(format: 'json' | 'markdown') {
+    if (!investigation) return;
+    setNotebookError(null);
+    try {
+      const content = format === 'json'
+        ? JSON.stringify(await api.exportNotebookJson(investigation.id), null, 2)
+        : await api.exportNotebookMarkdown(investigation.id);
+      const mime = format === 'json' ? 'application/json' : 'text/markdown';
+      const ext = format === 'json' ? 'json' : 'md';
+      const blob = new Blob([content], { type: `${mime};charset=utf-8` });
+      const url = URL.createObjectURL(blob);
+      const slug = (caseInfo?.title || 'case')
+        .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `notebook-${slug || 'case'}.${ext}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setNotebookError(errorMessage(err));
+      throw err;
     }
   }
 

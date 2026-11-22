@@ -1623,14 +1623,17 @@ async function main() {
   console.log('\n=== M2 Knowledge System Tests ===\n');
 
   const M2_LEAK_TERMS = ['Victor Sterling', 'hollow base', 'silver trophy', 'Sterling Holdings', '20 million'];
-  function assertNoM2Leak(value: unknown, label: string): void {
+  function assertNoLeak(value: unknown, label: string, terms: string[], uuids: string[] = []): void {
     const serialized = JSON.stringify(value);
-    for (const term of M2_LEAK_TERMS) {
+    for (const term of terms) {
       if (serialized.includes(term)) throw new Error(`${label} leaked canonical term: ${term}`);
     }
-    for (const uuid of evidenceUuids) {
+    for (const uuid of uuids) {
       if (serialized.includes(uuid)) throw new Error(`${label} leaked evidence UUID: ${uuid}`);
     }
+  }
+  function assertNoM2Leak(value: unknown, label: string): void {
+    assertNoLeak(value, label, M2_LEAK_TERMS, evidenceUuids);
   }
   const evidenceUuids: string[] = (await query('SELECT id FROM evidence WHERE case_id = $1', [caseId]))
     .rows.map((r: any) => String(r.id));
@@ -1860,6 +1863,127 @@ async function main() {
       }, cookie);
       if (ownArtifact.status !== 201) throw new Error(`Own-case artifact notebook create failed: ${ownArtifact.status}`);
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // M3 knowledge quality: pack metadata, provenance DTOs, notebook export.
+  // ---------------------------------------------------------------------------
+  console.log('\n=== M3 Knowledge Quality Tests ===\n');
+
+  await test('M3: knowledge-pack endpoint returns safe metadata and counts', async () => {
+    const res = await request('GET', `/api/cases/${caseId}/knowledge-pack`, undefined, m2Cookie);
+    if (res.status !== 200) throw new Error(`Knowledge pack fetch failed: ${res.status} ${JSON.stringify(res.body)}`);
+    const pack = res.body;
+    if (!pack.id || pack.caseId !== caseId) throw new Error('Pack identity/case mismatch');
+    if (typeof pack.version !== 'string' || !pack.version) throw new Error('Pack missing version');
+    if (!['draft', 'pending_review', 'verified', 'needs_reverification'].includes(pack.packStatus)) {
+      throw new Error(`Invalid pack status: ${pack.packStatus}`);
+    }
+    if (!Array.isArray(pack.learningObjectives) || pack.learningObjectives.length === 0) {
+      throw new Error('Pack has no learning objectives');
+    }
+    if (!pack.counts || pack.counts.specialists < 3 || pack.counts.artifacts < 5 || pack.counts.disagreements < 1) {
+      throw new Error(`Pack counts invalid: ${JSON.stringify(pack.counts)}`);
+    }
+    assertNoM2Leak(pack, 'knowledge pack');
+  });
+
+  await test('M3: artifact summaries expose provenance fields with a safe sourceUrl rule', async () => {
+    const list = await request('GET', `/api/cases/${caseId}/artifacts`, undefined, m2Cookie);
+    if (list.status !== 200 || !Array.isArray(list.body)) throw new Error('Artifact list failed');
+    const statuses = ['draft', 'pending_review', 'verified', 'rejected', 'needs_reverification'];
+    for (const a of list.body) {
+      for (const field of [
+        'sourceType', 'verificationStatus', 'verificationNotes', 'lastVerifiedAt',
+        'claimsSupported', 'learningObjectives', 'relatedEvidenceRefs',
+        'suggestedConversations', 'depthContent',
+      ]) {
+        if (!(field in a)) throw new Error(`Artifact ${a.artifactKey} missing ${field}`);
+      }
+      if (!statuses.includes(a.verificationStatus)) throw new Error(`Invalid verificationStatus: ${a.verificationStatus}`);
+      if (!Array.isArray(a.claimsSupported) || !Array.isArray(a.learningObjectives)) {
+        throw new Error('Artifact provenance arrays invalid');
+      }
+      // Tighter rule: a URL requires BOTH flags, never one alone.
+      if (a.sourceUrl !== null && !(a.sourceVerified === true && a.verificationStatus === 'verified')) {
+        throw new Error(`Artifact ${a.artifactKey} exposed sourceUrl without full verification`);
+      }
+    }
+    assertNoM2Leak(list.body, 'M3 artifact summaries');
+  });
+
+  const exportInvId = specialistInvId;
+  const exportEntry = await request('POST', `/api/investigations/${exportInvId}/notebook`, {
+    entryType: 'fact',
+    title: 'M3 export note',
+    concept: 'Provenance',
+    content: 'Export must carry the safe source provenance only.',
+    artifactId: m2Artifacts[0]?.id,
+  }, m2Cookie);
+  if (exportEntry.status !== 201) throw new Error(`M3 export setup failed: ${exportEntry.status}`);
+
+  await test('M3: notebook JSON export is owner-scoped, safe and complete', async () => {
+    const res = await request('GET', `/api/investigations/${exportInvId}/notebook/export?format=json`, undefined, m2Cookie);
+    if (res.status !== 200) throw new Error(`JSON export failed: ${res.status}`);
+    if (!Array.isArray(res.body?.entries) || !res.body.entries.some((e: any) => e.id === exportEntry.body.id)) {
+      throw new Error('JSON export missing the created entry');
+    }
+    if (!res.body.caseTitle || !res.body.exportedAt) throw new Error('JSON export missing metadata');
+    assertNoM2Leak(res.body, 'JSON notebook export');
+    const snapshot = res.body.entries.find((e: any) => e.id === exportEntry.body.id)?.sourceSnapshot ?? {};
+    if ('content' in snapshot) throw new Error('JSON export snapshot leaked artifact content');
+
+    const foreign = await registerAndLogin('m3-export-foreign');
+    const denied = await request('GET', `/api/investigations/${exportInvId}/notebook/export?format=json`, undefined, foreign);
+    if (denied.status !== 403 && denied.status !== 404) throw new Error(`Foreign export not rejected: ${denied.status}`);
+  });
+
+  await test('M3: notebook Markdown export renders text safely and rejects bad format', async () => {
+    const res = await request('GET', `/api/investigations/${exportInvId}/notebook/export?format=markdown`, undefined, m2Cookie);
+    if (res.status !== 200) throw new Error(`Markdown export failed: ${res.status}`);
+    if (typeof res.body !== 'string' || !res.body.includes('# Investigation Notebook')) {
+      throw new Error('Markdown export did not return a document');
+    }
+    if (!res.body.includes('M3 export note')) throw new Error('Markdown export missing entry title');
+    assertNoM2Leak(res.body, 'Markdown notebook export');
+    const bad = await request('GET', `/api/investigations/${exportInvId}/notebook/export?format=pdf`, undefined, m2Cookie);
+    if (bad.status !== 400) throw new Error(`Invalid export format not rejected: ${bad.status}`);
+  });
+
+  await test('M3: Code Blue at the Clinic knowledge pack is seeded and safe', async () => {
+    const codeBlueCaseId = '7d3bae18-779c-5b4f-adf1-6f7a5fb57443';
+    const leakTerms = ['Dr. Paul Kent', 'Paul Kent', 'gambling debts', 'silenced Amy'];
+    const uuids = (await query('SELECT id FROM evidence WHERE case_id = $1', [codeBlueCaseId])).rows.map((r: any) => String(r.id));
+    const res = await request('GET', `/api/cases/${codeBlueCaseId}/knowledge-pack`, undefined, m2Cookie);
+    if (res.status !== 200) throw new Error(`Code Blue pack fetch failed: ${res.status} ${JSON.stringify(res.body)}`);
+    const pack = res.body;
+    if (pack.caseId !== codeBlueCaseId) throw new Error('Code Blue pack case mismatch');
+    if (!Array.isArray(pack.learningObjectives) || pack.learningObjectives.length < 3) throw new Error('Code Blue missing learning objectives');
+    if (!pack.counts || pack.counts.specialists < 3 || pack.counts.artifacts < 5 || pack.counts.disagreements < 1) {
+      throw new Error(`Code Blue pack counts invalid: ${JSON.stringify(pack.counts)}`);
+    }
+    const artifacts = await request('GET', `/api/cases/${codeBlueCaseId}/artifacts`, undefined, m2Cookie);
+    if (artifacts.status !== 200 || !Array.isArray(artifacts.body) || artifacts.body.length < 5) throw new Error('Code Blue artifacts missing');
+    assertNoLeak(pack, 'Code Blue pack', leakTerms, uuids);
+    assertNoLeak(artifacts.body, 'Code Blue artifacts', leakTerms, uuids);
+  });
+
+  await test('M3: Blaze at Dawn Bakery knowledge pack is seeded and safe', async () => {
+    const blazeCaseId = '8160e966-7749-5d8f-a984-261161fbfa65';
+    const leakTerms = ['Victor Ames', 'embezzled from the bakery', 'audit the books'];
+    const uuids = (await query('SELECT id FROM evidence WHERE case_id = $1', [blazeCaseId])).rows.map((r: any) => String(r.id));
+    const res = await request('GET', `/api/cases/${blazeCaseId}/knowledge-pack`, undefined, m2Cookie);
+    if (res.status !== 200) throw new Error(`Blaze pack fetch failed: ${res.status} ${JSON.stringify(res.body)}`);
+    const pack = res.body;
+    if (pack.caseId !== blazeCaseId) throw new Error('Blaze pack case mismatch');
+    if (!Array.isArray(pack.learningObjectives) || pack.learningObjectives.length < 3) throw new Error('Blaze missing learning objectives');
+    if (!pack.counts || pack.counts.specialists < 3 || pack.counts.artifacts < 5 || pack.counts.disagreements < 1) {
+      throw new Error(`Blaze pack counts invalid: ${JSON.stringify(pack.counts)}`);
+    }
+    const artifacts = await request('GET', `/api/cases/${blazeCaseId}/artifacts`, undefined, m2Cookie);
+    if (artifacts.status !== 200 || !Array.isArray(artifacts.body) || artifacts.body.length < 5) throw new Error('Blaze artifacts missing');
+    assertNoLeak(pack, 'Blaze pack', leakTerms, uuids);
+    assertNoLeak(artifacts.body, 'Blaze artifacts', leakTerms, uuids);
   });
 
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);

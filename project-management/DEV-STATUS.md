@@ -9,7 +9,7 @@ Deliver PRD MVP for THE INVESTIGATION (`project-investigation/`) with autonomous
 
 ## Current milestone
 
-P2 polish/hardening - MVP core verified; closing feasible P2 gaps (notifications done, rate-limit persistence, polish), then final QA.
+Milestone 3 complete: Research, Case Expansion & Knowledge Quality. 3 case knowledge packs seeded (Midnight Heist, Code Blue at the Clinic, Blaze at Dawn Bakery).
 
 ## Project snapshot (as inspected 2026-11-22 recovery)
 
@@ -60,6 +60,9 @@ P2 polish/hardening - MVP core verified; closing feasible P2 gaps (notifications
 - [x] **PROD-CONTENT-25**: Seeded 24 additional playable cases (total **25 published cases**). Added `scripts/seed-extra-cases.ts` + `npm run db:seed:cases`; CI bootstrap seeds them; validator/engine checkpoint fallback made case-generic; smoke-http fixture made case-robust. Verified: `case:validate` PASS (25 cases, 202 evidence, 25 canonical truth rows), `test:http` 57/57 PASS. (2026-11-23)
 - [x] **PROD-AI-INFRA**: Pluggable AI provider infra. Supports `USE_LLM`, `LLM_PROVIDER=auto|local|openai|gemini`, `LLM_URL`, `LLM_MODEL`, `LLM_API_KEY`/`GEMINI_API_KEY`/`GOOGLE_API_KEY`; Gemini defaults to OpenAI-compatible endpoint; deterministic fallback preserved. `.env.example` documented. (2026-11-23)
 
+
+- [x] **M3-KNOWLEDGE (M3)**: Knowledge quality/provenance/case expansion. Migration 007 (provenance fields, case_knowledge_packs). Pack authoring framework (`src/knowledge-packs/`). Midnight Heist upgraded; Code Blue at the Clinic and Blaze at Dawn Bakery packs authored (3 specialists, 5 artifacts, 1 disagreement, learning objectives, evidence refs, suggested conversations, depth content each). Research-verified citations used; no fabricated URLs; verification statuses explicit. Case-aware knowledge:validate, notebook export JSON/Markdown, frontend provenance UI. Verified: typecheck PASS, db:schema:verify PASS (25/25 tables, 258 cols), smoke-db PASS, knowledge:validate PASS, case:validate PASS, frontend build PASS, test:http 73/73 PASS. (2026-11-23)
+
 ## Blockers / risks
 
 - **No critical blockers open.** Audited P0/P1 gaps, feasible P2 items, 25-case seed, and pluggable AI infra completed with verification.
@@ -70,4 +73,4 @@ P2 polish/hardening - MVP core verified; closing feasible P2 gaps (notifications
 
 ## Next action
 
-No active blocker. To improve AI quality, provide `GEMINI_API_KEY` (Google AI Studio) and optionally set `LLM_PROVIDER=gemini`/`LLM_MODEL`; I can verify end-to-end. For production deploy/push, provide target infra/credentials. Re-run `npm test` and `npm run case:validate` after changes.
+Milestone 3 complete. Await next milestone direction. Options: expand knowledge packs to more cases, add Gemini key for AI quality, run Playwright UI/a11y pass on request, production hardening/deploy planning.
