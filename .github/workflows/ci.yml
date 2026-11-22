@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Typecheck, DB smoke, frontend build, HTTP smoke
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: project-investigation
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: investigation
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d investigation"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # src/db.ts prefers DATABASE_URL when present; CI uses TCP to the service.
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/investigation
+      # Deterministic mock responder: no external LLM/network dependency in CI.
+      USE_LLM: 'false'
+      CI: 'true'
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            project-investigation/package-lock.json
+            project-investigation/frontend/package-lock.json
+
+      - name: Install API dependencies
+        run: npm ci
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix frontend
+
+      - name: Bootstrap test database
+        # Schema snapshot + seed snapshot + idempotent migrations + canonical
+        # seed. Verified locally by applying all files to an empty DB. The
+        # snapshot already contains 003/004/005 effects; 005 is re-applied
+        # here (idempotent CREATE TABLE IF NOT EXISTS) for defence in depth.
+        run: |
+          for f in \
+            scripts/ci-schema.sql \
+            migrations/001_prod007_canonical_truth.sql \
+            migrations/002_prod008_progression.sql \
+            migrations/005_p2_db_rate_limits.sql \
+            scripts/ci-seed.sql \
+            seed.sql
+          do
+            echo "Applying $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+          echo "Seeding additional playable cases"
+          npx tsx scripts/seed-extra-cases.ts
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Database smoke tests
+        run: npm run test:smoke
+
+      - name: Seeded case content validation
+        # GAP-15: read-only integrity lint of the seeded case (solvability,
+        # reference integrity and safe-DTO allowlists). Non-schema, data-only.
+        run: npm run case:validate
+
+      - name: Frontend production build
+        run: npm run build --prefix frontend
+
+      - name: HTTP integration smoke tests
+        # test:http spawns the API on an ephemeral port and points smoke-http
+        # at it via SMOKE_BASE_URL; no fixed port 3000 dependency in CI.
+        run: npm run test:http
