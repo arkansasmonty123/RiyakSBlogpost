@@ -45,11 +45,47 @@ export interface Relationship {
   professionalDependence: number;
 }
 
+export type RelationshipDimension = keyof Omit<Relationship, 'fromId' | 'toId'>;
+
+export interface RelationshipEffect {
+  characterId: string;
+  dimension: RelationshipDimension;
+  amount: number;
+}
+
+/** A deterministic dialogue interaction. Content must respect character knowledge boundaries. */
+export interface DialogueChoice {
+  id: string;
+  label: string;
+  reply: string;
+  effects: RelationshipEffect[];
+  /** A specific, player-legible event that the character remembers. Never canonical truth. */
+  memory: string;
+}
+
+export interface DialogueScene {
+  id: string;
+  characterId: string;
+  prompt: string;
+  minDay: number;
+  once: boolean;
+  choices: DialogueChoice[];
+}
+
 export interface MemoryEvent {
   id: string;
   day: number;
   summary: string;
   participants: string[];
+}
+
+export type Admissibility = 'unknown' | 'admissible' | 'questionable' | 'inadmissible';
+export type Reliability = 'unknown' | 'high' | 'medium' | 'low';
+
+export interface EvidenceAssessment {
+  admissibility: Admissibility;
+  reliability: Reliability;
+  rationale: string;
 }
 
 export interface EvidenceItem {
@@ -58,8 +94,13 @@ export interface EvidenceItem {
   type: 'physical' | 'digital' | 'medical' | 'testimony' | 'documentary' | 'expert';
   description: string;
   discovered: boolean;
-  admissibility: 'unknown' | 'admissible' | 'questionable' | 'inadmissible';
-  reliability: 'unknown' | 'high' | 'medium' | 'low';
+  /** Whether the player has actually inspected the item. Assessment fields unlock only after this. */
+  reviewed: boolean;
+  /** Baseline values revealed after discovery (deterministic stub, NOT canonical authenticity). */
+  admissibility: Admissibility;
+  reliability: Reliability;
+  /** The player's own provisional assessment; empty until reviewed. */
+  assessment: EvidenceAssessment;
   provenance: string;
 }
 
@@ -101,27 +142,50 @@ export interface LegalSource {
 export interface NotebookEntry {
   id: string;
   day: number;
-  kind: 'note' | 'provision' | 'fact' | 'mistake' | 'feedback' | 'research';
+  kind: 'note' | 'provision' | 'fact' | 'mistake' | 'feedback' | 'research' | 'contradiction';
   title: string;
   content: string;
   sourceId?: string;
   source?: string;
   verified?: boolean;
+  /** Set on contradiction/corroboration notes so the source item is traceable. */
+  evidenceId?: string;
+  relation?: 'contradiction' | 'corroboration';
 }
+
+export type AssignmentStatus = 'locked' | 'pending' | 'active' | 'submitted' | 'reviewed';
 
 export interface Assignment {
   id: string;
+  /** Earliest in-game day on which this assignment can unlock. */
   day: number;
+  /** Another assignment that must be reviewed before this one unlocks. */
+  unlockAfter?: string;
   title: string;
   description: string;
-  status: 'pending' | 'active' | 'submitted' | 'reviewed';
+  status: AssignmentStatus;
   requiredEvidenceIds: string[];
   requiredSourceIds: string[];
+  /** Notebook kinds the player must produce before this assignment can be reviewed. */
+  requiredNotebookKinds?: NotebookEntry['kind'][];
   feedback?: string;
 }
 
+export interface DraftVersion {
+  id: string;
+  savedAt: string; // ISO timestamp
+  day: number;
+  slot: GameClock['slot'];
+  text: string;
+}
+
+export interface DraftState {
+  current: string;
+  versions: DraftVersion[];
+}
+
 export interface SaveGame {
-  version: 1;
+  version: 2;
   savedAt: string;
   player: PlayerProfile;
   clock: GameClock;
@@ -134,4 +198,7 @@ export interface SaveGame {
   notebook: NotebookEntry[];
   selectedViewpoint: string;
   flags: Record<string, boolean>;
+  /** Static dialogue scenes the player has already resolved (by scene id). */
+  usedDialogueSceneIds: string[];
+  draft: DraftState;
 }

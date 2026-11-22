@@ -1,39 +1,120 @@
-import type { SaveGame } from '@/domain/types';
+import { MAX_DRAFT_CHARS, MAX_DRAFT_VERSIONS } from '@/domain/draft';
 import { createInitialSave } from '@/domain/seed';
+import type { Assignment, DraftState, EvidenceItem, SaveGame } from '@/domain/types';
 
-const KEY = 'the-bar-save-v1';
+export const SAVE_KEY = 'the-bar-save-v2';
+export const LEGACY_KEY = 'the-bar-save-v1';
 
-export function loadSave(): SaveGame {
+export interface StorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
+function defaultStorage(): StorageLike {
+  if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
+  // Non-browser contexts (e.g. unit tests that pass explicit storage) never persist.
+  return { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
+}
+
+function mergeById<T extends { id: string }>(baseItems: T[], parsed: unknown): T[] {
+  if (!Array.isArray(parsed) || parsed.length === 0) return baseItems;
+  const defaults = new Map(baseItems.map((item) => [item.id, item]));
+  return (parsed as T[])
+    .filter((item) => item && typeof item === 'object' && typeof item.id === 'string')
+    .map((item) => ({ ...(defaults.get(item.id) ?? ({} as T)), ...item }));
+}
+
+function mergeEvidence(base: EvidenceItem[], parsed: unknown): EvidenceItem[] {
+  return mergeById<EvidenceItem>(base, parsed).map((item) => ({
+    ...item,
+    discovered: item.discovered ?? false,
+    reviewed: item.reviewed ?? false,
+    admissibility: item.admissibility ?? 'unknown',
+    reliability: item.reliability ?? 'unknown',
+    // v1 saves have no assessment object; fill defaults so old data stays loadable.
+    assessment: {
+      admissibility: item.assessment?.admissibility ?? 'unknown',
+      reliability: item.assessment?.reliability ?? 'unknown',
+      rationale: item.assessment?.rationale ?? '',
+    },
+  }));
+}
+
+function mergeAssignments(base: Assignment[], parsed: unknown): Assignment[] {
+  return mergeById<Assignment>(base, parsed).map((item) => ({
+    ...item,
+    status: item.status ?? 'locked',
+    requiredNotebookKinds: item.requiredNotebookKinds ?? [],
+  }));
+}
+
+function mergeDraft(base: DraftState, parsed: unknown): DraftState {
+  if (!parsed || typeof parsed !== 'object') return base;
+  const value = parsed as Partial<DraftState>;
+  return {
+    current: typeof value.current === 'string' ? value.current.slice(0, MAX_DRAFT_CHARS) : base.current,
+    versions: Array.isArray(value.versions) ? value.versions.slice(0, MAX_DRAFT_VERSIONS) : base.versions,
+  };
+}
+
+/** Load v1 or v2 saves, merging new fields over sane defaults. Never trusts unknown versions. */
+export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = storage.getItem(SAVE_KEY) ?? storage.getItem(LEGACY_KEY);
     if (!raw) return createInitialSave();
     const parsed = JSON.parse(raw) as Partial<SaveGame>;
-    if (parsed.version !== 1) return createInitialSave();
+    const version = (parsed as { version?: number }).version;
+    if (version !== 1 && version !== 2) return createInitialSave();
+
     const base = createInitialSave();
+    const parsedCase = parsed.caseFile as Partial<SaveGame['caseFile']> | undefined;
     return {
       ...base,
       ...parsed,
-      player: { ...base.player, ...(parsed.player || {}) },
-      clock: { ...base.clock, ...(parsed.clock || {}) },
-      characters: parsed.characters?.length ? parsed.characters as SaveGame['characters'] : base.characters,
-      relationships: parsed.relationships?.length ? parsed.relationships as SaveGame['relationships'] : base.relationships,
-      memories: parsed.memories?.length ? parsed.memories as SaveGame['memories'] : base.memories,
-      caseFile: { ...base.caseFile, ...(parsed.caseFile || {}), evidence: (parsed.caseFile?.evidence?.length ? parsed.caseFile.evidence : base.caseFile.evidence) as SaveGame['caseFile']['evidence'], canonicalTruth: { ...base.caseFile.canonicalTruth, ...(parsed.caseFile?.canonicalTruth || {}) } },
-      legalSources: parsed.legalSources?.length ? parsed.legalSources as SaveGame['legalSources'] : base.legalSources,
-      assignments: parsed.assignments?.length ? parsed.assignments as SaveGame['assignments'] : base.assignments,
-      notebook: parsed.notebook?.length ? parsed.notebook as SaveGame['notebook'] : base.notebook,
-      flags: { ...base.flags, ...(parsed.flags || {}) },
+      version: 2,
+      savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : base.savedAt,
+      player: { ...base.player, ...(parsed.player ?? {}) },
+      clock: { ...base.clock, ...(parsed.clock ?? {}) },
+      characters: parsed.characters?.length ? (parsed.characters as SaveGame['characters']) : base.characters,
+      relationships: parsed.relationships?.length ? (parsed.relationships as SaveGame['relationships']) : base.relationships,
+      memories: parsed.memories?.length ? (parsed.memories as SaveGame['memories']) : base.memories,
+      caseFile: {
+        ...base.caseFile,
+        ...(parsedCase ?? {}),
+        evidence: mergeEvidence(base.caseFile.evidence, parsedCase?.evidence),
+        canonicalTruth: { ...base.caseFile.canonicalTruth, ...(parsedCase?.canonicalTruth ?? {}) },
+      },
+      legalSources: parsed.legalSources?.length ? (parsed.legalSources as SaveGame['legalSources']) : base.legalSources,
+      assignments: mergeAssignments(base.assignments, parsed.assignments),
+      notebook: parsed.notebook?.length ? (parsed.notebook as SaveGame['notebook']) : base.notebook,
+      flags: { ...base.flags, ...(parsed.flags ?? {}) },
+      usedDialogueSceneIds: Array.isArray(parsed.usedDialogueSceneIds)
+        ? parsed.usedDialogueSceneIds.filter((id): id is string => typeof id === 'string')
+        : base.usedDialogueSceneIds,
+      draft: mergeDraft(base.draft, parsed.draft),
     };
   } catch {
     return createInitialSave();
   }
 }
 
-export function persistSave(save: SaveGame): void {
-  localStorage.setItem(KEY, JSON.stringify({ ...save, savedAt: new Date().toISOString() }));
+export function persistSave(save: SaveGame, storage: StorageLike = defaultStorage()): void {
+  const payload: SaveGame = {
+    ...save,
+    version: 2,
+    savedAt: new Date().toISOString(),
+    draft: {
+      current: save.draft.current,
+      versions: save.draft.versions.slice(0, MAX_DRAFT_VERSIONS),
+    },
+  };
+  storage.setItem(SAVE_KEY, JSON.stringify(payload));
+  storage.removeItem(LEGACY_KEY);
 }
 
-export function resetSave(): SaveGame {
-  localStorage.removeItem(KEY);
+export function resetSave(storage: StorageLike = defaultStorage()): SaveGame {
+  storage.removeItem(SAVE_KEY);
+  storage.removeItem(LEGACY_KEY);
   return createInitialSave();
 }

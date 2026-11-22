@@ -2,7 +2,7 @@
 
 **THE BAR** is a planned immersive, persistent legal-career simulator set in India. The player begins as a newcomer/intern under a senior lawyer and builds a career through legal work, relationships, difficult cases, professional choices, and courtroom experience.
 
-> **Status:** Documentation/planning phase. No application implementation exists yet in this repository. This repo currently contains product context and planning artifacts only.
+> **Status:** P0 prototype implemented — "The First Brief — Office Prototype" (ADR-002). A playable 7-day first-chapter slice runs locally; runtime AI remains stubbed/disabled.
 
 ## Primary reference
 
@@ -19,8 +19,9 @@
 
 - Repository: `/home/divyanshukumarsinha241/project-courtroom`
 - Git: initialized (local)
-- Application scaffold: **P0 prototype shell** (Vite + React + TypeScript + Tailwind)
-- Tests: `vitest` (2 passing case-truth separation tests)
+- Application: **P0 prototype** (Vite + React + TypeScript + Tailwind), localStorage save (v1 saves migrate to v2)
+- Gameplay: Days 1–7 progression with unlockable assignments, dialogue consequences (relationships + memories), evidence review/assessment/contradiction notes, notebook, editable draft with version history, deterministic citation guard and senior feedback
+- Tests: `vitest` (22 passing tests across domain, migration, guardrails and a render smoke check)
 - Runtime AI: deterministic stub only (no provider/model bundled)
 - Verified legal corpus/data: minimal fictional seed only; no real legal corpus ingested
 - Visual assets: placeholder/composed UI (no final art assets)
@@ -50,4 +51,4 @@ npm run dev
 
 ## Next step
 
-Continue P0 "The First Brief — Office Prototype" (ADR-002): deepen scene interactions, evidence discovery, notebook/drafting loop, save/load polish, and add guardrail tests — while maintaining >2 GB available storage.
+Broaden the first chapter beyond Day 7 (client interview, courtroom exposure), add real verified legal sources with provenance, and add accessibility/visual QA in a real browser when a browser binary is available — while maintaining >2 GB available storage.

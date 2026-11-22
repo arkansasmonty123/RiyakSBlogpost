@@ -30,4 +30,21 @@ describe('citation guardrails', () => {
     expect(result.ok).toBe(false);
     expect(result.blocked.some((b) => b.includes('Foo v. Bar'))).toBe(true);
   });
+
+  it('still blocks fabricated citations on the v2 save shape while allowing sourced prose', () => {
+    const save = createInitialSave();
+    expect(save.version).toBe(2);
+    const fabricated = checkDraftCitations(
+      'As per Section 302 of IPC and State v. Imaginary, the accused is guilty. BNSS applies.',
+      save.legalSources,
+    );
+    expect(fabricated.ok).toBe(false);
+    expect(fabricated.blocked.length).toBeGreaterThan(0);
+
+    const sourced = checkDraftCitations(
+      'Issue: what happened? Facts are disputed. The verified educational summary on authenticity and reliability is noted.',
+      save.legalSources,
+    );
+    expect(sourced.ok).toBe(true);
+  });
 });

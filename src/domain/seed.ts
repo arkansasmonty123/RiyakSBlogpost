@@ -1,8 +1,139 @@
-import type { SaveGame } from './types';
+import type { DialogueScene, SaveGame } from './types';
+
+export const DEFAULT_DRAFT =
+  'Issue:\nFacts (known/claimed/disputed):\nRelevant law (verified sources only):\nAnalysis:\nConclusion:';
+
+/**
+ * Static, deterministic dialogue content. Replies and memories contain only what the
+ * player / participating character could legitimately know. No canonical case truth.
+ */
+export const DIALOGUE_SCENES: DialogueScene[] = [
+  {
+    id: 'd-senior-intro',
+    characterId: 'senior',
+    minDay: 1,
+    once: true,
+    prompt: 'Adv. Meera Kulkarni asks how you will approach your first assignment.',
+    choices: [
+      {
+        id: 'separate-facts',
+        label: 'Separate known facts, claims and unknowns; verify sources before citing.',
+        reply: 'Adv. Meera Kulkarni: "Good. Facts, claims and unknowns — never blur them, and never cite what you have not verified."',
+        effects: [
+          { characterId: 'senior', dimension: 'trust', amount: 5 },
+          { characterId: 'senior', dimension: 'respect', amount: 5 },
+        ],
+        memory: 'Told Adv. Meera Kulkarni you would separate known facts, claims and unknowns before citing law.',
+      },
+      {
+        id: 'cite-from-memory',
+        label: 'Draft fast and cite statutes from memory to save time.',
+        reply: 'Adv. Meera Kulkarni: "No. Unverified citations harm the client and this firm. Verify first, then write."',
+        effects: [
+          { characterId: 'senior', dimension: 'trust', amount: -6 },
+          { characterId: 'senior', dimension: 'respect', amount: -4 },
+          { characterId: 'senior', dimension: 'resentment', amount: 3 },
+        ],
+        memory: 'Suggested citing statutes from memory; Adv. Meera Kulkarni corrected you on verification.',
+      },
+    ],
+  },
+  {
+    id: 'd-peer-day2',
+    characterId: 'peer',
+    minDay: 2,
+    once: true,
+    prompt: 'Arjun asks how your first fact matrix is coming along.',
+    choices: [
+      {
+        id: 'ask-review',
+        label: 'Ask Arjun to review your matrix for claim-vs-fact errors.',
+        reply: 'Arjun: "Sure. Send it over and I will mark what is claim and what is fact."',
+        effects: [
+          { characterId: 'peer', dimension: 'trust', amount: 4 },
+          { characterId: 'peer', dimension: 'affection', amount: 3 },
+          { characterId: 'peer', dimension: 'professionalDependence', amount: -2 },
+        ],
+        memory: 'Asked Arjun to review your fact matrix; he agreed.',
+      },
+      {
+        id: 'decline-help',
+        label: 'Say it is fine; you do not need help.',
+        reply: 'Arjun: "Suit yourself."',
+        effects: [
+          { characterId: 'peer', dimension: 'trust', amount: -2 },
+          { characterId: 'peer', dimension: 'affection', amount: -3 },
+          { characterId: 'peer', dimension: 'rivalry', amount: 3 },
+        ],
+        memory: 'Declined Arjun’s offer to review your fact matrix.',
+      },
+    ],
+  },
+  {
+    id: 'd-clerk-day4',
+    characterId: 'clerk',
+    minDay: 4,
+    once: true,
+    prompt: 'Rao offers to show you the filing register for the altercation matter.',
+    choices: [
+      {
+        id: 'inspect-register',
+        label: 'Ask to see the register entries and their dates.',
+        reply: 'Rao: "Here. Entries and dates — procedure and records, not legal conclusions."',
+        effects: [
+          { characterId: 'clerk', dimension: 'trust', amount: 5 },
+          { characterId: 'clerk', dimension: 'respect', amount: 3 },
+        ],
+        memory: 'Reviewed filing register dates with Rao.',
+      },
+      {
+        id: 'ask-fault',
+        label: 'Ask Rao who is really at fault.',
+        reply: 'Rao: "That is not in my register, and it is not for me to say."',
+        effects: [
+          { characterId: 'clerk', dimension: 'respect', amount: -5 },
+          { characterId: 'clerk', dimension: 'trust', amount: -4 },
+          { characterId: 'clerk', dimension: 'resentment', amount: 4 },
+        ],
+        memory: 'Asked Rao for a conclusion outside his knowledge; he declined.',
+      },
+    ],
+  },
+  {
+    id: 'd-senior-evidence',
+    characterId: 'senior',
+    minDay: 5,
+    once: true,
+    prompt: 'Adv. Meera Kulkarni asks where your evidence review stands.',
+    choices: [
+      {
+        id: 'report-review',
+        label: 'Report what you reviewed and note the gap in the recording.',
+        reply: 'Adv. Meera Kulkarni: "Good. Tie every note to the item you actually reviewed."',
+        effects: [
+          { characterId: 'senior', dimension: 'trust', amount: 6 },
+          { characterId: 'senior', dimension: 'respect', amount: 5 },
+          { characterId: 'senior', dimension: 'loyalty', amount: 3 },
+        ],
+        memory: 'Reported completed evidence review and a contradiction note to Adv. Meera Kulkarni.',
+      },
+      {
+        id: 'admit-behind',
+        label: 'Admit you have not reviewed the items yet.',
+        reply: 'Adv. Meera Kulkarni: "Then draw no conclusions. Review first."',
+        effects: [
+          { characterId: 'senior', dimension: 'trust', amount: -4 },
+          { characterId: 'senior', dimension: 'respect', amount: -3 },
+        ],
+        memory: 'Admitted to Adv. Meera Kulkarni that evidence review was incomplete.',
+      },
+    ],
+  },
+];
 
 export function createInitialSave(): SaveGame {
   return {
-    version: 1,
+    version: 2,
     savedAt: new Date().toISOString(),
     player: {
       id: 'player',
@@ -12,7 +143,7 @@ export function createInitialSave(): SaveGame {
     },
     clock: { day: 1, slot: 'morning' },
     selectedViewpoint: 'entrance',
-    flags: { introSeen: false, caseAccepted: false, assignment1Submitted: false, assignment2Submitted: false },
+    flags: { introSeen: false, caseAccepted: false, assignment1Submitted: false, assignment2Submitted: false, assignment3Submitted: false },
     characters: [
       {
         id: 'senior',
@@ -92,7 +223,7 @@ export function createInitialSave(): SaveGame {
         id: 'a1',
         day: 1,
         title: 'Initial fact matrix',
-        description: 'Identify known facts, allegations, disputed points, and unknowns for The Canteen Altercation. Discover at least one piece of evidence.',
+        description: 'Identify known facts, allegations, disputed points, and unknowns. Discover and review at least one piece of evidence.',
         status: 'active',
         requiredEvidenceIds: ['ev-1'],
         requiredSourceIds: ['ls-4'],
@@ -100,11 +231,23 @@ export function createInitialSave(): SaveGame {
       {
         id: 'a2',
         day: 3,
+        unlockAfter: 'a1',
         title: 'Case brief draft',
         description: 'Draft a short case brief with Issue, Facts, Verified Law/Source Notes, Analysis, and Conclusion. Do not fabricate citations.',
-        status: 'pending',
+        status: 'locked',
         requiredEvidenceIds: ['ev-1', 'ev-2'],
         requiredSourceIds: ['ls-4'],
+      },
+      {
+        id: 'a3',
+        day: 5,
+        unlockAfter: 'a2',
+        title: 'Evidence contradiction note',
+        description: 'Review the evidence items and record a contradiction or corroboration note tied to an item in your notebook.',
+        status: 'locked',
+        requiredEvidenceIds: ['ev-1', 'ev-2', 'ev-3'],
+        requiredSourceIds: ['ls-4'],
+        requiredNotebookKinds: ['contradiction'],
       },
     ],
     notebook: [
@@ -134,10 +277,27 @@ export function createInitialSave(): SaveGame {
       admissibleMaterial: [],
       unresolvedAmbiguity: ['What happened in the missing 20 seconds of video?'],
       evidence: [
-        { id: 'ev-1', title: 'Medical report summary', type: 'medical', description: 'Minor injury noted; timing disputed.', discovered: false, admissibility: 'unknown', reliability: 'unknown', provenance: 'Clinic record (fictional seed)' },
-        { id: 'ev-2', title: 'Canteen CCTV clip', type: 'digital', description: 'Partial footage; missing segment before shove.', discovered: false, admissibility: 'unknown', reliability: 'unknown', provenance: 'Canteen camera export (fictional seed)' },
-        { id: 'ev-3', title: 'Witness statement', type: 'testimony', description: 'Eyewitness claims to have seen full incident; consistency untested.', discovered: false, admissibility: 'unknown', reliability: 'unknown', provenance: 'Interview note (fictional seed)' },
+        {
+          id: 'ev-1', title: 'Medical report summary', type: 'medical', description: 'Minor injury noted; timing disputed.',
+          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
+          provenance: 'Clinic record (fictional seed)',
+        },
+        {
+          id: 'ev-2', title: 'Canteen CCTV clip', type: 'digital', description: 'Partial footage; missing segment before shove.',
+          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
+          provenance: 'Canteen camera export (fictional seed)',
+        },
+        {
+          id: 'ev-3', title: 'Witness statement', type: 'testimony', description: 'Eyewitness claims to have seen full incident; consistency untested.',
+          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
+          provenance: 'Interview note (fictional seed)',
+        },
       ],
     },
+    usedDialogueSceneIds: [],
+    draft: { current: DEFAULT_DRAFT, versions: [] },
   };
 }

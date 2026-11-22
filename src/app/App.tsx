@@ -1,7 +1,18 @@
 import { useMemo, useState } from 'react';
 import { loadSave, persistSave, resetSave } from '@/storage/save';
 import { checkDraftCitations } from '@/domain/guards';
-import type { SaveGame, EvidenceItem, NotebookEntry } from '@/domain/types';
+import { assertNoCanonicalTruthLeak, toPlayerCaseView } from '@/domain/caseAccess';
+import { advanceClock, currentObjective, isAssignmentUnlocked, makeId, reviewAssignment } from '@/domain/progression';
+import { applyDialogueChoice, availableDialogueScenes } from '@/domain/dialogue';
+import { addEvidenceNote, discoverEvidenceItem, reviewEvidence, setEvidenceAssessment } from '@/domain/evidence';
+import { loadDraftVersion, MAX_DRAFT_CHARS, saveDraftVersion, setCurrentDraft } from '@/domain/draft';
+import type {
+  Admissibility,
+  Assignment,
+  NotebookEntry,
+  Reliability,
+  SaveGame,
+} from '@/domain/types';
 
 const VIEWPOINTS: Record<string, { label: string; description: string; hotspots: Array<{ id: string; label: string; action: string }> }> = {
   entrance: {
@@ -11,6 +22,7 @@ const VIEWPOINTS: Record<string, { label: string; description: string; hotspots:
       { id: 'door', label: 'Door', action: 'view:bookshelf' },
       { id: 'senior', label: 'Senior Mentor', action: 'dialogue:senior' },
       { id: 'desk', label: 'Desk', action: 'view:desk' },
+      { id: 'window', label: 'Window', action: 'view:window' },
     ],
   },
   desk: {
@@ -18,6 +30,7 @@ const VIEWPOINTS: Record<string, { label: string; description: string; hotspots:
     description: 'Case files, drafts, and notes are spread across the desk.',
     hotspots: [
       { id: 'casefile', label: 'Case File', action: 'panel:case' },
+      { id: 'assignments', label: 'Assignments', action: 'panel:assignments' },
       { id: 'draft', label: 'Draft Pad', action: 'panel:draft' },
       { id: 'back', label: 'Back to Entrance', action: 'view:entrance' },
     ],
@@ -28,6 +41,7 @@ const VIEWPOINTS: Record<string, { label: string; description: string; hotspots:
     hotspots: [
       { id: 'research', label: 'Legal Research', action: 'panel:research' },
       { id: 'notebook', label: 'Notebook', action: 'panel:notebook' },
+      { id: 'evidence', label: 'Evidence', action: 'panel:evidence' },
       { id: 'back', label: 'Back to Entrance', action: 'view:entrance' },
     ],
   },
@@ -41,20 +55,32 @@ const VIEWPOINTS: Record<string, { label: string; description: string; hotspots:
   },
 };
 
-function nextSlot(slot: SaveGame['clock']['slot']): SaveGame['clock']['slot'] {
-  if (slot === 'morning') return 'afternoon';
-  if (slot === 'afternoon') return 'evening';
-  return 'morning';
+const PANELS = ['case', 'assignments', 'evidence', 'research', 'draft', 'notebook', 'dialogue'] as const;
+type Panel = (typeof PANELS)[number];
+
+function makeNotebookEntry(entry: Omit<NotebookEntry, 'id' | 'day'>, save: SaveGame): NotebookEntry {
+  return { id: makeId('n'), day: save.clock.day, ...entry };
 }
 
 export function App() {
   const [save, setSave] = useState<SaveGame>(() => loadSave());
-  const [panel, setPanel] = useState<string>('case');
-  const [dialogue, setDialogue] = useState<string>('Adv. Meera Kulkarni: "Welcome. Read the facts carefully. Separate what is known, claimed, disputed, and unknown."');
-  const [draft, setDraft] = useState<string>('Issue:\nFacts (known/claimed/disputed):\nRelevant law (verified sources only):\nAnalysis:\nConclusion:');
+  const [panel, setPanel] = useState<Panel>('case');
+  const [draft, setDraft] = useState<string>(() => save.draft.current);
+  const [dialogue, setDialogue] = useState<string>(
+    'Adv. Meera Kulkarni: "Welcome. Read the facts carefully. Separate what is known, claimed, disputed, and unknown."',
+  );
+  const [noteTarget, setNoteTarget] = useState<string | null>(null);
+  const [noteRelation, setNoteRelation] = useState<'contradiction' | 'corroboration'>('contradiction');
+  const [noteText, setNoteText] = useState('');
 
   const viewpoint = VIEWPOINTS[save.selectedViewpoint] ?? VIEWPOINTS.entrance;
-  const discoveredEvidence = useMemo(() => save.caseFile.evidence.filter((e) => e.discovered), [save.caseFile.evidence]);
+  // The UI only ever reads the sanitized player view, never the canonical case file.
+  const playerCase = useMemo(() => toPlayerCaseView(save.caseFile), [save.caseFile]);
+  const objective = useMemo(() => currentObjective(save), [save]);
+  const dialogueScenes = useMemo(() => availableDialogueScenes(save), [save]);
+  const discoveredCount = playerCase.evidence.filter((e) => e.discovered).length;
+  // Dev-time guard: fail loudly if any future UI change starts projecting canonical truth.
+  if (import.meta.env.DEV) assertNoCanonicalTruthLeak(playerCase);
 
   function update(mutator: (s: SaveGame) => SaveGame) {
     setSave((prev) => {
@@ -66,41 +92,82 @@ export function App() {
 
   function addNotebook(entry: Omit<NotebookEntry, 'id' | 'day'>) {
     update((s) => {
-      s.notebook.unshift({ id: `n-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, day: s.clock.day, ...entry });
+      s.notebook.unshift(makeNotebookEntry(entry, s));
       return s;
     });
   }
 
   function discoverEvidence(id: string) {
+    const item = save.caseFile.evidence.find((e) => e.id === id);
+    if (!item || item.discovered) return;
     update((s) => {
-      const ev = s.caseFile.evidence.find((e) => e.id === id);
-      if (!ev || ev.discovered) return s;
-      ev.discovered = true;
-      ev.admissibility = 'questionable';
-      ev.reliability = ev.id === 'ev-3' ? 'low' : 'medium';
+      const ev = discoverEvidenceItem(s, id);
+      if (!ev) return s;
       s.caseFile.playerKnowledge.push(`Discovered: ${ev.title}`);
-      s.memories.unshift({ id: `m-${Date.now()}`, day: s.clock.day, summary: `Discovered evidence: ${ev.title}`, participants: ['player'] });
+      s.memories.unshift({ id: makeId('m'), day: s.clock.day, summary: `Discovered evidence: ${ev.title}`, participants: ['player'] });
+      s.notebook.unshift(makeNotebookEntry({
+        kind: 'fact', title: `Evidence: ${ev.title}`, content: ev.description,
+        source: ev.provenance, verified: false,
+      }, s));
       return s;
     });
-    const ev = save.caseFile.evidence.find((e) => e.id === id);
-    if (ev && !ev.discovered) addNotebook({ kind: 'fact', title: `Evidence: ${ev.title}`, content: ev.description, source: ev.provenance, verified: false });
+    setDialogue(`System: Discovered ${item.title}. Inspect it to mark it reviewed and record your own assessment.`);
   }
 
-  function advanceTime() {
+  function doReviewEvidence(id: string) {
     update((s) => {
-      const prevSlot = s.clock.slot;
-      s.clock.slot = nextSlot(s.clock.slot);
-      if (prevSlot === 'evening') s.clock.day += 1;
-      s.memories.unshift({ id: `m-${Date.now()}`, day: s.clock.day, summary: `Time advanced to Day ${s.clock.day}, ${s.clock.slot}.`, participants: ['player'] });
+      if (!reviewEvidence(s, id)) return s;
+      const ev = s.caseFile.evidence.find((e) => e.id === id);
+      if (ev) s.notebook.unshift(makeNotebookEntry({
+        kind: 'fact', title: `Reviewed: ${ev.title}`,
+        content: 'Reviewed the item and recorded a provisional admissibility/reliability assessment. Authenticity has not been determined.',
+        source: ev.provenance, verified: false, evidenceId: ev.id,
+      }, s));
       return s;
     });
+  }
+
+  function doSetAssessment(id: string, patch: Parameters<typeof setEvidenceAssessment>[2]) {
+    update((s) => {
+      setEvidenceAssessment(s, id, patch);
+      return s;
+    });
+  }
+
+  function doSaveNote() {
+    if (!noteTarget || !noteText.trim()) return;
+    const target = noteTarget;
+    const outcome: { entry?: NotebookEntry | null } = {};
+    update((s) => {
+      outcome.entry = addEvidenceNote(s, target, noteRelation, noteText);
+      return s;
+    });
+    if (outcome.entry) {
+      setNoteTarget(null);
+      setNoteText('');
+      setDialogue('System: Note recorded in your notebook, tied to the reviewed evidence item.');
+      setPanel('notebook');
+    }
+  }
+
+  function doAdvanceTime() {
+    const outcome: { day?: number; slot?: string } = {};
+    update((s) => {
+      advanceClock(s);
+      outcome.day = s.clock.day;
+      outcome.slot = s.clock.slot;
+      return s;
+    });
+    if (outcome.day !== undefined) {
+      setDialogue(`System: Time advanced to Day ${outcome.day} (${outcome.slot}). Check your current objective.`);
+    }
   }
 
   function onHotspot(action: string) {
     const [kind, value] = action.split(':');
     if (kind === 'view') update((s) => ({ ...s, selectedViewpoint: value }));
-    if (kind === 'panel') setPanel(value);
-    if (kind === 'time') advanceTime();
+    if (kind === 'panel') setPanel(value as Panel);
+    if (kind === 'time') doAdvanceTime();
     if (kind === 'dialogue' && value === 'senior') {
       setPanel('dialogue');
       setDialogue(save.flags.caseAccepted
@@ -110,41 +177,41 @@ export function App() {
     }
   }
 
+  function doDialogueChoice(sceneId: string, choiceId: string) {
+    const working = structuredClone(save);
+    const result = applyDialogueChoice(working, sceneId, choiceId);
+    if (!result.ok) {
+      setDialogue(`System: ${result.reason ?? 'Unavailable.'}`);
+      return;
+    }
+    working.notebook.unshift(makeNotebookEntry({
+      kind: 'note',
+      title: `Interaction: ${result.characterName ?? 'Colleague'}`,
+      content: `${result.reply}\n\nRemembered: ${result.memory}`,
+      verified: false,
+    }, working));
+    update(() => working);
+    setDialogue(`${result.reply}\n\nRemembered: ${result.memory}`);
+  }
+
   function submitAssignment(id: string) {
+    const outcome: { result?: ReturnType<typeof reviewAssignment> } = {};
     update((s) => {
-      const a = s.assignments.find((x) => x.id === id);
-      if (!a || a.status === 'submitted' || a.status === 'reviewed') return s;
-      const evidenceOk = a.requiredEvidenceIds.every((eid) => s.caseFile.evidence.some((e) => e.id === eid && e.discovered));
-      const sourcesOk = a.requiredSourceIds.every((sid) => s.notebook.some((n) => n.sourceId === sid));
-      if (!evidenceOk || !sourcesOk) {
-        s.memories.unshift({ id: `m-${Date.now()}`, day: s.clock.day, summary: `Assignment ${a.title} incomplete: missing required evidence/sources.`, participants: ['player'] });
-        return s;
-      }
-      a.status = 'submitted';
-      a.feedback = 'Submitted for senior review.';
-      if (a.id === 'a1') {
-        a.status = 'reviewed';
-        a.feedback = 'Good start. Facts, allegations, and unknowns separated. Continue with evidence-grounded brief.';
-        s.flags.assignment1Submitted = true;
-        s.player.reputation.reliability += 2;
-        s.player.reputation.competence += 1;
-        const a2 = s.assignments.find((x) => x.id === 'a2');
-        if (a2 && a2.status === 'pending') a2.status = 'active';
-        s.memories.unshift({ id: `m-${Date.now()}`, day: s.clock.day, summary: 'Assignment 1 reviewed by senior: positive feedback.', participants: ['player', 'senior'] });
+      outcome.result = reviewAssignment(s, id);
+      if (outcome.result.ok) {
+        s.notebook.unshift(makeNotebookEntry({
+          kind: 'feedback', title: `Assignment reviewed: ${s.assignments.find((a) => a.id === id)?.title ?? id}`,
+          content: outcome.result.feedback, verified: true,
+        }, s));
       }
       return s;
     });
-    const a = save.assignments.find((x) => x.id === id);
-    if (a) {
-      const evidenceOk = a.requiredEvidenceIds.every((eid) => save.caseFile.evidence.some((e) => e.id === eid && e.discovered));
-      const sourcesOk = a.requiredSourceIds.every((sid) => save.notebook.some((n) => n.sourceId === sid));
-      if (!evidenceOk || !sourcesOk) {
-        setDialogue('System: Assignment incomplete - discover required evidence and add required sources to notebook.');
-        setPanel('dialogue');
-      } else {
-        addNotebook({ kind: 'feedback', title: `Assignment submitted: ${a.title}`, content: a.id === 'a1' ? 'Reviewed: Good start. Continue to case brief draft.' : 'Submitted for review.', verified: true });
-        setPanel('notebook');
-      }
+    if (outcome.result && !outcome.result.ok) {
+      setDialogue(`System: ${outcome.result.reason}`);
+      setPanel('dialogue');
+    } else if (outcome.result?.ok) {
+      setDialogue('Adv. Meera Kulkarni: "Good. Keep the work grounded in reviewed evidence and verified sources."');
+      setPanel('notebook');
     }
   }
 
@@ -163,7 +230,6 @@ export function App() {
     }
 
     const hasIssue = /issue\s*:/i.test(draft) && draft.length > 60;
-    const discoveredCount = save.caseFile.evidence.filter((e) => e.discovered).length;
     const hasEvidenceRefs = discoveredCount > 0 && /evidence|medical|cctv|witness|report/i.test(draft);
     const warnings = citationCheck.warnings;
     update((s) => {
@@ -172,8 +238,9 @@ export function App() {
       s.player.reputation.competence += hasIssue && hasEvidenceRefs ? 2 : hasIssue ? 1 : 0;
       s.player.reputation.integrity += warnings.length ? 0 : 1;
       const a2 = s.assignments.find((a) => a.id === 'a2');
-      if (a2) { a2.status = 'submitted'; a2.feedback = hasIssue ? 'Structure acceptable; continue evidence-grounded analysis.' : 'Incomplete structure.'; }
-      s.memories.unshift({ id: `m-${Date.now()}`, day: s.clock.day, summary: 'Submitted case brief draft for senior review.', participants: ['player', 'senior'] });
+      if (a2 && a2.status !== 'reviewed') { a2.feedback = hasIssue ? 'Structure acceptable; continue evidence-grounded analysis.' : 'Incomplete structure.'; }
+      setCurrentDraft(s, draft);
+      s.memories.unshift({ id: makeId('m'), day: s.clock.day, summary: 'Submitted case brief draft for senior review.', participants: ['player', 'senior'] });
       return s;
     });
     addNotebook({
@@ -190,6 +257,21 @@ export function App() {
     setPanel('notebook');
   }
 
+  function doSaveDraftVersion() {
+    const outcome: { version?: ReturnType<typeof saveDraftVersion> } = {};
+    update((s) => { outcome.version = saveDraftVersion(s, draft); return s; });
+    if (outcome.version) setDialogue(`System: Draft version saved (Day ${outcome.version.day}, ${outcome.version.slot}).`);
+  }
+
+  function doLoadDraftVersion(versionId: string) {
+    const outcome: { text?: string | null } = {};
+    update((s) => { outcome.text = loadDraftVersion(s, versionId); return s; });
+    if (outcome.text !== undefined && outcome.text !== null) {
+      setDraft(outcome.text);
+      setDialogue('System: Prior draft version loaded into the editor.');
+    }
+  }
+
   return (
     <div className="min-h-screen bg-bar-bg text-bar-text">
       <header className="border-b border-bar-gold/20 px-4 py-3 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
@@ -197,12 +279,29 @@ export function App() {
           <h1 className="text-xl font-semibold text-bar-gold tracking-wide">THE BAR</h1>
           <p className="text-xs text-bar-muted">Educational simulation — not legal advice. No fabricated citations.</p>
         </div>
-        <div className="text-sm text-bar-muted flex gap-3 flex-wrap">
+        <div className="text-sm text-bar-muted flex gap-3 flex-wrap items-center">
           <span>Day {save.clock.day}</span><span>{save.clock.slot}</span><span>{save.player.careerStage}</span>
+          <button className="px-2 py-1 border border-bar-gold/30 rounded" onClick={doAdvanceTime}>Advance time</button>
           <button className="px-2 py-1 border border-bar-gold/30 rounded" onClick={() => { persistSave(save); setDialogue('Saved locally.'); setPanel('dialogue'); }}>Save</button>
-          <button className="px-2 py-1 border border-red-400/30 rounded text-red-200" onClick={() => { if (confirm('Reset local save?')) setSave(resetSave()); }}>Reset</button>
+          <button className="px-2 py-1 border border-red-400/30 rounded text-red-200" onClick={() => { if (confirm('Reset local save?')) { setSave(resetSave()); setDraft(''); } }}>Reset</button>
         </div>
       </header>
+
+      <div className="px-4 pt-3">
+        <div className="bg-bar-panel border border-bar-gold/20 rounded-lg p-3" role="status" aria-live="polite">
+          <div className="text-xs uppercase tracking-wide text-bar-muted">Current objective</div>
+          {objective ? (
+            <>
+              <div className="text-sm text-bar-gold">{objective.title} <span className="text-bar-muted">— Day {objective.unlockDay} · {objective.status}</span></div>
+              <div className="text-xs text-bar-muted mt-1">{objective.description}</div>
+              <div className="flex flex-wrap gap-3 text-xs mt-1">
+                <span>Progress: evidence {objective.evidenceProgress} · sources {objective.sourceProgress}{objective.noteProgress !== '0/0' ? ` · notes ${objective.noteProgress}` : ''}</span>
+                {objective.status === 'locked' && <span>Locked until Day {objective.unlockDay} and prior work reviewed.</span>}
+              </div>
+            </>
+          ) : <div className="text-sm text-bar-muted">All assignments reviewed. The first chapter is complete.</div>}
+        </div>
+      </div>
 
       <main className="grid md:grid-cols-[1.4fr_1fr] gap-4 p-4">
         <section className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4">
@@ -233,54 +332,129 @@ export function App() {
         </section>
 
         <section className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4">
-          <div className="flex gap-2 flex-wrap mb-3 text-sm">
-            {['case','assignments','evidence','research','draft','notebook','dialogue'].map((p) => (
-              <button key={p} onClick={() => setPanel(p)} className={`px-2 py-1 rounded border ${panel===p?'border-bar-gold text-bar-gold':'border-white/10 text-bar-muted'}`}>{p}</button>
+          <nav aria-label="Work panels" className="flex gap-2 flex-wrap mb-3 text-sm">
+            {PANELS.map((p) => (
+              <button key={p} onClick={() => setPanel(p)} aria-current={panel===p ? 'page' : undefined} className={`px-2 py-1 rounded border ${panel===p?'border-bar-gold text-bar-gold':'border-white/10 text-bar-muted'}`}>{p}</button>
             ))}
-          </div>
+          </nav>
 
-          {panel === 'dialogue' && <div className="text-sm whitespace-pre-wrap bg-bar-panel2 p-3 rounded">{dialogue}</div>}
+          {panel === 'dialogue' && (
+            <div className="space-y-3 text-sm">
+              <div className="whitespace-pre-wrap bg-bar-panel2 p-3 rounded">{dialogue}</div>
+              <div className="bg-bar-panel2 p-3 rounded">
+                <div className="text-xs text-bar-gold mb-2">Relationships (player → character)</div>
+                <div className="grid gap-1 text-xs text-bar-muted">
+                  {save.relationships.map((r) => {
+                    const name = save.characters.find((c) => c.id === r.toId)?.name ?? r.toId;
+                    return <div key={r.toId}>{name}: trust {r.trust} · respect {r.respect} · loyalty {r.loyalty} · rivalry {r.rivalry} · resentment {r.resentment}</div>;
+                  })}
+                </div>
+              </div>
+              {dialogueScenes.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs text-bar-gold">Available conversations (Day {save.clock.day})</div>
+                  {dialogueScenes.map((scene) => (
+                    <div key={scene.id} className="bg-bar-panel2 p-3 rounded border border-white/5">
+                      <div className="text-sm">{scene.prompt}</div>
+                      <div className="grid gap-2 mt-2">
+                        {scene.choices.map((choice) => (
+                          <button key={choice.id} onClick={() => doDialogueChoice(scene.id, choice.id)} className="text-left px-2 py-2 rounded border border-bar-gold/20 text-xs hover:bg-white/5">
+                            {choice.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {dialogueScenes.length === 0 && <p className="text-xs text-bar-muted">No new conversations today. Advance time to unlock more.</p>}
+            </div>
+          )}
 
           {panel === 'case' && (
             <div className="space-y-2 text-sm">
-              <div className="text-bar-gold font-medium">{save.caseFile.title}</div>
-              <div className="text-bar-muted">Status: {save.caseFile.status} • Player knowledge only (canonical truth hidden)</div>
-              <div><div className="text-bar-gold text-xs">Known/Player knowledge</div><ul className="list-disc ml-5">{save.caseFile.playerKnowledge.map((k,i)=><li key={i}>{k}</li>)}</ul></div>
-              <div><div className="text-bar-gold text-xs">Allegations</div><ul className="list-disc ml-5">{save.caseFile.allegations.map((k,i)=><li key={i}>{k}</li>)}</ul></div>
-              <div><div className="text-bar-gold text-xs">Unresolved ambiguity</div><div>{save.caseFile.unresolvedAmbiguity}</div></div>
+              <div className="text-bar-gold font-medium">{playerCase.title}</div>
+              <div className="text-bar-muted">Status: {playerCase.status} • Player knowledge only (canonical truth hidden)</div>
+              <div><div className="text-bar-gold text-xs">Known/Player knowledge</div><ul className="list-disc ml-5">{playerCase.playerKnowledge.map((k,i)=><li key={i}>{k}</li>)}</ul></div>
+              <div><div className="text-bar-gold text-xs">Allegations</div><ul className="list-disc ml-5">{playerCase.allegations.map((k,i)=><li key={i}>{k}</li>)}</ul></div>
+              <div><div className="text-bar-gold text-xs">Unresolved ambiguity</div><ul className="list-disc ml-5">{playerCase.unresolvedAmbiguity.map((k,i)=><li key={i}>{k}</li>)}</ul></div>
+              <div><div className="text-bar-gold text-xs">Admissible material</div><div>{playerCase.admissibleMaterial.length ? playerCase.admissibleMaterial.join(' · ') : 'Not yet determined.'}</div></div>
             </div>
           )}
 
           {panel === 'assignments' && (
             <div className="space-y-2 text-sm">
-              {save.assignments.map((a) => (
-                <div key={a.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
-                  <div className="flex justify-between"><span className="text-bar-gold">{a.title}</span><span className="text-xs text-bar-muted">Day {a.day} • {a.status}</span></div>
-                  <div className="text-sm mt-1">{a.description}</div>
-                  <div className="text-xs text-bar-muted mt-1">Required evidence: {a.requiredEvidenceIds.join(', ') || 'none'} • Required sources: {a.requiredSourceIds.join(', ') || 'none'}</div>
-                  {a.feedback && <div className="text-xs mt-1 text-bar-text">Feedback: {a.feedback}</div>}
-                  {(a.status === 'active' || a.status === 'pending') && (
-                    <button className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => submitAssignment(a.id)}>Submit / Evaluate</button>
-                  )}
-                </div>
-              ))}
+              {save.assignments.map((a: Assignment) => {
+                const unlocked = isAssignmentUnlocked(a, save);
+                return (
+                  <div key={a.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
+                    <div className="flex justify-between"><span className="text-bar-gold">{a.title}</span><span className="text-xs text-bar-muted">Day {a.day} • {a.status}</span></div>
+                    <div className="text-sm mt-1">{a.description}</div>
+                    <div className="text-xs text-bar-muted mt-1">Required evidence: {a.requiredEvidenceIds.join(', ') || 'none'} • Sources: {a.requiredSourceIds.join(', ') || 'none'}{a.requiredNotebookKinds?.length ? ` • Notes: ${a.requiredNotebookKinds.join(', ')}` : ''}</div>
+                    {!unlocked && a.status === 'locked' && <div className="text-xs text-yellow-300 mt-1">Locks until Day {a.day} and prior work is reviewed.</div>}
+                    {a.feedback && <div className="text-xs mt-1 text-bar-text">Feedback: {a.feedback}</div>}
+                    {(a.status === 'active' || a.status === 'pending') && unlocked && (
+                      <button className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => submitAssignment(a.id)}>Submit / Evaluate</button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
           {panel === 'evidence' && (
             <div className="space-y-2 text-sm">
-              {save.caseFile.evidence.map((ev: EvidenceItem) => (
+              {playerCase.evidence.map((ev) => (
                 <div key={ev.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
                   <div className="flex justify-between gap-2"><span className="text-bar-gold">{ev.title}</span><span className="text-xs text-bar-muted">{ev.type}</span></div>
                   <div className="text-xs text-bar-muted">{ev.provenance}</div>
                   {ev.discovered ? (
-                    <div className="mt-1"><div>{ev.description}</div><div className="text-xs text-bar-muted">Admissibility: {ev.admissibility} • Reliability: {ev.reliability}</div></div>
+                    <div className="mt-1">
+                      <div>{ev.description}</div>
+                      <div className="text-xs text-bar-muted">Baseline after discovery — Admissibility: {ev.admissibility} • Reliability: {ev.reliability}</div>
+                      {!ev.reviewed ? (
+                        <button className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => doReviewEvidence(ev.id)}>Mark reviewed</button>
+                      ) : ev.assessment ? (
+                        <div className="mt-2 grid gap-2">
+                          <div className="text-xs text-bar-gold">Your provisional assessment (not a finding on authenticity)</div>
+                          <label className="text-xs flex flex-col gap-1">Admissibility view
+                            <select className="bg-bar-bg border border-white/10 rounded p-1" value={ev.assessment.admissibility} onChange={(e) => doSetAssessment(ev.id, { admissibility: e.target.value as Admissibility })}>
+                              {['unknown','admissible','questionable','inadmissible'].map((v) => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                          </label>
+                          <label className="text-xs flex flex-col gap-1">Reliability view
+                            <select className="bg-bar-bg border border-white/10 rounded p-1" value={ev.assessment.reliability} onChange={(e) => doSetAssessment(ev.id, { reliability: e.target.value as Reliability })}>
+                              {['unknown','high','medium','low'].map((v) => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                          </label>
+                          <label className="text-xs flex flex-col gap-1">Rationale
+                            <textarea className="bg-bar-bg border border-white/10 rounded p-2 min-h-16" value={ev.assessment.rationale} maxLength={1000} onChange={(e) => doSetAssessment(ev.id, { rationale: e.target.value })} />
+                          </label>
+                          <div className="flex gap-2 flex-wrap">
+                            <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => { setNoteTarget(ev.id); setNoteRelation('contradiction'); setNoteText(''); }}>Note contradiction</button>
+                            <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => { setNoteTarget(ev.id); setNoteRelation('corroboration'); setNoteText(''); }}>Note corroboration</button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
                   ) : (
                     <button className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => discoverEvidence(ev.id)}>Inspect / Discover</button>
                   )}
                 </div>
               ))}
-              <div className="text-xs text-bar-muted">Discovered: {discoveredEvidence.length}/{save.caseFile.evidence.length}</div>
+              {noteTarget && (
+                <div className="bg-bar-panel2 p-3 rounded border border-bar-gold/30">
+                  <div className="text-xs text-bar-gold mb-2">New {noteRelation} note for {playerCase.evidence.find((e) => e.id === noteTarget)?.title}</div>
+                  <label className="text-xs flex flex-col gap-1">Note
+                    <textarea className="bg-bar-bg border border-white/10 rounded p-2 min-h-20" value={noteText} maxLength={1000} onChange={(e) => setNoteText(e.target.value)} placeholder="What conflicts with or supports what, and why?" />
+                  </label>
+                  <div className="flex gap-2 mt-2">
+                    <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={doSaveNote}>Save note</button>
+                    <button className="px-2 py-1 border border-white/10 rounded text-xs text-bar-muted" onClick={() => { setNoteTarget(null); setNoteText(''); }}>Cancel</button>
+                  </div>
+                </div>
+              )}
+              <div className="text-xs text-bar-muted">Discovered: {discoveredCount}/{playerCase.evidence.length}</div>
             </div>
           )}
 
@@ -301,10 +475,26 @@ export function App() {
 
           {panel === 'draft' && (
             <div className="space-y-2">
-              <textarea className="w-full min-h-52 bg-bar-panel2 border border-white/10 rounded p-2 text-sm" value={draft} onChange={(e) => setDraft(e.target.value)} />
-              <div className="flex gap-2">
+              <textarea aria-label="Draft editor" className="w-full min-h-52 bg-bar-panel2 border border-white/10 rounded p-2 text-sm" value={draft} maxLength={MAX_DRAFT_CHARS} onChange={(e) => setDraft(e.target.value)} />
+              <div className="flex gap-2 flex-wrap">
                 <button className="px-3 py-1 border border-bar-gold/30 rounded text-sm" onClick={submitDraft}>Submit for senior review</button>
+                <button className="px-3 py-1 border border-white/10 rounded text-sm text-bar-muted" onClick={doSaveDraftVersion}>Save version</button>
                 <button className="px-3 py-1 border border-white/10 rounded text-sm text-bar-muted" onClick={() => addNotebook({ kind:'note', title:'Draft snapshot', content:draft, verified:false })}>Save draft note</button>
+              </div>
+              <div>
+                <div className="text-xs text-bar-gold mb-1">Version history (max 8, newest first)</div>
+                {save.draft.versions.length === 0 ? (
+                  <p className="text-xs text-bar-muted">No versions yet. Use “Save version” to snapshot the draft with its day and time slot.</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {save.draft.versions.map((v) => (
+                      <li key={v.id} className="bg-bar-panel2 p-2 rounded border border-white/5 flex items-center justify-between gap-2">
+                        <div className="text-xs text-bar-muted">Day {v.day} · {v.slot} · {new Date(v.savedAt).toLocaleString()}</div>
+                        <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => doLoadDraftVersion(v.id)}>Load</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
               <p className="text-xs text-bar-muted">Deterministic feedback only in P0. Any legal references must be verified; no fabricated citations.</p>
             </div>

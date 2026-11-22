@@ -8,7 +8,7 @@
 | **Type** | Immersive, persistent legal-career simulator (educational simulation) |
 | **Primary jurisdiction** | India (fictional firm/district/court environment initially) |
 | **Repository** | `/home/divyanshukumarsinha241/project-courtroom` |
-| **Status** | Phase 0 bootstrap started (docs/git hygiene/constraints); no application implementation yet |
+| **Status** | P0 prototype implemented: "The First Brief — Office Prototype" (Vite + React + TS + Tailwind, localStorage); 7-day playable slice |
 | **Primary reference** | [`../THE_BAR_MASTER_CONTEXT.md`](../THE_BAR_MASTER_CONTEXT.md) |
 | **Audit date** | 2026-11-22 |
 
@@ -55,21 +55,27 @@ All legal content must be verified, sourced, versioned, and dated. No fabricated
 - Save/load and world clock
 - One illustrated office location prototype
 
-## Proposed stack (candidate, not locked)
+## Stack (P0 per ADR-001)
 
-Master context suggests: **Next.js App Router, TypeScript, Tailwind, PostgreSQL, Prisma**. Reassess before scaffolding based on confirmed platform/runtime/asset decisions. No stack has been selected or installed in this repository.
+Implemented: **Vite + React + TypeScript + Tailwind**, localStorage persistence with v1→v2 migration, deterministic stubs (AI disabled). Next.js/Postgres/Prisma from the master context remain deferred pending a post-P0 re-evaluation.
 
 ## Repository layout (current)
 
 ```text
 project-courtroom/
-├── .gitignore
+├── src/
+│   ├── app/App.tsx              # UI shell + panels
+│   ├── domain/                  # types, seed, guards, access projection,
+│   │                            # progression, dialogue, evidence, draft
+│   ├── storage/save.ts          # localStorage load/persist + v1→v2 migration
+│   └── tests/                   # vitest guardrail + smoke tests
 ├── README.md
 ├── THE_BAR_MASTER_CONTEXT.md
 └── docs/
     ├── ADRs/
     │   ├── ADR-000-project-constraints.md
-    │   └── README.md
+    │   ├── ADR-001-stack-and-size-conscious-foundation.md
+    │   └── ADR-002-p0-vertical-slice.md
     ├── AUDIT.md
     ├── DECISIONS.md
     ├── IMPLEMENTATION_PLAN.md
