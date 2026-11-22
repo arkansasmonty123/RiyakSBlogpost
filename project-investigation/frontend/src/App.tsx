@@ -45,7 +45,7 @@ const AuthForm = ({ login, register }: AuthFormProps) => {
   };
 
   return (
-    <div className="auth-page">
+    <div className="auth-page page-enter">
       <div className="auth-form">
         <p className="auth-form__eyebrow">THE INVESTIGATION</p>
         <h2>{mode === 'login' ? 'Return to the case' : 'Begin your investigation'}</h2>
@@ -107,6 +107,13 @@ const App = () => {
   return (
     <Router>
       <div className="app-shell">
+        <div className="ambient-scene" aria-hidden="true">
+          <div className="ambient-scene__wash" />
+          <div className="ambient-scene__orb ambient-scene__orb--a" />
+          <div className="ambient-scene__orb ambient-scene__orb--b" />
+          <div className="ambient-scene__orb ambient-scene__orb--c" />
+          <div className="ambient-scene__grain" />
+        </div>
         <nav className="app-nav" aria-label="Primary">
           <div className="nav-left">
             <Link className="nav-brand" to="/" aria-label="THE INVESTIGATION home">

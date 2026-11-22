@@ -77,7 +77,7 @@ export const CaseListPage = () => {
   if (error) return <div className="error">Error loading cases: {error}</div>;
 
   return (
-    <div className="case-list">
+    <div className="case-list page-enter">
       <div className="page-heading">
         <div>
           <h2>Case Library</h2>

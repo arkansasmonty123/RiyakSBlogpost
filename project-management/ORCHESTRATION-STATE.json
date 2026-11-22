@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "updated_at": "2026-11-23T03:45:00Z",
+  "updated_at": "2026-11-23T04:25:00Z",
   "status": "idle",
   "objective": "Deliver PRD MVP for THE INVESTIGATION (project-investigation) with autonomous orchestration.",
   "current_milestone": "MVP + 25 seeded cases + pluggable AI infra complete; production deploy/push infra remain external-infra tasks",
   "active_task_id": null,
   "active_agent": null,
-  "last_completed_task_id": "UI-POLISH",
-  "next_action": "UI polish complete; screenshots at /tmp/opencode/ui-audit for human review. Await further direction.",
+  "last_completed_task_id": "UI-POLISH-2",
+  "next_action": "UI animation/fluidity pass complete; screenshots in project-investigation/frontend/ui-screenshots. Await further direction.",
   "model_policy": {
     "active_model": "opencode/iceman-free",
     "fallback_models": [
@@ -178,10 +178,18 @@
       "status": "done",
       "result_summary": "Detective-themed visual system applied (Newsreader+IBM Plex Sans, warm parchment/ink-teal tokens, responsive layout, focus/reduced-motion). Playwright screenshots captured at 375x812 and 1440x900. Verified: typecheck PASS, smoke-db PASS, frontend build PASS, test:http 57/57 PASS, case:validate PASS.",
       "next_action": null
+    },
+    {
+      "task_id": "UI-POLISH-2",
+      "title": "Background animations and fluidity polish",
+      "agent": "ui-ux-frontend",
+      "status": "done",
+      "result_summary": "Ambient detective-desk background (CSS gradients/grain/orbs), fluid page/tab/card transitions, reduced-motion safeguards. Playwright screenshots 375/1440. Verified: typecheck PASS, smoke-db PASS, frontend build PASS, test:http 57/57 PASS, case:validate PASS.",
+      "next_action": null
     }
   ],
   "recovery": {
-    "last_checkpoint": "2026-11-23T03:45:00Z",
+    "last_checkpoint": "2026-11-23T04:25:00Z",
     "resume_instructions": "Read ORCHESTRATION-STATE.json, ORCHESTRATION-LOG.md, RECOVERY.md, DEV-STATUS.md, TASKS.md, BUGS.md, MODEL-POLICY.md; validate state against repo; continue from next_action.",
     "open_blockers": [],
     "validation_notes": [
