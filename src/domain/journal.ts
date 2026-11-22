@@ -18,6 +18,8 @@ export interface JournalEntry {
   /** Provenance the player legitimately recorded, when one is attached. */
   source?: string;
   evidenceId?: string;
+  /** For evidence-linked notes: whether the note records a contradiction or corroboration. */
+  relation?: 'contradiction' | 'corroboration';
   /** Stable tie-breaker for entries recorded on the same in-game day. */
   order: number;
 }
@@ -74,6 +76,7 @@ export function buildCaseJournal(save: SaveGame): JournalEntry[] {
       detail: note.content,
       ...(note.source ? { source: note.source } : {}),
       ...(note.evidenceId ? { evidenceId: note.evidenceId } : {}),
+      ...(note.relation ? { relation: note.relation } : {}),
       order: order++,
     });
   }

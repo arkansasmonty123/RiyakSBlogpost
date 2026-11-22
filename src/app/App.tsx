@@ -10,6 +10,7 @@ import { assertNoCanonicalTruthLeak, toPlayerCaseView } from '@/domain/caseAcces
 import { buildCaseJournal, groupJournalByDay, JOURNAL_KINDS } from '@/domain/journal';
 import type { JournalKind } from '@/domain/journal';
 import { buildCaseSummary } from '@/domain/caseSummary';
+import { pluralize } from '@/domain/evidenceSynthesis';
 import { advanceClock, currentObjective, isAssignmentUnlocked, makeId, MAX_DAY, reviewAssignment } from '@/domain/progression';
 import { applyDialogueChoice, availableDialogueScenes } from '@/domain/dialogue';
 import { addEvidenceNote, discoverEvidenceItem, reviewEvidence, setEvidenceAssessment } from '@/domain/evidence';
@@ -848,6 +849,35 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                     </ul>
                   </section>
 
+                  <section aria-labelledby="completion-synthesis-heading" className="bg-bar-panel2 p-3 rounded border border-white/5">
+                    <h3 id="completion-synthesis-heading" className="text-xs uppercase tracking-wide text-bar-gold">Evidence synthesis &amp; open questions</h3>
+                    <p className="text-xs text-bar-muted mt-2">{completion.synthesis.overview}</p>
+                    {completion.synthesis.links.length > 0 && (
+                      <ul className="list-disc ml-5 mt-2 space-y-1 text-xs text-bar-text/90">
+                        {completion.synthesis.links.map((link) => (
+                          <li key={link.id}>
+                            <span className="capitalize text-bar-gold">{link.relation}</span> · Day {link.day} · {link.evidenceTitle}: {link.note}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {completion.synthesis.totalClaims > 0 && (
+                      <div className="mt-3">
+                        <h4 className="text-xs uppercase tracking-wide text-bar-gold">How your theory was grounded</h4>
+                        <ul className="list-disc ml-5 mt-2 space-y-1 text-xs text-bar-muted">
+                          {completion.synthesis.theoryGrounding.map((claim) => (
+                            <li key={claim.claimId}>
+                              {claim.claimText} — {claim.hasReviewedEvidence
+                                ? `linked to ${claim.reviewedEvidenceTitles.join(', ')}`
+                                : 'not yet linked to reviewed evidence'}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <p className="text-xs text-bar-muted mt-3">{completion.synthesis.ambiguityNote}</p>
+                  </section>
+
                   <section aria-labelledby="completion-legal-mind-heading" className="bg-bar-panel2 p-3 rounded border border-white/5">
                     <h3 id="completion-legal-mind-heading" className="text-xs uppercase tracking-wide text-bar-gold">Legal Mind Profile (lite)</h3>
                     <p className="text-xs text-bar-muted mt-1">{completion.legalMindProfile.intro}</p>
@@ -976,6 +1006,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                   <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">Evidence {caseSummary.discoveredCount}/{caseSummary.evidenceTotal} discovered</span>
                   <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">{caseSummary.reviewedCount} reviewed</span>
                   <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">{caseSummary.evidenceNoteCount} evidence-linked notes</span>
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">{pluralize(caseSummary.corroborationLinks.filter((l) => l.relation === 'contradiction').length, 'contradiction')} · {pluralize(caseSummary.corroborationLinks.filter((l) => l.relation === 'corroboration').length, 'corroboration')}</span>
                 </div>
                 {caseSummary.corroborationLinks.length > 0 && (
                   <div className="mt-3">
@@ -994,6 +1025,26 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                     >
                       See these notes in the timeline →
                     </button>
+                  </div>
+                )}
+                {caseSummary.reviewPrompts.length > 0 && (
+                  <div className="mt-3">
+                    <h4 className="text-xs uppercase tracking-wide text-bar-gold">Review prompts for reviewed items</h4>
+                    <ul className="space-y-2 mt-2 text-xs text-bar-text/90">
+                      {caseSummary.reviewPrompts.map((prompt) => (
+                        <li key={prompt.id} className="bg-bar-bg/40 p-2 rounded border border-white/5">
+                          <div className="text-bar-gold">{prompt.focus} · {prompt.evidenceTitle}</div>
+                          <p className="text-bar-muted mt-1">{prompt.prompt}</p>
+                          <button
+                            type="button"
+                            className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                            onClick={() => { setNoteRelation('contradiction'); setNoteTarget(prompt.evidenceId); setNoteText(''); setPanel('evidence'); }}
+                          >
+                            Record a note →
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 )}
               </section>
@@ -1337,6 +1388,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                       {groupedTheory[status].map((c) => {
                         const support = supportByClaimId.get(c.id);
                         const linkedIds = support?.reviewedEvidenceIds ?? [];
+                        const linkedNotes = completion.synthesis.links.filter((link) => linkedIds.includes(link.evidenceId));
                         return (
                           <li key={c.id} className="text-xs border-l-2 border-bar-gold/30 pl-2">
                             <div>{c.text}</div>
@@ -1346,6 +1398,11 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                                 ? `Supported by reviewed evidence: ${linkedIds.length} item(s).`
                                 : 'Unsupported — no reviewed evidence linked.'}
                             </div>
+                            {linkedNotes.length > 0 && (
+                              <div className="text-bar-muted mt-1">
+                                Notes on linked items: {linkedNotes.map((link) => `${link.relation} · ${link.note.slice(0, 120)}`).join(' | ')}
+                              </div>
+                            )}
                             {!!support?.unavailableEvidenceIds.length && (
                               <div className="text-yellow-200 mt-1">
                                 Unavailable links (not reviewed): {support.unavailableEvidenceIds.map((id) => evidenceTitleById.get(id) ?? id).join(', ')}
@@ -1600,7 +1657,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                             <li key={entry.id} className="border-l-2 border-bar-gold/30 pl-2">
                               <div className="flex justify-between gap-2 flex-wrap">
                                 <span className="text-bar-gold">{entry.title}</span>
-                                <span className="text-[11px] uppercase tracking-wide text-bar-muted">{entry.kind}</span>
+                                <span className="text-[11px] uppercase tracking-wide text-bar-muted">{entry.kind}{entry.relation ? ` · ${entry.relation}` : ''}</span>
                               </div>
                               <p className="text-xs mt-1 whitespace-pre-wrap">{entry.detail}</p>
                               {entry.source && <p className="text-xs text-bar-muted mt-1">Provenance: {entry.source}</p>}

@@ -1,3 +1,5 @@
+import { buildEvidenceSynthesis, pluralize, reviewSynthesis } from './evidenceSynthesis';
+import type { ReviewSynthesis } from './evidenceSynthesis';
 import { buildLegalMindProfile, LEGAL_MIND_LEVEL_RANK } from './legalMindProfile';
 import { isAssignmentUnlocked, makeId, refreshAssignmentUnlocks } from './progression';
 import type {
@@ -240,6 +242,13 @@ export function submitSeniorReview(
     ? `Senior review accepted after ${roundNo} submission${roundNo > 1 ? 's' : ''}. ${strengths.join(' ')}`
     : `Senior review round ${roundNo}: revise and resubmit. ${gaps.join(' ')}`;
 
+  if (accepted) {
+    const grounded = reviewSynthesis(save);
+    if (grounded.contradictions + grounded.corroborations + grounded.groundedClaims > 0) {
+      round.feedback += ` Your file ties ${pluralize(grounded.contradictions + grounded.corroborations, 'evidence-linked note')} and ${pluralize(grounded.groundedClaims, 'theory claim')} to material you reviewed, so the reasoning stays grounded.`;
+    }
+  }
+
   save.reviewRounds.unshift(round);
   save.memories.unshift({
     id: makeId('m'),
@@ -291,6 +300,8 @@ export interface FinalBriefResult {
   consequence?: string;
   /** Specific, grounded observations included in the final review. */
   highlights?: string[];
+  /** Compact contradiction/corroboration/theory/open-question counts for the endgame review. */
+  reviewSynthesis?: ReviewSynthesis;
 }
 
 const FINAL_CONSEQUENCE: Record<'strong' | 'solid' | 'shaky', string> = {
@@ -328,6 +339,17 @@ function finalReviewHighlights(save: SaveGame): string[] {
   }
   if (save.caseTheory.claims.length > 0) {
     lines.push('You recorded your working theory as your own analysis, linked to reviewed material rather than presented as a finding.');
+  }
+
+  const synthesis = buildEvidenceSynthesis(save);
+  if (synthesis.contradictions.length > 0 || synthesis.corroborations.length > 0) {
+    lines.push(`Your file keeps ${pluralize(synthesis.contradictions.length, 'contradiction note')} and ${pluralize(synthesis.corroborations.length, 'corroboration note')} tied to reviewed items, so differing accounts remain visible.`);
+  }
+  if (synthesis.totalClaims > 0) {
+    lines.push(`Of your theory claims, ${synthesis.groundedClaimsCount} of ${synthesis.totalClaims} are linked to reviewed evidence, keeping your working theory tied to the file.`);
+  }
+  if (synthesis.openQuestions.length > 0) {
+    lines.push(`You left ${pluralize(synthesis.openQuestions.length, 'player-visible open question')} on the file; the case closes on your work, not on certainty.`);
   }
 
   // Ground the closing advice in the same deterministic profile shown on the completion screen.
@@ -368,6 +390,7 @@ export function submitFinalBrief(save: SaveGame, workSummary: string): FinalBrie
   const score = rep.competence + rep.integrity + rep.reliability + acceptedRounds * 2;
   const tier: 'strong' | 'solid' | 'shaky' = score >= 60 ? 'strong' : score >= 40 ? 'solid' : 'shaky';
   const highlights = finalReviewHighlights(save);
+  const synthesis = reviewSynthesis(save);
   const consequence = highlights.length > 0
     ? `${FINAL_CONSEQUENCE[tier]} ${highlights.join(' ')}`
     : FINAL_CONSEQUENCE[tier];
@@ -400,5 +423,5 @@ export function submitFinalBrief(save: SaveGame, workSummary: string): FinalBrie
     verified: true,
   });
   refreshAssignmentUnlocks(save);
-  return { ok: true, tier, consequence, highlights };
+  return { ok: true, tier, consequence, highlights, reviewSynthesis: synthesis };
 }

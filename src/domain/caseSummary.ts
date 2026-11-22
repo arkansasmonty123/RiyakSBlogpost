@@ -1,4 +1,6 @@
 import { toPlayerCaseView } from './caseAccess';
+import { reviewPromptsFor } from './reviewPrompts';
+import type { ReviewPrompt } from './reviewPrompts';
 import type { SaveGame } from './types';
 
 /**
@@ -24,6 +26,8 @@ export interface CaseSummary {
   evidenceTotal: number;
   evidenceNoteCount: number;
   corroborationLinks: CorroborationLink[];
+  /** Deterministic prompts tied to reviewed items; player-visible, never canonical. */
+  reviewPrompts: ReviewPrompt[];
   openQuestions: string[];
 }
 
@@ -52,6 +56,7 @@ export function buildCaseSummary(save: SaveGame): CaseSummary {
     evidenceTotal: view.evidence.length,
     evidenceNoteCount: save.notebook.filter((n) => n.evidenceId).length,
     corroborationLinks,
+    reviewPrompts: reviewPromptsFor(save),
     openQuestions: [...view.unresolvedAmbiguity],
   };
 }

@@ -1,4 +1,6 @@
 import { toPlayerCaseView } from './caseAccess';
+import { buildEvidenceSynthesis } from './evidenceSynthesis';
+import type { EvidenceSynthesis } from './evidenceSynthesis';
 import { buildLegalMindProfile } from './legalMindProfile';
 import type { LegalMindProfile } from './legalMindProfile';
 import type { SaveGame } from './types';
@@ -51,6 +53,8 @@ export interface ChapterCompletionSummary {
   closingNote: string;
   /** Formative, deterministic skill feedback derived from recorded player actions only. */
   legalMindProfile: LegalMindProfile;
+  /** Contradiction/corroboration and theory synthesis from the player's own file. */
+  synthesis: EvidenceSynthesis;
 }
 
 const MAX_MEMORY_HIGHLIGHTS = 5;
@@ -106,5 +110,6 @@ export function buildChapterCompletionSummary(save: SaveGame): ChapterCompletion
     closingNote:
       'Case closed on the evidence and reasoning you recorded — not on certainty. Authenticity, hidden motives and responsibility were never determined; the open questions above remain unanswered.',
     legalMindProfile: buildLegalMindProfile(save),
+    synthesis: buildEvidenceSynthesis(save),
   };
 }
