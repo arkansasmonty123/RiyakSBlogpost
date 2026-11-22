@@ -12,7 +12,8 @@
     "db:seed:cases": "tsx scripts/seed-extra-cases.ts",
     "db:seed:knowledge": "tsx scripts/seed-knowledge.ts",
     "knowledge:validate": "tsx scripts/validate-knowledge.ts",
-    "test": "npm run typecheck && npm run test:smoke && npm run db:seed:knowledge && npm run db:schema:verify && npm run knowledge:validate && npm run case:validate && npm run test:http",
+    "reality-map:validate": "tsx scripts/validate-reality-map.ts",
+    "test": "npm run typecheck && npm run test:smoke && npm run db:seed:knowledge && npm run db:schema:verify && npm run knowledge:validate && npm run case:validate && npm run reality-map:validate && npm run test:http",
     "contract:emit": "prisma contract emit"
   },
   "keywords": [],

@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "updated_at": "2026-11-23T07:30:00Z",
+  "updated_at": "2026-11-23T09:15:00Z",
   "status": "idle",
   "objective": "Deliver PRD MVP for THE INVESTIGATION (project-investigation) with autonomous orchestration.",
-  "current_milestone": "Milestone 3 complete: Research, Case Expansion & Knowledge Quality (3 case packs)",
+  "current_milestone": "Milestone 4 complete: Reality Map & Investigative Reasoning Engine",
   "active_task_id": null,
   "active_agent": null,
-  "last_completed_task_id": "M3-KNOWLEDGE",
-  "next_action": "Await next milestone direction. Optional: expand knowledge packs to more cases, add Gemini key for AI quality, run Playwright UI pass on request.",
+  "last_completed_task_id": "M4-REALITY-MAP",
+  "next_action": "Await next milestone direction. Optional: Playwright UI/a11y pass on request, expand reality-map prompts/tutorials, production hardening.",
   "model_policy": {
     "active_model": "opencode/iceman-free",
     "fallback_models": [
@@ -250,10 +250,50 @@
       "status": "done",
       "result_summary": "Verified: typecheck PASS, db:schema:verify PASS (25/25,258), smoke-db PASS, knowledge:validate PASS, case:validate PASS, frontend build PASS, test:http 73/73 PASS.",
       "next_action": null
+    },
+    {
+      "task_id": "M4-AUDIT",
+      "title": "Audit and plan Milestone 4 Reality Map",
+      "agent": "orchestrator+architect",
+      "status": "done",
+      "result_summary": "Inspected investigations/journal/evidence/knowledge routes, InvestigationRoomPage tabs, smoke tests; M4 scope confirmed additive.",
+      "next_action": null
+    },
+    {
+      "task_id": "M4-PLAN",
+      "title": "Architect M4 Reality Map plan",
+      "agent": "architect",
+      "status": "done",
+      "result_summary": "Architect produced concrete M4 plan: 008 migration (claims/hypotheses/reality_map_links), pure reality-map module, investigationRouter endpoints, prompts/tutorial, smoke/validator/CI, frontend RealityMap tab.",
+      "next_action": null
+    },
+    {
+      "task_id": "M4-BACKEND",
+      "title": "Implement M4 backend Reality Map",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "M4 backend complete: migration 008, reality-map module/prompts, db/server endpoints, validator/CI/smoke. Verified: typecheck PASS, db:schema:verify PASS (28/28,296), smoke-db PASS, knowledge:validate PASS, case:validate PASS, reality-map:validate PASS, frontend build PASS, test:http 88/88 PASS, npm test PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "M4-UI",
+      "title": "Implement M4 Reality Map UI",
+      "agent": "ui-ux-frontend",
+      "status": "done",
+      "result_summary": "Reality Map tab/components added; claims/hypotheses/links/compare/tensions/assumptions/assistant/specialist review/tutorial flows wired; journal/notebook turn-into-claim integrated. Verified: typecheck PASS, frontend build PASS, test:http 88/88 PASS, validators PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "M4-VERIFY",
+      "title": "M4 verification and report",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Full verification: typecheck PASS, db:schema:verify PASS (28/28,296), smoke-db PASS, reality-map:validate PASS, knowledge:validate PASS, case:validate PASS, frontend build PASS, test:http 88/88 PASS.",
+      "next_action": null
     }
   ],
   "recovery": {
-    "last_checkpoint": "2026-11-23T07:30:00Z",
+    "last_checkpoint": "2026-11-23T09:15:00Z",
     "resume_instructions": "Read ORCHESTRATION-STATE.json, ORCHESTRATION-LOG.md, RECOVERY.md, DEV-STATUS.md, TASKS.md, BUGS.md, MODEL-POLICY.md; validate state against repo; continue from next_action.",
     "open_blockers": [],
     "validation_notes": [

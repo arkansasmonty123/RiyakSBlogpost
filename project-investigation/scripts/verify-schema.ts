@@ -59,6 +59,21 @@ const EXPECTED_TABLES: Record<string, string[]> = {
     'id', 'case_id', 'version', 'pack_status', 'learning_objectives', 'summary',
     'created_at', 'updated_at',
   ],
+  // M4 Reality Map (migration 008). Player notes only - never canonical data.
+  investigation_claims: [
+    'id', 'investigation_id', 'user_id', 'title', 'description', 'claim_category',
+    'confidence', 'notes', 'source_journal_entry_id', 'source_notebook_entry_id',
+    'is_tutorial', 'created_at', 'updated_at',
+  ],
+  investigation_hypotheses: [
+    'id', 'investigation_id', 'user_id', 'name', 'explanation', 'status',
+    'confidence', 'missing_information', 'alternative_explanations', 'player_notes',
+    'is_tutorial', 'created_at', 'updated_at',
+  ],
+  reality_map_links: [
+    'id', 'investigation_id', 'user_id', 'owner_type', 'owner_id', 'target_type',
+    'target_id', 'relationship', 'rationale', 'is_tutorial', 'created_at', 'updated_at',
+  ],
   knowledge_disagreements: [
     'id', 'disagreement_key', 'case_id', 'topic', 'specialist_a_id', 'specialist_b_id',
     'position_a', 'position_b', 'disciplinary_basis', 'uncertainty_note',

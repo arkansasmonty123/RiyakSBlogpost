@@ -123,6 +123,18 @@ const COLUMN_ALIASES: Record<string, string> = {
   related_artifact_keys: 'relatedArtifactKeys',
   artifact_id: 'artifactId',
   source_snapshot: 'sourceSnapshot',
+  // M4 Reality Map (migration 008).
+  claim_category: 'claimCategory',
+  source_journal_entry_id: 'sourceJournalEntryId',
+  source_notebook_entry_id: 'sourceNotebookEntryId',
+  is_tutorial: 'isTutorial',
+  owner_type: 'ownerType',
+  owner_id: 'ownerId',
+  target_type: 'targetType',
+  target_id: 'targetId',
+  missing_information: 'missingInformation',
+  alternative_explanations: 'alternativeExplanations',
+  player_notes: 'playerNotes',
 };
 
 function toCamelKey(key: string): string {
@@ -1853,4 +1865,546 @@ export async function deleteNotebookEntry(
     [entryId, investigationId, userId]
   );
   return result.rows.length > 0;
+}
+// ===========================================================================
+// M4 Reality Map (migration 008) — player-owned claims, hypotheses and links.
+// EVERY query here is scoped by investigation_id AND user_id. This feature is
+// player notes only: nothing in this section reads canonical_truth or touches
+// verdict evaluation, progression or evidence release.
+// ===========================================================================
+
+export interface RealityClaim {
+  id: string;
+  investigationId: string;
+  userId: string;
+  title: string;
+  description: string;
+  claimCategory: string;
+  confidence: string;
+  notes: string;
+  sourceJournalEntryId: string | null;
+  sourceNotebookEntryId: string | null;
+  isTutorial: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface RealityHypothesis {
+  id: string;
+  investigationId: string;
+  userId: string;
+  name: string;
+  explanation: string;
+  status: string;
+  confidence: string;
+  missingInformation: string;
+  alternativeExplanations: string;
+  playerNotes: string;
+  isTutorial: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface RealityMapLink {
+  id: string;
+  investigationId: string;
+  userId: string;
+  ownerType: string;
+  ownerId: string;
+  targetType: string;
+  targetId: string;
+  relationship: string;
+  rationale: string;
+  isTutorial: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface LinkTargetResolution {
+  targetType: string;
+  targetId: string;
+  label: string;
+  subLabel: string;
+}
+
+const CLAIM_COLUMNS = `id, investigation_id, user_id, title, description, claim_category,
+  confidence, notes, source_journal_entry_id, source_notebook_entry_id,
+  is_tutorial, created_at, updated_at`;
+const HYPOTHESIS_COLUMNS = `id, investigation_id, user_id, name, explanation, status, confidence,
+  missing_information, alternative_explanations, player_notes, is_tutorial, created_at, updated_at`;
+const LINK_COLUMNS = `id, investigation_id, user_id, owner_type, owner_id, target_type, target_id,
+  relationship, rationale, is_tutorial, created_at, updated_at`;
+
+type RealityTable = 'investigation_claims' | 'investigation_hypotheses' | 'reality_map_links';
+
+/** Bounded COUNT used for per-investigation write caps. Table is allowlisted. */
+export async function countRealityRows(
+  table: RealityTable,
+  investigationId: string,
+  userId?: string
+): Promise<number> {
+  const allowed: RealityTable[] = ['investigation_claims', 'investigation_hypotheses', 'reality_map_links'];
+  if (!allowed.includes(table)) throw new Error('Invalid reality map table');
+  const params: any[] = [investigationId];
+  let where = 'investigation_id = $1';
+  if (userId) {
+    params.push(userId);
+    where += ' AND user_id = $2';
+  }
+  const result = await query(`SELECT COUNT(*)::int AS count FROM ${table} WHERE ${where}`, params);
+  return Number(result.rows[0]?.count ?? 0);
+}
+
+// --- Claims ----------------------------------------------------------------
+
+export interface CreateClaimData {
+  title: string;
+  description?: string;
+  claimCategory: string;
+  confidence?: string;
+  notes?: string;
+  sourceJournalEntryId?: string | null;
+  sourceNotebookEntryId?: string | null;
+  isTutorial?: boolean;
+}
+
+export async function createClaim(
+  investigationId: string,
+  userId: string,
+  data: CreateClaimData
+): Promise<RealityClaim> {
+  const result = await query(
+    `INSERT INTO investigation_claims
+       (investigation_id, user_id, title, description, claim_category, confidence,
+        notes, source_journal_entry_id, source_notebook_entry_id, is_tutorial)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     RETURNING ${CLAIM_COLUMNS}`,
+    [
+      investigationId, userId, data.title, data.description ?? '', data.claimCategory,
+      data.confidence ?? 'insufficient_information', data.notes ?? '',
+      data.sourceJournalEntryId ?? null, data.sourceNotebookEntryId ?? null,
+      data.isTutorial === true,
+    ]
+  );
+  return mapRow<RealityClaim>(result.rows[0]);
+}
+
+export async function getClaims(investigationId: string, userId: string): Promise<RealityClaim[]> {
+  const result = await query(
+    `SELECT ${CLAIM_COLUMNS} FROM investigation_claims
+      WHERE investigation_id = $1 AND user_id = $2
+      ORDER BY created_at DESC, id ASC`,
+    [investigationId, userId]
+  );
+  return mapRows<RealityClaim>(result.rows);
+}
+
+export async function getClaimById(
+  claimId: string,
+  investigationId: string,
+  userId: string
+): Promise<RealityClaim | null> {
+  const result = await query(
+    `SELECT ${CLAIM_COLUMNS} FROM investigation_claims
+      WHERE id = $1 AND investigation_id = $2 AND user_id = $3 LIMIT 1`,
+    [claimId, investigationId, userId]
+  );
+  return result.rows[0] ? mapRow<RealityClaim>(result.rows[0]) : null;
+}
+
+export type ClaimPatch = Partial<Pick<RealityClaim,
+  'title' | 'description' | 'claimCategory' | 'confidence' | 'notes'>>;
+
+export async function updateClaim(
+  claimId: string,
+  investigationId: string,
+  userId: string,
+  patch: ClaimPatch
+): Promise<RealityClaim | null> {
+  const columns: string[] = [];
+  const values: any[] = [];
+  let next = 1;
+  const add = (column: string, value: unknown): void => {
+    columns.push(`${column} = $${next}`);
+    values.push(value);
+    next += 1;
+  };
+  if (patch.title !== undefined) add('title', patch.title);
+  if (patch.description !== undefined) add('description', patch.description);
+  if (patch.claimCategory !== undefined) add('claim_category', patch.claimCategory);
+  if (patch.confidence !== undefined) add('confidence', patch.confidence);
+  if (patch.notes !== undefined) add('notes', patch.notes);
+  if (columns.length === 0) return getClaimById(claimId, investigationId, userId);
+  values.push(claimId, investigationId, userId);
+  const result = await query(
+    `UPDATE investigation_claims SET ${columns.join(', ')}, updated_at = NOW()
+      WHERE id = $${next} AND investigation_id = $${next + 1} AND user_id = $${next + 2}
+      RETURNING ${CLAIM_COLUMNS}`,
+    values
+  );
+  return result.rows[0] ? mapRow<RealityClaim>(result.rows[0]) : null;
+}
+
+/** Delete a claim and every link that references it, atomically. */
+export async function deleteClaim(
+  claimId: string,
+  investigationId: string,
+  userId: string
+): Promise<{ deleted: boolean; removedLinks: number }> {
+  return withTransaction(async (client) => {
+    const owned = await client.query(
+      'SELECT id FROM investigation_claims WHERE id = $1 AND investigation_id = $2 AND user_id = $3',
+      [claimId, investigationId, userId]
+    );
+    if (owned.rows.length === 0) return { deleted: false, removedLinks: 0 };
+    const removed = await client.query(
+      `DELETE FROM reality_map_links
+        WHERE investigation_id = $2 AND user_id = $3
+          AND ((owner_type = 'claim' AND owner_id = $1)
+            OR (target_type = 'claim' AND target_id = $1))`,
+      [claimId, investigationId, userId]
+    );
+    await client.query(
+      'DELETE FROM investigation_claims WHERE id = $1 AND investigation_id = $2 AND user_id = $3',
+      [claimId, investigationId, userId]
+    );
+    return { deleted: true, removedLinks: removed.rowCount ?? 0 };
+  });
+}
+
+// --- Hypotheses ------------------------------------------------------------
+
+export interface CreateHypothesisData {
+  name: string;
+  explanation?: string;
+  status?: string;
+  confidence?: string;
+  missingInformation?: string;
+  alternativeExplanations?: string;
+  playerNotes?: string;
+  isTutorial?: boolean;
+}
+
+export async function createHypothesis(
+  investigationId: string,
+  userId: string,
+  data: CreateHypothesisData
+): Promise<RealityHypothesis> {
+  const result = await query(
+    `INSERT INTO investigation_hypotheses
+       (investigation_id, user_id, name, explanation, status, confidence,
+        missing_information, alternative_explanations, player_notes, is_tutorial)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+     RETURNING ${HYPOTHESIS_COLUMNS}`,
+    [
+      investigationId, userId, data.name, data.explanation ?? '',
+      data.status ?? 'active', data.confidence ?? 'insufficient_information',
+      data.missingInformation ?? '', data.alternativeExplanations ?? '',
+      data.playerNotes ?? '', data.isTutorial === true,
+    ]
+  );
+  return mapRow<RealityHypothesis>(result.rows[0]);
+}
+
+export async function getHypotheses(investigationId: string, userId: string): Promise<RealityHypothesis[]> {
+  const result = await query(
+    `SELECT ${HYPOTHESIS_COLUMNS} FROM investigation_hypotheses
+      WHERE investigation_id = $1 AND user_id = $2
+      ORDER BY created_at ASC, id ASC`,
+    [investigationId, userId]
+  );
+  return mapRows<RealityHypothesis>(result.rows);
+}
+
+export async function getHypothesisById(
+  hypothesisId: string,
+  investigationId: string,
+  userId: string
+): Promise<RealityHypothesis | null> {
+  const result = await query(
+    `SELECT ${HYPOTHESIS_COLUMNS} FROM investigation_hypotheses
+      WHERE id = $1 AND investigation_id = $2 AND user_id = $3 LIMIT 1`,
+    [hypothesisId, investigationId, userId]
+  );
+  return result.rows[0] ? mapRow<RealityHypothesis>(result.rows[0]) : null;
+}
+
+export type HypothesisPatch = Partial<Pick<RealityHypothesis,
+  'name' | 'explanation' | 'status' | 'confidence' |
+  'missingInformation' | 'alternativeExplanations' | 'playerNotes'>>;
+
+export async function updateHypothesis(
+  hypothesisId: string,
+  investigationId: string,
+  userId: string,
+  patch: HypothesisPatch
+): Promise<RealityHypothesis | null> {
+  const columns: string[] = [];
+  const values: any[] = [];
+  let next = 1;
+  const add = (column: string, value: unknown): void => {
+    columns.push(`${column} = $${next}`);
+    values.push(value);
+    next += 1;
+  };
+  if (patch.name !== undefined) add('name', patch.name);
+  if (patch.explanation !== undefined) add('explanation', patch.explanation);
+  if (patch.status !== undefined) add('status', patch.status);
+  if (patch.confidence !== undefined) add('confidence', patch.confidence);
+  if (patch.missingInformation !== undefined) add('missing_information', patch.missingInformation);
+  if (patch.alternativeExplanations !== undefined) add('alternative_explanations', patch.alternativeExplanations);
+  if (patch.playerNotes !== undefined) add('player_notes', patch.playerNotes);
+  if (columns.length === 0) return getHypothesisById(hypothesisId, investigationId, userId);
+  values.push(hypothesisId, investigationId, userId);
+  const result = await query(
+    `UPDATE investigation_hypotheses SET ${columns.join(', ')}, updated_at = NOW()
+      WHERE id = $${next} AND investigation_id = $${next + 1} AND user_id = $${next + 2}
+      RETURNING ${HYPOTHESIS_COLUMNS}`,
+    values
+  );
+  return result.rows[0] ? mapRow<RealityHypothesis>(result.rows[0]) : null;
+}
+
+/** Delete a hypothesis and links it owns. Scoped to the owner. */
+export async function deleteHypothesis(
+  hypothesisId: string,
+  investigationId: string,
+  userId: string
+): Promise<{ deleted: boolean; removedLinks: number }> {
+  return withTransaction(async (client) => {
+    const owned = await client.query(
+      'SELECT id FROM investigation_hypotheses WHERE id = $1 AND investigation_id = $2 AND user_id = $3',
+      [hypothesisId, investigationId, userId]
+    );
+    if (owned.rows.length === 0) return { deleted: false, removedLinks: 0 };
+    const removed = await client.query(
+      `DELETE FROM reality_map_links
+        WHERE investigation_id = $2 AND user_id = $3
+          AND owner_type = 'hypothesis' AND owner_id = $1`,
+      [hypothesisId, investigationId, userId]
+    );
+    await client.query(
+      'DELETE FROM investigation_hypotheses WHERE id = $1 AND investigation_id = $2 AND user_id = $3',
+      [hypothesisId, investigationId, userId]
+    );
+    return { deleted: true, removedLinks: removed.rowCount ?? 0 };
+  });
+}
+
+// --- Links -----------------------------------------------------------------
+
+export interface CreateLinkData {
+  ownerType: string;
+  ownerId: string;
+  targetType: string;
+  targetId: string;
+  relationship: string;
+  rationale?: string;
+  isTutorial?: boolean;
+}
+
+export async function createLink(
+  investigationId: string,
+  userId: string,
+  data: CreateLinkData
+): Promise<RealityMapLink> {
+  const result = await query(
+    `INSERT INTO reality_map_links
+       (investigation_id, user_id, owner_type, owner_id, target_type, target_id,
+        relationship, rationale, is_tutorial)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+     RETURNING ${LINK_COLUMNS}`,
+    [
+      investigationId, userId, data.ownerType, data.ownerId, data.targetType, data.targetId,
+      data.relationship, data.rationale ?? '', data.isTutorial === true,
+    ]
+  );
+  return mapRow<RealityMapLink>(result.rows[0]);
+}
+
+/** Find an existing link (used to report the duplicate id on 23505). */
+export async function findLinkByShape(
+  investigationId: string,
+  userId: string,
+  data: Pick<CreateLinkData, 'ownerType' | 'ownerId' | 'targetType' | 'targetId'>
+): Promise<RealityMapLink | null> {
+  const result = await query(
+    `SELECT ${LINK_COLUMNS} FROM reality_map_links
+      WHERE investigation_id = $1 AND user_id = $2
+        AND owner_type = $3 AND owner_id = $4 AND target_type = $5 AND target_id = $6
+      LIMIT 1`,
+    [investigationId, userId, data.ownerType, data.ownerId, data.targetType, data.targetId]
+  );
+  return result.rows[0] ? mapRow<RealityMapLink>(result.rows[0]) : null;
+}
+
+export async function getLinks(investigationId: string, userId: string): Promise<RealityMapLink[]> {
+  const result = await query(
+    `SELECT ${LINK_COLUMNS} FROM reality_map_links
+      WHERE investigation_id = $1 AND user_id = $2
+      ORDER BY created_at ASC, id ASC`,
+    [investigationId, userId]
+  );
+  return mapRows<RealityMapLink>(result.rows);
+}
+
+export async function getLinkById(
+  linkId: string,
+  investigationId: string,
+  userId: string
+): Promise<RealityMapLink | null> {
+  const result = await query(
+    `SELECT ${LINK_COLUMNS} FROM reality_map_links
+      WHERE id = $1 AND investigation_id = $2 AND user_id = $3 LIMIT 1`,
+    [linkId, investigationId, userId]
+  );
+  return result.rows[0] ? mapRow<RealityMapLink>(result.rows[0]) : null;
+}
+
+export async function updateLink(
+  linkId: string,
+  investigationId: string,
+  userId: string,
+  patch: { relationship?: string; rationale?: string }
+): Promise<RealityMapLink | null> {
+  const columns: string[] = [];
+  const values: any[] = [];
+  let next = 1;
+  const add = (column: string, value: unknown): void => {
+    columns.push(`${column} = $${next}`);
+    values.push(value);
+    next += 1;
+  };
+  if (patch.relationship !== undefined) add('relationship', patch.relationship);
+  if (patch.rationale !== undefined) add('rationale', patch.rationale);
+  if (columns.length === 0) return getLinkById(linkId, investigationId, userId);
+  values.push(linkId, investigationId, userId);
+  const result = await query(
+    `UPDATE reality_map_links SET ${columns.join(', ')}, updated_at = NOW()
+      WHERE id = $${next} AND investigation_id = $${next + 1} AND user_id = $${next + 2}
+      RETURNING ${LINK_COLUMNS}`,
+    values
+  );
+  return result.rows[0] ? mapRow<RealityMapLink>(result.rows[0]) : null;
+}
+
+export async function deleteLink(
+  linkId: string,
+  investigationId: string,
+  userId: string
+): Promise<boolean> {
+  const result = await query(
+    `DELETE FROM reality_map_links
+      WHERE id = $1 AND investigation_id = $2 AND user_id = $3 RETURNING id`,
+    [linkId, investigationId, userId]
+  );
+  return result.rows.length > 0;
+}
+
+/**
+ * Resolve a link target to a safe label. Hidden/other-case evidence and any
+ * material outside the player's own investigation return null, so links to
+ * invisible content cannot be created or resolved on read.
+ */
+export async function resolveLinkTarget(params: {
+  investigationId: string;
+  caseId: string;
+  userId: string;
+  targetType: string;
+  targetId: string;
+}): Promise<LinkTargetResolution | null> {
+  const { investigationId, caseId, userId, targetType, targetId } = params;
+  if (!targetId || typeof targetId !== 'string') return null;
+
+  if (targetType === 'evidence') {
+    // getEvidenceByCase returns ONLY player-visible/discovered safe evidence.
+    const visible = await getEvidenceByCase(caseId, userId);
+    const match = visible.find((ev: any) => String(ev.id) === String(targetId));
+    if (!match) return null;
+    return {
+      targetType, targetId,
+      label: String(match.source || match.description || 'Evidence').slice(0, 160),
+      subLabel: String(match.category || '').slice(0, 120),
+    };
+  }
+  if (targetType === 'artifact') {
+    const artifact = await getKnowledgeArtifactById(targetId, caseId);
+    if (!artifact) return null;
+    return { targetType, targetId, label: String(artifact.title || artifact.artifactKey || 'Artifact').slice(0, 160), subLabel: String(artifact.artifactType || '').slice(0, 120) };
+  }
+  if (targetType === 'specialist') {
+    const result = await query(
+      `SELECT s.name, s.title FROM specialists s
+         JOIN case_specialists cs ON cs.specialist_id = s.id
+        WHERE s.id = $1 AND cs.case_id = $2 LIMIT 1`,
+      [targetId, caseId]
+    );
+    const row = mapRow<any>(result.rows[0] ?? null);
+    if (!row) return null;
+    return { targetType, targetId, label: String(row.name || 'Specialist').slice(0, 160), subLabel: String(row.title || '').slice(0, 120) };
+  }
+  if (targetType === 'character') {
+    const result = await query(
+      'SELECT name, role FROM characters WHERE id = $1 AND case_id = $2 LIMIT 1',
+      [targetId, caseId]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return { targetType, targetId, label: String(row.name || 'Character').slice(0, 160), subLabel: String(row.role || '').slice(0, 120) };
+  }
+  if (targetType === 'journal_entry') {
+    const result = await query(
+      'SELECT entry_type, content FROM journal_entries WHERE id = $1 AND investigation_id = $2 LIMIT 1',
+      [targetId, investigationId]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return { targetType, targetId, label: `Journal: ${String(row.entry_type || 'entry').slice(0, 80)}`, subLabel: String(row.content || '').slice(0, 120) };
+  }
+  if (targetType === 'notebook_entry') {
+    const result = await query(
+      `SELECT title, concept, entry_type FROM notebook_entries
+        WHERE id = $1 AND investigation_id = $2 AND user_id = $3 LIMIT 1`,
+      [targetId, investigationId, userId]
+    );
+    const row = result.rows[0];
+    if (!row) return null;
+    return { targetType, targetId, label: String(row.title || row.concept || 'Notebook entry').slice(0, 160), subLabel: String(row.entry_type || '').slice(0, 120) };
+  }
+  if (targetType === 'claim') {
+    const claim = await getClaimById(targetId, investigationId, userId);
+    if (!claim) return null;
+    return { targetType, targetId, label: String(claim.title || 'Claim').slice(0, 160), subLabel: 'your claim' };
+  }
+  // 'hypothesis' is not a legal link target (see the shape CHECK in 008).
+  return null;
+}
+
+/** Remove only tutorial scaffolding (and its links) for one investigation. */
+export async function deleteTutorialRealityExamples(
+  investigationId: string,
+  userId: string
+): Promise<{ removedClaims: number; removedHypotheses: number; removedLinks: number }> {
+  return withTransaction(async (client) => {
+    const links = await client.query(
+      `DELETE FROM reality_map_links
+        WHERE investigation_id = $1 AND user_id = $2 AND is_tutorial = true`,
+      [investigationId, userId]
+    );
+    const claims = await client.query(
+      `DELETE FROM investigation_claims
+        WHERE investigation_id = $1 AND user_id = $2 AND is_tutorial = true`,
+      [investigationId, userId]
+    );
+    const hypotheses = await client.query(
+      `DELETE FROM investigation_hypotheses
+        WHERE investigation_id = $1 AND user_id = $2 AND is_tutorial = true`,
+      [investigationId, userId]
+    );
+    return {
+      removedLinks: links.rowCount ?? 0,
+      removedClaims: claims.rowCount ?? 0,
+      removedHypotheses: hypotheses.rowCount ?? 0,
+    };
+  });
 }

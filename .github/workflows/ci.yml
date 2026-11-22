@@ -66,6 +66,7 @@ jobs:
             migrations/002_prod008_progression.sql \
             migrations/005_p2_db_rate_limits.sql \
             migrations/006_m2_knowledge.sql \
+            migrations/008_m4_reality_map.sql \
             scripts/ci-seed.sql \
             seed.sql
           do
@@ -92,6 +93,12 @@ jobs:
         # Read-only: schema/content rules, showcase-case minimums and a
         # canonical-leakage guard over all seeded knowledge text.
         run: npm run knowledge:validate
+
+      - name: M4 Reality Map validation
+        # Read-only: prompt-pack coverage, no canonical leakage in shipped
+        # strings, tutorial labels, and a static purity guard on the domain
+        # module (no canonical_truth / db imports, no numeric probabilities).
+        run: npm run reality-map:validate
 
       - name: Frontend production build
         run: npm run build --prefix frontend

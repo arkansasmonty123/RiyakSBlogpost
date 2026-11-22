@@ -60,7 +60,29 @@ import {
   getNotebookEntries,
   updateNotebookEntry,
   deleteNotebookEntry,
+  createClaim,
+  getClaims,
+  getClaimById,
+  updateClaim,
+  deleteClaim,
+  createHypothesis,
+  getHypotheses,
+  getHypothesisById,
+  updateHypothesis,
+  deleteHypothesis,
+  createLink,
+  getLinks,
+  getLinkById,
+  findLinkByShape,
+  updateLink,
+  deleteLink,
+  countRealityRows,
+  resolveLinkTarget,
+  deleteTutorialRealityExamples,
   type CanonicalTruth,
+  type RealityClaim,
+  type RealityHypothesis,
+  type RealityMapLink,
   query,
 } from './db';
 import {
@@ -103,6 +125,37 @@ import {
   getDevelopments,
   runSchedulerSweep,
 } from './mystery-engine';
+import {
+  REALITY_MAP_LIMITS,
+  isClaimCategory,
+  isConfidence,
+  isHypothesisStatus,
+  isRelationship,
+  isLinkTargetType,
+  isRealityMapOwnerType,
+  isLinkShapeValid,
+  isReviewFocus,
+  toPublicClaim,
+  toPublicHypothesis,
+  toPublicLink,
+  buildMaterialIndex,
+  deriveTensions,
+  buildReasoningAudit,
+  buildHypothesisReviewContext,
+  deterministicHypothesisReview,
+  buildHypothesisComparison,
+  REASONING_DISCLAIMER,
+  type PublicClaim,
+  type PublicHypothesis,
+  type PublicLink,
+  type MaterialIndex,
+  type Tension,
+} from './reality-map';
+import {
+  getReasoningPrompts,
+  getTutorialScaffold,
+  isRealityMapTutorialAvailable,
+} from './reality-map-prompts';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1870,6 +1923,766 @@ investigationRouter.post('/achievements', (_req: Request, res: Response) => {
 
 investigationRouter.get('/achievements', asyncRoute(async (req: Request, res: Response) => {
   res.json(await getAchievements(res.locals.investigation.id));
+}));
+
+// ---------------------------------------------------------------------------
+// M4: Reality Map (player-owned reasoning notes).
+// ---------------------------------------------------------------------------
+// HARD INVARIANTS:
+//   * These endpoints never read canonical_truth, never score a verdict, never
+//     advance progression and never release evidence. They only read/write the
+//     player's own claims/hypotheses/links and already-visible case material.
+//   * Hidden evidence cannot be linked (resolveLinkTarget filters through
+//     getEvidenceByCase) and cannot appear in a snapshot (materials come from
+//     the same vetted source). Stale links are filtered from reads as well.
+//   * Specialists / AI are advisory only: review endpoints perform NO writes.
+// Auth + ownership + offline progression are inherited from investigationRouter.
+// ---------------------------------------------------------------------------
+
+interface RealityMapContext {
+  investigation: any;
+  caseId: string;
+  caseTitle: string;
+  userId: string;
+  claimRows: RealityClaim[];
+  hypothesisRows: RealityHypothesis[];
+  linkRows: RealityMapLink[];
+  claims: PublicClaim[];
+  hypotheses: PublicHypothesis[];
+  links: PublicLink[];
+  tensions: Tension[];
+  materialIndex: MaterialIndex;
+  prompts: Array<{ text: string; claimCategoryHint: string }>;
+  tutorialAvailable: boolean;
+  tutorialPresent: boolean;
+  snapshot: Record<string, unknown>;
+}
+
+async function loadRealityMapContext(investigation: any, userId: string): Promise<RealityMapContext> {
+  const investigationId = String(investigation.id);
+  const caseId = String(investigation.caseId);
+
+  const [caseData, claimRows, hypothesisRows, linkRows, evidence, artifactRows, specialistRows, characterRows, journalRows, notebookRows] =
+    await Promise.all([
+      getCaseById(caseId),
+      getClaims(investigationId, userId),
+      getHypotheses(investigationId, userId),
+      getLinks(investigationId, userId),
+      getEvidenceByCase(caseId, userId),
+      getKnowledgeArtifactsByCase(caseId),
+      getSpecialistsByCase(caseId),
+      getCharactersByCase(caseId),
+      getJournalEntries(investigationId),
+      getNotebookEntries(investigationId, userId),
+    ]);
+
+  const caseTitle = String(caseData?.title ?? '');
+  const safeMaterials = {
+    evidence,
+    artifacts: artifactRows.map(toPublicArtifactSummary),
+    specialists: specialistRows.map(toPublicSpecialist),
+    characters: characterRows.map((c: any) => ({ id: String(c.id), name: String(c.name ?? ''), role: String(c.role ?? '') })),
+    journalEntries: journalRows.map((j: any) => ({ id: String(j.id), entryType: String(j.entryType ?? ''), content: clip(j.content, 200) })),
+    notebookEntries: notebookRows.map(toPublicNotebookEntry),
+  };
+
+  const claims = claimRows.map(toPublicClaim);
+  const hypotheses = hypothesisRows.map(toPublicHypothesis);
+  const materialIndex = buildMaterialIndex({
+    ...safeMaterials,
+    claims,
+    hypotheses,
+  });
+  // Defence in depth: drop any link whose owner or target no longer resolves
+  // (deleted node, evidence that is no longer visible, cross-case id, ...).
+  const links = linkRows
+    .map((row) => toPublicLink(row, materialIndex))
+    .filter((link): link is PublicLink => link !== null);
+  const tensions = deriveTensions({ claims, hypotheses, links });
+  const prompts = getReasoningPrompts(caseTitle);
+  const tutorialAvailable = isRealityMapTutorialAvailable(caseTitle);
+  const tutorialPresent = claims.some((c) => c.isTutorial)
+    || hypotheses.some((h) => h.isTutorial)
+    || links.some((l) => l.isTutorial);
+
+  const snapshot: Record<string, unknown> = {
+    caseId,
+    investigationId,
+    investigationStatus: String(investigation.status ?? ''),
+    claims,
+    hypotheses,
+    links,
+    tensions,
+    materials: {
+      evidence: materialIndex.byType.evidence ?? [],
+      artifacts: materialIndex.byType.artifact ?? [],
+      specialists: materialIndex.byType.specialist ?? [],
+      characters: materialIndex.byType.character ?? [],
+      journalEntries: materialIndex.byType.journal_entry ?? [],
+      notebookEntries: materialIndex.byType.notebook_entry ?? [],
+    },
+    reasoningPrompts: prompts,
+    tutorialAvailable,
+    tutorialPresent,
+    limits: {
+      claims: { used: claims.length, max: REALITY_MAP_LIMITS.maxClaims },
+      hypotheses: { used: hypotheses.length, max: REALITY_MAP_LIMITS.maxHypotheses },
+      links: { used: links.length, max: REALITY_MAP_LIMITS.maxLinks },
+    },
+  };
+
+  return {
+    investigation, caseId, caseTitle, userId,
+    claimRows, hypothesisRows, linkRows, claims, hypotheses, links, tensions,
+    materialIndex, prompts, tutorialAvailable, tutorialPresent, snapshot,
+  };
+}
+
+/** Minimal MaterialIndex used to render a single freshly created/edited link. */
+function linkResponseIndex(
+  ownerType: string, ownerId: string, ownerLabel: string,
+  targetType: string, targetId: string, targetLabel: string, targetSubLabel: string,
+): MaterialIndex {
+  const byKey: Record<string, { id: string; type: any; label: string; subLabel: string }> = {
+    [`${ownerType}:${ownerId}`]: { id: ownerId, type: ownerType, label: ownerLabel, subLabel: '' },
+    [`${targetType}:${targetId}`]: { id: targetId, type: targetType, label: targetLabel, subLabel: targetSubLabel },
+  };
+  return { byKey, items: [], byType: {} };
+}
+
+function textField(value: unknown, max: number, field: string): string | null {
+  if (typeof value !== 'string' || value.length > max) return null;
+  void field;
+  return value;
+}
+
+function optionalTextField(value: unknown, max: number): { ok: true; value: string } | { ok: false } {
+  if (value === undefined) return { ok: true, value: '' };
+  if (typeof value !== 'string' || value.length > max) return { ok: false };
+  return { ok: true, value };
+}
+
+investigationRouter.get('/reality-map', asyncRoute(async (req: Request, res: Response) => {
+  const context = await loadRealityMapContext(res.locals.investigation, res.locals.userId as string);
+  res.json(context.snapshot);
+}));
+
+// --- Claims ----------------------------------------------------------------
+
+investigationRouter.post('/reality-map/claims', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const body = req.body || {};
+  if (!boundedText(body.title, REALITY_MAP_LIMITS.maxTitleChars)) {
+    res.status(400).json({ error: 'title required (1-160 characters)' });
+    return;
+  }
+  if (!isClaimCategory(body.claimCategory)) {
+    res.status(400).json({ error: 'Invalid claimCategory' });
+    return;
+  }
+  if (body.confidence !== undefined && !isConfidence(body.confidence)) {
+    res.status(400).json({ error: 'Invalid confidence' });
+    return;
+  }
+  const description = optionalTextField(body.description, REALITY_MAP_LIMITS.maxTextChars);
+  const notes = optionalTextField(body.notes, REALITY_MAP_LIMITS.maxTextChars);
+  if (!description.ok || !notes.ok) {
+    res.status(400).json({ error: 'description/notes too long' });
+    return;
+  }
+
+  const investigationId = String(res.locals.investigation.id);
+  const userId = res.locals.userId as string;
+  let sourceJournalEntryId: string | null = null;
+  if (body.sourceJournalEntryId !== undefined && body.sourceJournalEntryId !== null && body.sourceJournalEntryId !== '') {
+    if (!isUuid(body.sourceJournalEntryId)) {
+      res.status(400).json({ error: 'Invalid sourceJournalEntryId' });
+      return;
+    }
+    const found = await query(
+      'SELECT id FROM journal_entries WHERE id = $1 AND investigation_id = $2 LIMIT 1',
+      [body.sourceJournalEntryId, investigationId]
+    );
+    if (found.rows.length === 0) {
+      res.status(404).json({ error: 'Source journal entry not found in this investigation' });
+      return;
+    }
+    sourceJournalEntryId = body.sourceJournalEntryId;
+  }
+  let sourceNotebookEntryId: string | null = null;
+  if (body.sourceNotebookEntryId !== undefined && body.sourceNotebookEntryId !== null && body.sourceNotebookEntryId !== '') {
+    if (!isUuid(body.sourceNotebookEntryId)) {
+      res.status(400).json({ error: 'Invalid sourceNotebookEntryId' });
+      return;
+    }
+    const found = await query(
+      `SELECT id FROM notebook_entries WHERE id = $1 AND investigation_id = $2 AND user_id = $3 LIMIT 1`,
+      [body.sourceNotebookEntryId, investigationId, userId]
+    );
+    if (found.rows.length === 0) {
+      res.status(404).json({ error: 'Source notebook entry not found in this investigation' });
+      return;
+    }
+    sourceNotebookEntryId = body.sourceNotebookEntryId;
+  }
+
+  if (await countRealityRows('investigation_claims', investigationId, userId) >= REALITY_MAP_LIMITS.maxClaims) {
+    res.status(409).json({ error: 'Claim limit reached' });
+    return;
+  }
+  const claim = await createClaim(investigationId, userId, {
+    title: body.title,
+    description: description.value,
+    claimCategory: body.claimCategory,
+    confidence: body.confidence ?? 'insufficient_information',
+    notes: notes.value,
+    sourceJournalEntryId,
+    sourceNotebookEntryId,
+  });
+  res.status(201).json(toPublicClaim(claim));
+}));
+
+investigationRouter.patch('/reality-map/claims/:claimId', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  if (!isUuid(req.params.claimId)) {
+    res.status(404).json({ error: 'Claim not found' });
+    return;
+  }
+  const body = req.body || {};
+  const patch: {
+    title?: string; description?: string; claimCategory?: string;
+    confidence?: string; notes?: string;
+  } = {};
+  if (body.title !== undefined) {
+    if (!boundedText(body.title, REALITY_MAP_LIMITS.maxTitleChars)) {
+      res.status(400).json({ error: 'Invalid title' });
+      return;
+    }
+    patch.title = body.title;
+  }
+  if (body.claimCategory !== undefined) {
+    if (!isClaimCategory(body.claimCategory)) {
+      res.status(400).json({ error: 'Invalid claimCategory' });
+      return;
+    }
+    patch.claimCategory = body.claimCategory;
+  }
+  if (body.confidence !== undefined) {
+    if (!isConfidence(body.confidence)) {
+      res.status(400).json({ error: 'Invalid confidence' });
+      return;
+    }
+    patch.confidence = body.confidence;
+  }
+  for (const key of ['description', 'notes'] as const) {
+    if (body[key] !== undefined) {
+      const parsed = textField(body[key], REALITY_MAP_LIMITS.maxTextChars, key);
+      if (parsed === null) {
+        res.status(400).json({ error: `Invalid ${key}` });
+        return;
+      }
+      patch[key] = parsed;
+    }
+  }
+  if (Object.keys(patch).length === 0) {
+    res.status(400).json({ error: 'Empty patch' });
+    return;
+  }
+  const updated = await updateClaim(
+    req.params.claimId as string, String(res.locals.investigation.id), res.locals.userId as string, patch
+  );
+  if (!updated) {
+    res.status(404).json({ error: 'Claim not found' });
+    return;
+  }
+  res.json(toPublicClaim(updated));
+}));
+
+investigationRouter.delete('/reality-map/claims/:claimId', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  if (!isUuid(req.params.claimId)) {
+    res.status(404).json({ error: 'Claim not found' });
+    return;
+  }
+  const result = await deleteClaim(
+    req.params.claimId as string, String(res.locals.investigation.id), res.locals.userId as string
+  );
+  if (!result.deleted) {
+    res.status(404).json({ error: 'Claim not found' });
+    return;
+  }
+  res.json({ deleted: true, removedLinks: result.removedLinks });
+}));
+
+// --- Hypotheses ------------------------------------------------------------
+
+const HYPOTHESIS_TEXT_FIELDS = {
+  explanation: REALITY_MAP_LIMITS.maxTextChars,
+  missingInformation: REALITY_MAP_LIMITS.maxTextChars,
+  alternativeExplanations: REALITY_MAP_LIMITS.maxTextChars,
+  playerNotes: REALITY_MAP_LIMITS.maxTextChars,
+} as const;
+
+function parseHypothesisText(body: any, patch: Record<string, string>): boolean {
+  for (const key of Object.keys(HYPOTHESIS_TEXT_FIELDS) as Array<keyof typeof HYPOTHESIS_TEXT_FIELDS>) {
+    if (body[key] === undefined) continue;
+    const parsed = textField(body[key], HYPOTHESIS_TEXT_FIELDS[key], key);
+    if (parsed === null) return false;
+    patch[key] = parsed;
+  }
+  return true;
+}
+
+investigationRouter.post('/reality-map/hypotheses', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const body = req.body || {};
+  if (!boundedText(body.name, REALITY_MAP_LIMITS.maxNameChars)) {
+    res.status(400).json({ error: 'name required (1-160 characters)' });
+    return;
+  }
+  if (body.status !== undefined && !isHypothesisStatus(body.status)) {
+    res.status(400).json({ error: 'Invalid status' });
+    return;
+  }
+  if (body.confidence !== undefined && !isConfidence(body.confidence)) {
+    res.status(400).json({ error: 'Invalid confidence' });
+    return;
+  }
+  const patch: Record<string, string> = {};
+  if (!parseHypothesisText(body, patch)) {
+    res.status(400).json({ error: 'Hypothesis text field too long' });
+    return;
+  }
+  const investigationId = String(res.locals.investigation.id);
+  const userId = res.locals.userId as string;
+  if (await countRealityRows('investigation_hypotheses', investigationId, userId) >= REALITY_MAP_LIMITS.maxHypotheses) {
+    res.status(409).json({ error: 'Hypothesis limit reached' });
+    return;
+  }
+  const hypothesis = await createHypothesis(investigationId, userId, {
+    name: body.name,
+    status: body.status ?? 'active',
+    confidence: body.confidence ?? 'insufficient_information',
+    ...patch,
+  });
+  res.status(201).json(toPublicHypothesis(hypothesis));
+}));
+
+investigationRouter.patch('/reality-map/hypotheses/:hypothesisId', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  if (!isUuid(req.params.hypothesisId)) {
+    res.status(404).json({ error: 'Hypothesis not found' });
+    return;
+  }
+  const body = req.body || {};
+  const patch: Record<string, string> = {};
+  if (body.name !== undefined) {
+    if (!boundedText(body.name, REALITY_MAP_LIMITS.maxNameChars)) {
+      res.status(400).json({ error: 'Invalid name' });
+      return;
+    }
+    patch.name = body.name;
+  }
+  if (body.status !== undefined) {
+    if (!isHypothesisStatus(body.status)) {
+      res.status(400).json({ error: 'Invalid status' });
+      return;
+    }
+    patch.status = body.status;
+  }
+  if (body.confidence !== undefined) {
+    if (!isConfidence(body.confidence)) {
+      res.status(400).json({ error: 'Invalid confidence' });
+      return;
+    }
+    patch.confidence = body.confidence;
+  }
+  if (!parseHypothesisText(body, patch)) {
+    res.status(400).json({ error: 'Hypothesis text field too long' });
+    return;
+  }
+  if (Object.keys(patch).length === 0) {
+    res.status(400).json({ error: 'Empty patch' });
+    return;
+  }
+  const updated = await updateHypothesis(
+    req.params.hypothesisId as string, String(res.locals.investigation.id), res.locals.userId as string, patch
+  );
+  if (!updated) {
+    res.status(404).json({ error: 'Hypothesis not found' });
+    return;
+  }
+  res.json(toPublicHypothesis(updated));
+}));
+
+investigationRouter.delete('/reality-map/hypotheses/:hypothesisId', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  if (!isUuid(req.params.hypothesisId)) {
+    res.status(404).json({ error: 'Hypothesis not found' });
+    return;
+  }
+  const result = await deleteHypothesis(
+    req.params.hypothesisId as string, String(res.locals.investigation.id), res.locals.userId as string
+  );
+  if (!result.deleted) {
+    res.status(404).json({ error: 'Hypothesis not found' });
+    return;
+  }
+  res.json({ deleted: true, removedLinks: result.removedLinks });
+}));
+
+// --- Links -----------------------------------------------------------------
+
+investigationRouter.post('/reality-map/links', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const body = req.body || {};
+  const { ownerType, ownerId, targetType, targetId, relationship } = body;
+  if (!isRealityMapOwnerType(ownerType) || !isLinkTargetType(targetType) || !isRelationship(relationship)) {
+    res.status(400).json({ error: 'Invalid link type/relationship' });
+    return;
+  }
+  if (!isUuid(ownerId) || !isUuid(targetId)) {
+    res.status(400).json({ error: 'Invalid ownerId/targetId' });
+    return;
+  }
+  if (!isLinkShapeValid(ownerType, targetType, relationship)) {
+    res.status(400).json({ error: 'Illegal link shape for this relationship' });
+    return;
+  }
+  if (body.rationale !== undefined && (typeof body.rationale !== 'string' || body.rationale.length > REALITY_MAP_LIMITS.maxRationaleChars)) {
+    res.status(400).json({ error: 'rationale too long' });
+    return;
+  }
+
+  const investigation = res.locals.investigation;
+  const investigationId = String(investigation.id);
+  const userId = res.locals.userId as string;
+
+  const owner = ownerType === 'claim'
+    ? await getClaimById(ownerId, investigationId, userId)
+    : await getHypothesisById(ownerId, investigationId, userId);
+  if (!owner) {
+    res.status(404).json({ error: 'Link owner not found in this investigation' });
+    return;
+  }
+  // Hidden / other-case evidence and any non-visible material resolve to null.
+  const target = await resolveLinkTarget({
+    investigationId,
+    caseId: String(investigation.caseId),
+    userId,
+    targetType,
+    targetId,
+  });
+  if (!target) {
+    res.status(404).json({ error: 'Link target not found or not visible in this case' });
+    return;
+  }
+
+  if (await countRealityRows('reality_map_links', investigationId, userId) >= REALITY_MAP_LIMITS.maxLinks) {
+    res.status(409).json({ error: 'Link limit reached' });
+    return;
+  }
+
+  let created: RealityMapLink;
+  try {
+    created = await createLink(investigationId, userId, {
+      ownerType, ownerId, targetType, targetId, relationship,
+      rationale: body.rationale ?? '',
+    });
+  } catch (error: any) {
+    if (error?.code === '23505') {
+      const existing = await findLinkByShape(investigationId, userId, { ownerType, ownerId, targetType, targetId });
+      res.status(409).json({ error: 'Relationship already exists', linkId: existing?.id ?? null });
+      return;
+    }
+    throw error;
+  }
+
+  const ownerLabel = ownerType === 'claim'
+    ? clip((owner as RealityClaim).title, 160)
+    : clip((owner as RealityHypothesis).name, 160);
+  const dto = toPublicLink(created, linkResponseIndex(
+    ownerType, ownerId, ownerLabel, targetType, targetId, target.label, target.subLabel
+  ));
+  if (!dto) {
+    res.status(404).json({ error: 'Link target not found or not visible in this case' });
+    return;
+  }
+  res.status(201).json(dto);
+}));
+
+investigationRouter.patch('/reality-map/links/:linkId', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  if (!isUuid(req.params.linkId)) {
+    res.status(404).json({ error: 'Link not found' });
+    return;
+  }
+  const investigationId = String(res.locals.investigation.id);
+  const userId = res.locals.userId as string;
+  const existing = await getLinkById(req.params.linkId as string, investigationId, userId);
+  if (!existing) {
+    res.status(404).json({ error: 'Link not found' });
+    return;
+  }
+  const body = req.body || {};
+  const patch: { relationship?: string; rationale?: string } = {};
+  if (body.relationship !== undefined) {
+    if (!isRelationship(body.relationship)
+      || !isLinkShapeValid(existing.ownerType, existing.targetType, body.relationship)) {
+      res.status(400).json({ error: 'Invalid relationship for this link shape' });
+      return;
+    }
+    patch.relationship = body.relationship;
+  }
+  if (body.rationale !== undefined) {
+    if (typeof body.rationale !== 'string' || body.rationale.length > REALITY_MAP_LIMITS.maxRationaleChars) {
+      res.status(400).json({ error: 'rationale too long' });
+      return;
+    }
+    patch.rationale = body.rationale;
+  }
+  if (Object.keys(patch).length === 0) {
+    res.status(400).json({ error: 'Empty patch' });
+    return;
+  }
+  const updated = await updateLink(req.params.linkId as string, investigationId, userId, patch);
+  if (!updated) {
+    res.status(404).json({ error: 'Link not found' });
+    return;
+  }
+  const context = await loadRealityMapContext(res.locals.investigation, userId);
+  const dto = context.links.find((l) => l.id === updated.id);
+  if (!dto) {
+    res.status(404).json({ error: 'Link target no longer visible' });
+    return;
+  }
+  res.json(dto);
+}));
+
+investigationRouter.delete('/reality-map/links/:linkId', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  if (!isUuid(req.params.linkId)) {
+    res.status(404).json({ error: 'Link not found' });
+    return;
+  }
+  const removed = await deleteLink(
+    req.params.linkId as string, String(res.locals.investigation.id), res.locals.userId as string
+  );
+  if (!removed) {
+    res.status(404).json({ error: 'Link not found' });
+    return;
+  }
+  res.json({ deleted: true });
+}));
+
+// --- Comparison ------------------------------------------------------------
+
+investigationRouter.get('/reality-map/compare', asyncRoute(async (req: Request, res: Response) => {
+  const raw = typeof req.query.hypothesisIds === 'string' ? req.query.hypothesisIds : '';
+  const ids = [...new Set(raw.split(',').map((id) => id.trim()).filter(Boolean))];
+  if (ids.length < 2 || ids.length > REALITY_MAP_LIMITS.maxCompareHypotheses) {
+    res.status(400).json({ error: 'Provide 2-4 hypothesisIds' });
+    return;
+  }
+  if (ids.some((id) => !isUuid(id))) {
+    res.status(400).json({ error: 'Invalid hypothesisIds' });
+    return;
+  }
+  const investigationId = String(res.locals.investigation.id);
+  const userId = res.locals.userId as string;
+  const selected: PublicHypothesis[] = [];
+  for (const id of ids) {
+    const row = await getHypothesisById(id, investigationId, userId);
+    if (!row) {
+      res.status(404).json({ error: 'Hypothesis not found in this investigation' });
+      return;
+    }
+    selected.push(toPublicHypothesis(row));
+  }
+  const context = await loadRealityMapContext(res.locals.investigation, userId);
+  const comparison = buildHypothesisComparison({
+    hypotheses: selected,
+    claims: context.claims,
+    links: context.links,
+  });
+  res.json(comparison);
+}));
+
+// --- Reasoning review (audit + optional grounded summary) ------------------
+
+investigationRouter.post('/reality-map/reasoning-review', chatLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const context = await loadRealityMapContext(res.locals.investigation, res.locals.userId as string);
+  const audit = buildReasoningAudit({
+    claims: context.claims,
+    hypotheses: context.hypotheses,
+    links: context.links,
+    tensions: context.tensions,
+    prompts: context.prompts,
+  });
+  let aiSummary = audit.aiSummary;
+  if (process.env.USE_LLM !== 'false') {
+    // Optional enhancement. The prompt carries ONLY non-canonical counts and
+    // section sizes; the deterministic fallback is always available.
+    const enhanced = await generateAIResponse(
+      'Summarise the state of these reasoning notes in two neutral sentences.',
+      JSON.stringify({ counts: audit.counts, sections: audit.sections.map((s) => ({ key: s.key, itemCount: s.items.length })) }),
+      {
+        label: 'Reasoning Review',
+        systemHint: 'Summarise only the supplied counts. Never reveal a solution or endorse a hypothesis. Be neutral and concise.',
+        fallbackFn: () => audit.aiSummary,
+      },
+      []
+    );
+    if (enhanced?.content) aiSummary = clip(enhanced.content, REALITY_MAP_LIMITS.maxReviewChars);
+  }
+  res.json({ ...audit, aiSummary });
+}));
+
+// --- Specialist hypothesis review (advisory only, NO writes) ---------------
+
+investigationRouter.post(
+  '/reality-map/hypotheses/:hypothesisId/specialist-review',
+  chatLimiter,
+  asyncRoute(async (req: Request, res: Response) => {
+    const body = req.body || {};
+    const { specialistKey, focus, compareWithHypothesisId, targetSpecialistKey } = body;
+    if (typeof specialistKey !== 'string' || specialistKey.length === 0 || specialistKey.length > 120) {
+      res.status(400).json({ error: 'Invalid specialistKey' });
+      return;
+    }
+    if (!isReviewFocus(focus)) {
+      res.status(400).json({ error: 'Invalid focus' });
+      return;
+    }
+    if (focus === 'critique' && (typeof targetSpecialistKey !== 'string' || targetSpecialistKey.length === 0)) {
+      res.status(400).json({ error: 'critique requires targetSpecialistKey' });
+      return;
+    }
+    if (targetSpecialistKey !== undefined && (typeof targetSpecialistKey !== 'string' || targetSpecialistKey.length > 120)) {
+      res.status(400).json({ error: 'Invalid targetSpecialistKey' });
+      return;
+    }
+    if (compareWithHypothesisId !== undefined && !isUuid(compareWithHypothesisId)) {
+      res.status(400).json({ error: 'Invalid compareWithHypothesisId' });
+      return;
+    }
+
+    const investigation = res.locals.investigation;
+    const investigationId = String(investigation.id);
+    const caseId = String(investigation.caseId);
+    const userId = res.locals.userId as string;
+    if (!isUuid(req.params.hypothesisId)) {
+      res.status(404).json({ error: 'Hypothesis not found' });
+      return;
+    }
+    const hypothesisRow = await getHypothesisById(req.params.hypothesisId as string, investigationId, userId);
+    if (!hypothesisRow) {
+      res.status(404).json({ error: 'Hypothesis not found' });
+      return;
+    }
+    const specialistRow = await getSpecialistByKey(caseId, specialistKey);
+    if (!specialistRow) {
+      res.status(400).json({ error: 'Specialist not found for this case' });
+      return;
+    }
+    if (targetSpecialistKey !== undefined) {
+      const targetRow = await getSpecialistByKey(caseId, targetSpecialistKey as string);
+      if (!targetRow) {
+        res.status(400).json({ error: 'targetSpecialistKey not found for this case' });
+        return;
+      }
+    }
+    let comparisonHypothesis: PublicHypothesis | null = null;
+    if (compareWithHypothesisId !== undefined) {
+      const compareRow = await getHypothesisById(compareWithHypothesisId, investigationId, userId);
+      if (!compareRow) {
+        res.status(404).json({ error: 'Comparison hypothesis not found in this investigation' });
+        return;
+      }
+      comparisonHypothesis = toPublicHypothesis(compareRow);
+    }
+
+    const context = await loadRealityMapContext(investigation, userId);
+    const specialist = toPublicSpecialist(specialistRow);
+    const hypothesis = toPublicHypothesis(hypothesisRow);
+    const reviewInput = {
+      specialistName: specialist.name,
+      focus,
+      hypothesis,
+      claims: context.claims,
+      hypotheses: context.hypotheses,
+      links: context.links,
+      tensions: context.tensions,
+      comparisonHypothesis,
+      materialIndex: context.materialIndex,
+    };
+    const reviewContext = buildHypothesisReviewContext(reviewInput);
+    const response = await generateAIResponse(
+      focus === 'critique'
+        ? `Critique the reasoning of ${targetSpecialistKey} using only the supplied notes.`
+        : `Review my hypothesis "${clip(hypothesis.name, 100)}" (focus: ${focus}).`,
+      reviewContext,
+      {
+        label: specialist.name,
+        systemHint: `You are ${clip(specialist.name, 80)}, ${clip(specialist.title, 80)} (${clip(specialist.discipline, 80)}). ${clip(specialist.expertiseSummary, 300)} Never assert facts outside the provided context, never state which hypothesis is correct, and never mention canonical truth or hidden evidence. Limitations: ${specialist.limitations.map((l: string) => clip(l, 120)).join('; ')}`,
+        fallbackFn: () => deterministicHypothesisReview(reviewInput),
+      },
+      []
+    );
+
+    // NOTE: deliberately no addMessage / no DB write — specialists advise only.
+    res.json({
+      content: response.content,
+      specialistKey: specialist.specialistKey,
+      specialistName: specialist.name,
+      focus,
+      limitations: specialist.limitations,
+      provenance: 'specialist_opinion',
+      disclaimer: REASONING_DISCLAIMER,
+      ...(compareWithHypothesisId !== undefined ? { compareWithHypothesisId } : {}),
+      ...(targetSpecialistKey !== undefined ? { targetSpecialistKey } : {}),
+    });
+  })
+);
+
+// --- Tutorial scaffolding --------------------------------------------------
+
+investigationRouter.post('/reality-map/tutorial-examples', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  if ((req.body || {}).confirm !== true) {
+    res.status(400).json({ error: 'confirm:true is required to add tutorial examples' });
+    return;
+  }
+  const context = await loadRealityMapContext(res.locals.investigation, res.locals.userId as string);
+  if (!context.tutorialAvailable) {
+    res.status(409).json({ error: 'Tutorial examples are not available for this case' });
+    return;
+  }
+  if (context.tutorialPresent) {
+    res.status(409).json({ error: 'Tutorial examples already present' });
+    return;
+  }
+  const scaffold = getTutorialScaffold(context.caseTitle);
+  if (!scaffold) {
+    res.status(409).json({ error: 'Tutorial examples are not available for this case' });
+    return;
+  }
+  const investigationId = String(res.locals.investigation.id);
+  const userId = res.locals.userId as string;
+  const claims = [];
+  for (const c of scaffold.claims) {
+    claims.push(toPublicClaim(await createClaim(investigationId, userId, {
+      title: c.title, description: c.description, claimCategory: c.claimCategory,
+      confidence: c.confidence, isTutorial: true,
+    })));
+  }
+  const hypotheses = [];
+  for (const h of scaffold.hypotheses) {
+    hypotheses.push(toPublicHypothesis(await createHypothesis(investigationId, userId, {
+      name: h.name, explanation: h.explanation, status: h.status, confidence: h.confidence,
+      missingInformation: h.missingInformation, alternativeExplanations: h.alternativeExplanations,
+      isTutorial: true,
+    })));
+  }
+  // Tutorial scaffolding deliberately has zero links.
+  res.status(201).json({ claims, hypotheses, links: [] });
+}));
+
+investigationRouter.delete('/reality-map/tutorial-examples', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const removed = await deleteTutorialRealityExamples(
+    String(res.locals.investigation.id), res.locals.userId as string
+  );
+  res.json({ deleted: true, ...removed });
 }));
 
 app.use('/api/investigations/:investigationId', investigationRouter);

@@ -8,6 +8,7 @@ interface KnowledgeNotebookProps {
   onUpdate: (entryId: string, patch: { title?: string; content?: string; concept?: string; entryType?: string }) => Promise<void>;
   onDelete: (entryId: string) => Promise<void>;
   onExport: (format: 'json' | 'markdown') => Promise<void>;
+  onTurnIntoClaim?: (entry: PublicNotebookEntry) => void;
   busy?: boolean;
 }
 
@@ -23,7 +24,7 @@ function label(value: string): string {
   return value.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-export function KnowledgeNotebook({ entries, specialists, onCreateNote, onUpdate, onDelete, onExport, busy }: KnowledgeNotebookProps) {
+export function KnowledgeNotebook({ entries, specialists, onCreateNote, onUpdate, onDelete, onExport, onTurnIntoClaim, busy }: KnowledgeNotebookProps) {
   const [search, setSearch] = useState('');
   const [exporting, setExporting] = useState<'json' | 'markdown' | null>(null);
   const [typeFilter, setTypeFilter] = useState('all');
@@ -288,6 +289,9 @@ export function KnowledgeNotebook({ entries, specialists, onCreateNote, onUpdate
                   <span className="muted">Updated {formatDate(entry.updatedAt || entry.createdAt)}</span>
                   {!isEditing && (
                     <div className="button-row">
+                      {onTurnIntoClaim && (
+                        <button type="button" className="link-button" onClick={() => onTurnIntoClaim(entry)}>Turn into claim</button>
+                      )}
                       <button type="button" className="link-button" onClick={() => startEdit(entry)}>Edit</button>
                       <button type="button" className="link-button link-button--danger" onClick={() => void handleDelete(entry.id)}>
                         {confirmDeleteId === entry.id ? 'Confirm remove' : 'Remove'}

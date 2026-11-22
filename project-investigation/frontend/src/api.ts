@@ -531,6 +531,212 @@ export interface Achievement {
   unlockedAt?: string;
 }
 
+// --- Reality Map (M4) --------------------------------------------------------
+// Player-owned reasoning workspace. All data is scoped to the player's own
+// investigation and contains no canonical truth or hidden evidence.
+
+export type RealityClaimCategory =
+  | 'factual_observation'
+  | 'interpretation'
+  | 'assumption'
+  | 'causal_explanation'
+  | 'motive'
+  | 'timeline_assertion'
+  | 'unresolved_question';
+
+export type RealityConfidence =
+  | 'high_confidence'
+  | 'moderate_confidence'
+  | 'low_confidence'
+  | 'insufficient_information';
+
+export type RealityHypothesisStatus = 'active' | 'weakened' | 'strengthened' | 'archived';
+
+export type RealityRelationship =
+  | 'supports'
+  | 'contradicts'
+  | 'contextualizes'
+  | 'weakens'
+  | 'unrelated_inconclusive'
+  | 'included';
+
+export type RealityMaterialType =
+  | 'evidence'
+  | 'artifact'
+  | 'journal_entry'
+  | 'notebook_entry'
+  | 'specialist'
+  | 'character';
+
+export type RealityLinkTargetType = RealityMaterialType | 'claim' | 'hypothesis';
+export type RealityLinkOwnerType = 'claim' | 'hypothesis';
+
+export type RealityReviewFocus = 'assumptions' | 'discriminate' | 'alternatives' | 'falsify' | 'critique';
+export type RealityProvenance =
+  | 'established_fact'
+  | 'player_interpretation'
+  | 'specialist_opinion'
+  | 'unverified_assumption'
+  | 'ai_suggestion';
+
+export interface RealityClaim {
+  id: string;
+  investigationId: string;
+  title: string;
+  description: string;
+  claimCategory: RealityClaimCategory;
+  confidence: RealityConfidence;
+  notes: string;
+  sourceJournalEntryId: string | null;
+  sourceNotebookEntryId: string | null;
+  isTutorial: boolean;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface RealityHypothesis {
+  id: string;
+  investigationId: string;
+  name: string;
+  explanation: string;
+  status: RealityHypothesisStatus;
+  confidence: RealityConfidence;
+  missingInformation: string;
+  alternativeExplanations: string;
+  playerNotes: string;
+  isTutorial: boolean;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface RealityLink {
+  id: string;
+  investigationId: string;
+  ownerType: RealityLinkOwnerType;
+  ownerId: string;
+  targetType: RealityLinkTargetType;
+  targetId: string;
+  relationship: RealityRelationship;
+  rationale: string;
+  ownerLabel: string;
+  targetLabel: string;
+  targetSubLabel: string;
+  isTutorial: boolean;
+  createdAt?: unknown;
+  updatedAt?: unknown;
+}
+
+export interface RealityMaterialItem {
+  id: string;
+  type: RealityLinkTargetType;
+  label: string;
+  subLabel: string;
+}
+
+export interface RealityMaterials {
+  evidence: RealityMaterialItem[];
+  artifacts: RealityMaterialItem[];
+  specialists: RealityMaterialItem[];
+  characters: RealityMaterialItem[];
+  journalEntries: RealityMaterialItem[];
+  notebookEntries: RealityMaterialItem[];
+}
+
+export interface RealityTension {
+  id: string;
+  kind: 'material_conflict' | 'claim_conflict' | 'hypothesis_conflict';
+  label: string;
+  description: string;
+  claimIds: string[];
+  hypothesisIds: string[];
+  materialRef: string;
+}
+
+export interface RealityPrompt {
+  text: string;
+  claimCategoryHint?: string;
+}
+
+export interface RealityMapLimits {
+  claims: { used: number; max: number };
+  hypotheses: { used: number; max: number };
+  links: { used: number; max: number };
+}
+
+export interface RealityMapSnapshot {
+  caseId: string;
+  investigationId: string;
+  investigationStatus: string;
+  claims: RealityClaim[];
+  hypotheses: RealityHypothesis[];
+  links: RealityLink[];
+  tensions: RealityTension[];
+  materials: RealityMaterials;
+  reasoningPrompts: RealityPrompt[];
+  tutorialAvailable: boolean;
+  tutorialPresent: boolean;
+  limits: RealityMapLimits;
+}
+
+export interface RealityAuditSource {
+  claimId?: string;
+  hypothesisId?: string;
+  materialRef?: string;
+}
+
+export interface RealityAuditItem {
+  id: string;
+  text: string;
+  provenance: RealityProvenance;
+  sources: RealityAuditSource;
+}
+
+export interface RealityAuditSection {
+  key: string;
+  title: string;
+  items: RealityAuditItem[];
+}
+
+export interface RealityReasoningAudit {
+  sections: RealityAuditSection[];
+  provenanceLegend: Record<string, string>;
+  disclaimer: string;
+  counts: Record<string, number>;
+  aiSummary: string;
+}
+
+export interface RealityHypothesisComparison {
+  hypotheses: Array<{
+    id: string;
+    name: string;
+    status: RealityHypothesisStatus;
+    confidence: RealityConfidence;
+    includedClaimIds: string[];
+  }>;
+  sharedClaimIds: string[];
+  divergences: Array<{ claimId: string; presentIn: string[]; absentIn: string[] }>;
+  questions: string[];
+  disclaimer: string;
+}
+
+export interface RealitySpecialistReview {
+  content: string;
+  specialistKey: string;
+  specialistName: string;
+  focus: RealityReviewFocus;
+  limitations: string[];
+  provenance: 'specialist_opinion';
+  disclaimer: string;
+  compareWithHypothesisId?: string;
+  targetSpecialistKey?: string;
+}
+
+export interface RealityTutorialResponse {
+  claims: RealityClaim[];
+  hypotheses: RealityHypothesis[];
+  links: RealityLink[];
+}
+
 // --- Post-resolution solution (PROD-009) -------------------------------------
 // This is the safe, server-projected DTO returned only for COMPLETED, owned
 // investigations. It deliberately contains no hidden_events/internal fields.
@@ -797,6 +1003,150 @@ export const api = {
 
   exportNotebookMarkdown: (id: string) =>
     requestText(`/api/investigations/${encodeURIComponent(id)}/notebook/export?format=markdown`),
+
+  // --- Reality Map (M4) -----------------------------------------------------
+  // Player-owned reasoning workspace. All endpoints are investigation-scoped;
+  // the server enforces auth, ownership, and visible-material boundaries.
+
+  getRealityMap: (investigationId: string) =>
+    request<RealityMapSnapshot>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map`
+    ),
+
+  createRealityClaim: (
+    investigationId: string,
+    body: {
+      title: string;
+      description?: string;
+      claimCategory: RealityClaimCategory;
+      confidence?: RealityConfidence;
+      notes?: string;
+      sourceJournalEntryId?: string | null;
+      sourceNotebookEntryId?: string | null;
+    }
+  ) =>
+    post<RealityClaim>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/claims`,
+      body
+    ),
+
+  updateRealityClaim: (
+    investigationId: string,
+    claimId: string,
+    patch: Partial<Pick<RealityClaim, 'title' | 'description' | 'claimCategory' | 'confidence' | 'notes'>>
+  ) =>
+    request<RealityClaim>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/claims/${encodeURIComponent(claimId)}`,
+      { method: 'PATCH', body: JSON.stringify(patch) }
+    ),
+
+  deleteRealityClaim: (investigationId: string, claimId: string) =>
+    request<{ deleted: boolean; removedLinks: number }>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/claims/${encodeURIComponent(claimId)}`,
+      { method: 'DELETE' }
+    ),
+
+  createRealityHypothesis: (
+    investigationId: string,
+    body: {
+      name: string;
+      explanation?: string;
+      confidence?: RealityConfidence;
+      missingInformation?: string;
+      alternativeExplanations?: string;
+      playerNotes?: string;
+    }
+  ) =>
+    post<RealityHypothesis>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/hypotheses`,
+      body
+    ),
+
+  updateRealityHypothesis: (
+    investigationId: string,
+    hypothesisId: string,
+    patch: Partial<Pick<RealityHypothesis, 'name' | 'explanation' | 'status' | 'confidence' | 'missingInformation' | 'alternativeExplanations' | 'playerNotes'>>
+  ) =>
+    request<RealityHypothesis>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/hypotheses/${encodeURIComponent(hypothesisId)}`,
+      { method: 'PATCH', body: JSON.stringify(patch) }
+    ),
+
+  deleteRealityHypothesis: (investigationId: string, hypothesisId: string) =>
+    request<{ deleted: boolean; removedLinks: number }>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/hypotheses/${encodeURIComponent(hypothesisId)}`,
+      { method: 'DELETE' }
+    ),
+
+  createRealityLink: (
+    investigationId: string,
+    body: {
+      ownerType: RealityLinkOwnerType;
+      ownerId: string;
+      targetType: RealityLinkTargetType;
+      targetId: string;
+      relationship: RealityRelationship;
+      rationale?: string;
+    }
+  ) =>
+    post<RealityLink>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/links`,
+      body
+    ),
+
+  updateRealityLink: (
+    investigationId: string,
+    linkId: string,
+    patch: Partial<Pick<RealityLink, 'relationship' | 'rationale'>>
+  ) =>
+    request<RealityLink>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/links/${encodeURIComponent(linkId)}`,
+      { method: 'PATCH', body: JSON.stringify(patch) }
+    ),
+
+  deleteRealityLink: (investigationId: string, linkId: string) =>
+    request<{ deleted: boolean }>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/links/${encodeURIComponent(linkId)}`,
+      { method: 'DELETE' }
+    ),
+
+  compareRealityHypotheses: (investigationId: string, hypothesisIds: string[]) =>
+    request<RealityHypothesisComparison>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/compare?hypothesisIds=${encodeURIComponent(hypothesisIds.join(','))}`
+    ),
+
+  realityReasoningReview: (investigationId: string) =>
+    post<RealityReasoningAudit>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/reasoning-review`,
+      {}
+    ),
+
+  realitySpecialistReview: (
+    investigationId: string,
+    hypothesisId: string,
+    body: {
+      specialistKey: string;
+      focus: RealityReviewFocus;
+      compareWithHypothesisId?: string;
+      targetSpecialistKey?: string;
+    }
+  ) =>
+    post<RealitySpecialistReview>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/hypotheses/${encodeURIComponent(hypothesisId)}/specialist-review`,
+      body
+    ),
+
+  addRealityTutorialExamples: (investigationId: string) =>
+    post<RealityTutorialResponse>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/tutorial-examples`,
+      { confirm: true }
+    ),
+
+  removeRealityTutorialExamples: (investigationId: string) =>
+    request<{ deleted: boolean; claims?: number; hypotheses?: number; links?: number }>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/tutorial-examples`,
+      { method: 'DELETE' }
+    ),
 };
 
 /** Convert an unknown error into a short, user-facing message. */

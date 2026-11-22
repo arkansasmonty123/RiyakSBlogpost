@@ -53,11 +53,14 @@ import { ExpertsPanel } from '../components/ExpertsPanel';
 import { KnowledgeArtifactCard } from '../components/KnowledgeArtifactCard';
 import { KnowledgeArtifactDrawer } from '../components/KnowledgeArtifactDrawer';
 import { KnowledgeNotebook } from '../components/KnowledgeNotebook';
+import { RealityMapPanel } from '../components/realitymap/RealityMapPanel';
+import type { RealityMapPrefill } from '../components/realitymap/RealityMapPanel';
 
 type Tab =
   | 'chat'
   | 'evidence'
   | 'suspects'
+  | 'reality'
   | 'experts'
   | 'timeline'
   | 'journal'
@@ -70,6 +73,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'chat', label: 'Group Chat' },
   { id: 'evidence', label: 'Evidence' },
   { id: 'suspects', label: 'Suspect Board' },
+  { id: 'reality', label: 'Reality Map' },
   { id: 'experts', label: 'Experts' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'journal', label: 'Journal' },
@@ -180,6 +184,7 @@ export const InvestigationRoomPage = () => {
   const [artifactDrawer, setArtifactDrawer] = useState<PublicArtifactSummary | null>(null);
   const [notebookBusy, setNotebookBusy] = useState(false);
   const [notebookError, setNotebookError] = useState<string | null>(null);
+  const [realityPrefill, setRealityPrefill] = useState<RealityMapPrefill | null>(null);
 
   // Async progression (PROD-008)
   const [checkpointState, setCheckpointState] = useState<CheckpointState | null>(null);
@@ -865,6 +870,16 @@ export const InvestigationRoomPage = () => {
           <SuspectBoardPanel suspects={suspects} openQuestions={openQuestions} />
         )}
 
+        {activeTab === 'reality' && investigation && (
+          <RealityMapPanel
+            investigationId={investigation.id}
+            caseClosed={caseClosed}
+            specialists={specialists}
+            prefill={realityPrefill}
+            onPrefillConsumed={() => setRealityPrefill(null)}
+          />
+        )}
+
         {activeTab === 'experts' && (
           <div className="experts-tab">
             <ExpertsPanel
@@ -1001,6 +1016,11 @@ export const InvestigationRoomPage = () => {
                     {entry.creationTimestamp && (
                       <p className="muted">{formatDate(entry.creationTimestamp)}</p>
                     )}
+                    <div className="button-row">
+                      <button type="button" className="link-button" onClick={() => turnJournalIntoClaim(entry)}>
+                        Turn into claim
+                      </button>
+                    </div>
                   </article>
                 ))}
               </div>
@@ -1018,6 +1038,7 @@ export const InvestigationRoomPage = () => {
               onUpdate={handleNotebookUpdate}
               onDelete={handleNotebookDelete}
               onExport={handleNotebookExport}
+              onTurnIntoClaim={turnNotebookIntoClaim}
               busy={notebookBusy}
             />
           </div>
@@ -1293,6 +1314,28 @@ export const InvestigationRoomPage = () => {
       const input = document.querySelector<HTMLInputElement>('.chat-input input');
       input?.focus();
     }, 0);
+  }
+
+  function turnJournalIntoClaim(entry: JournalEntry) {
+    setRealityPrefill({
+      sourceJournalEntryId: entry.id,
+      title: entry.content.slice(0, 160),
+      description: entry.content,
+      claimCategory: entry.isConfirmed ? 'factual_observation' : 'interpretation',
+      confidence: entry.isConfirmed ? 'moderate_confidence' : 'insufficient_information',
+    });
+    setActiveTab('reality');
+  }
+
+  function turnNotebookIntoClaim(entry: PublicNotebookEntry) {
+    setRealityPrefill({
+      sourceNotebookEntryId: entry.id,
+      title: (entry.title || entry.concept || entry.content || 'Notebook claim').slice(0, 160),
+      description: entry.content || entry.title || '',
+      claimCategory: entry.entryType === 'fact' ? 'factual_observation' : entry.entryType === 'question' ? 'unresolved_question' : 'interpretation',
+      confidence: 'insufficient_information',
+    });
+    setActiveTab('reality');
   }
 
   async function refreshNotebook() {

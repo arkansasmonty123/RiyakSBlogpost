@@ -58,3 +58,11 @@
 - [x] **M3-FOUNDATION**: Migration 007, pack framework, provenance DTO/DB/server/validator/UI/export, Midnight Heist upgraded.
 - [x] **M3-CONTENT**: Code Blue at the Clinic and Blaze at Dawn Bakery packs authored and seeded.
 - [x] **M3-VERIFY**: typecheck PASS, db:schema:verify PASS (25/25,258), smoke-db PASS, knowledge:validate PASS, case:validate PASS, frontend build PASS, test:http 73/73 PASS.
+
+## M4 - Reality Map & Investigative Reasoning Engine (complete)
+
+- [x] **M4-AUDIT**: Inspected schema/routes/UI/tests; M4 scope additive.
+- [x] **M4-PLAN**: Architect contract frozen (migration 008, pure module, routes, prompts/tutorial, tests, UI).
+- [x] **M4-BACKEND**: Migration 008, db/server/reality-map modules, validator, smoke+CI updates. 88/88.
+- [x] **M4-UI**: Reality Map tab/components, API wiring, journal/notebook claim affordances.
+- [x] **M4-VERIFY**: Full verification PASS (88/88).

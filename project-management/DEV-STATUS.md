@@ -9,7 +9,7 @@ Deliver PRD MVP for THE INVESTIGATION (`project-investigation/`) with autonomous
 
 ## Current milestone
 
-Milestone 3 complete: Research, Case Expansion & Knowledge Quality. 3 case knowledge packs seeded (Midnight Heist, Code Blue at the Clinic, Blaze at Dawn Bakery).
+Milestone 4 complete: Reality Map & Investigative Reasoning Engine. Player-owned claims/hypotheses/links/tensions/reasoning assistant/specialist review integrated for investigations.
 
 ## Project snapshot (as inspected 2026-11-22 recovery)
 
@@ -63,6 +63,9 @@ Milestone 3 complete: Research, Case Expansion & Knowledge Quality. 3 case knowl
 
 - [x] **M3-KNOWLEDGE (M3)**: Knowledge quality/provenance/case expansion. Migration 007 (provenance fields, case_knowledge_packs). Pack authoring framework (`src/knowledge-packs/`). Midnight Heist upgraded; Code Blue at the Clinic and Blaze at Dawn Bakery packs authored (3 specialists, 5 artifacts, 1 disagreement, learning objectives, evidence refs, suggested conversations, depth content each). Research-verified citations used; no fabricated URLs; verification statuses explicit. Case-aware knowledge:validate, notebook export JSON/Markdown, frontend provenance UI. Verified: typecheck PASS, db:schema:verify PASS (25/25 tables, 258 cols), smoke-db PASS, knowledge:validate PASS, case:validate PASS, frontend build PASS, test:http 73/73 PASS. (2026-11-23)
 
+
+- [x] **M4-REALITY-MAP (M4)**: Reality Map & Investigative Reasoning Engine. Additive migration 008 (`investigation_claims`, `investigation_hypotheses`, `reality_map_links`). Pure `src/reality-map.ts` + `reality-map-prompts.ts`. Investigation-scoped routes for snapshot/CRUD/compare/reasoning-review/specialist-review/tutorial; hidden-evidence and ownership enforced; no canonical truth reads; no verdict/progression/evidence-release coupling. Frontend Reality Map tab with hypotheses/claims/links/tensions/assumptions/open questions/reasoning assistant/specialist review/tutorial; journal/notebook turn-into-claim. Verified: typecheck PASS, db:schema:verify PASS (28/28 tables,296 cols), smoke-db PASS, reality-map:validate PASS, knowledge:validate PASS, case:validate PASS, frontend build PASS, test:http 88/88 PASS. (2026-11-23)
+
 ## Blockers / risks
 
 - **No critical blockers open.** Audited P0/P1 gaps, feasible P2 items, 25-case seed, and pluggable AI infra completed with verification.
@@ -73,4 +76,4 @@ Milestone 3 complete: Research, Case Expansion & Knowledge Quality. 3 case knowl
 
 ## Next action
 
-Milestone 3 complete. Await next milestone direction. Options: expand knowledge packs to more cases, add Gemini key for AI quality, run Playwright UI/a11y pass on request, production hardening/deploy planning.
+Milestone 4 complete. Await next milestone direction. Options: Playwright UI/a11y pass on request, expand Reality Map prompts/tutorials to more cases, deepen AI reasoning quality with configured LLM key, production hardening/deploy planning.

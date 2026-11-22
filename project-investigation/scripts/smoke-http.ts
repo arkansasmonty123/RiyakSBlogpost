@@ -1986,6 +1986,398 @@ async function main() {
     assertNoLeak(artifacts.body, 'Blaze artifacts', leakTerms, uuids);
   });
 
+  // ---------------------------------------------------------------------------
+  // M4 Reality Map (player-owned reasoning notes). Safety properties under
+  // test: hidden evidence unreachable, no canonical leakage, no verdict or
+  // progression influence, AI advisory-only, ownership isolation.
+  // ---------------------------------------------------------------------------
+  console.log('\n=== M4 Reality Map Tests ===\n');
+
+  const M4_REALITY_LIMITS = { claims: 60, hypotheses: 20, links: 300 };
+  const m4Cookie = await registerAndLogin('m4-reality');
+  const m4InvId = await createInvestigation(m4Cookie, caseId);
+  const m4Base = `/api/investigations/${m4InvId}/reality-map`;
+  const hiddenForCase = await query(
+    'SELECT id FROM evidence WHERE case_id = $1 AND player_visible = false LIMIT 1', [caseId]
+  );
+  const hiddenForCaseId = hiddenForCase.rows[0]?.id as string | undefined;
+  const m4Character = await query('SELECT id FROM characters WHERE case_id = $1 LIMIT 1', [caseId]);
+  const m4CharacterId = m4Character.rows[0]?.id as string | undefined;
+  const RANDOM_UUID = '11111111-1111-4111-8111-111111111111';
+  // Character names (including suspects) are intentionally public via the
+  // PROD-013 suspect board, and visible evidence UUIDs are already exposed in
+  // the snapshot materials. This guard targets HIDDEN solution facts and the
+  // hidden evidence id only.
+  const M4_CANONICAL_TERMS = [
+    'hollow base', 'silver trophy', 'Sterling Holdings', '20 million',
+    'gambling debts', 'silenced Amy', 'embezzled from the bakery', 'audit the books',
+  ];
+  function assertNoM4Leak(value: unknown, label: string): void {
+    assertNoLeak(value, label, M4_CANONICAL_TERMS, hiddenForCaseId ? [hiddenForCaseId] : []);
+  }
+
+  let claimSupports: any = null;
+  let claimContradicts: any = null;
+  let hypPrimary: any = null;
+  let hypSecondary: any = null;
+  let linkSupports: any = null;
+  let linkContradicts: any = null;
+  let linkIncluded: any = null;
+
+  await test('M4: snapshot is safe-shaped, visible-only and case-scoped', async () => {
+    const res = await request('GET', m4Base, undefined, m4Cookie);
+    if (res.status !== 200) throw new Error(`Snapshot failed: ${res.status} ${JSON.stringify(res.body)}`);
+    for (const key of ['caseId', 'investigationId', 'investigationStatus', 'claims', 'hypotheses', 'links', 'tensions', 'materials', 'reasoningPrompts', 'tutorialAvailable', 'tutorialPresent', 'limits']) {
+      if (!(key in res.body)) throw new Error(`Snapshot missing ${key}`);
+    }
+    if (res.body.caseId !== caseId || res.body.investigationId !== m4InvId) throw new Error('Snapshot ids mismatch');
+    if (!Array.isArray(res.body.claims) || !Array.isArray(res.body.hypotheses) || !Array.isArray(res.body.links) || !Array.isArray(res.body.tensions)) {
+      throw new Error('Snapshot collections not arrays');
+    }
+    if (res.body.limits.claims.max !== M4_REALITY_LIMITS.claims
+      || res.body.limits.hypotheses.max !== M4_REALITY_LIMITS.hypotheses
+      || res.body.limits.links.max !== M4_REALITY_LIMITS.links) {
+      throw new Error('Snapshot limits wrong');
+    }
+    assertNoM4Leak(res.body, 'M4 snapshot');
+    if (hiddenForCaseId && JSON.stringify(res.body).includes(hiddenForCaseId)) {
+      throw new Error('Snapshot leaked a hidden evidence UUID');
+    }
+    for (const ev of res.body.materials.evidence) {
+      if (hiddenForCaseId && ev.id === hiddenForCaseId) throw new Error('Hidden evidence in snapshot materials');
+    }
+  });
+
+  await test('M4: ownership guard rejects other users (403) on read and write', async () => {
+    const other = await registerAndLogin('m4-other');
+    const get = await request('GET', m4Base, undefined, other);
+    if (get.status !== 403 && get.status !== 404) throw new Error(`Non-owner snapshot not rejected: ${get.status}`);
+    const post = await request('POST', `${m4Base}/claims`, { title: 'Intrusion', claimCategory: 'factual_observation' }, other);
+    if (post.status !== 403 && post.status !== 404) throw new Error(`Non-owner claim create not rejected: ${post.status}`);
+    const unauth = await request('GET', m4Base);
+    if (unauth.status !== 401 && unauth.status !== 403) throw new Error(`Unauthenticated snapshot not rejected: ${unauth.status}`);
+  });
+
+  await test('M4: claim create/patch/delete with allowlist and validation', async () => {
+    const created = await request('POST', `${m4Base}/claims`, {
+      title: 'The corridor light was on', description: 'Observed in the diagram.',
+      claimCategory: 'factual_observation', confidence: 'moderate_confidence', notes: 'Initial note',
+    }, m4Cookie);
+    if (created.status !== 201 || !created.body?.id) throw new Error(`Claim create failed: ${created.status} ${JSON.stringify(created.body)}`);
+    if (created.body.isTutorial !== false || created.body.confidence !== 'moderate_confidence') throw new Error('Claim DTO wrong');
+    assertNoM4Leak(created.body, 'claim create');
+
+    const badCategory = await request('POST', `${m4Base}/claims`, { title: 'Bad', claimCategory: 'probability' }, m4Cookie);
+    if (badCategory.status !== 400) throw new Error(`Invalid category accepted: ${badCategory.status}`);
+    const badConfidence = await request('POST', `${m4Base}/claims`, { title: 'Bad', claimCategory: 'assumption', confidence: '0.9' }, m4Cookie);
+    if (badConfidence.status !== 400) throw new Error(`Numeric confidence accepted: ${badConfidence.status}`);
+
+    const patched = await request('PATCH', `${m4Base}/claims/${created.body.id}`, {
+      title: 'The corridor light was on (revised)', confidence: 'high_confidence', notes: 'Revised', bogus: 'ignored',
+    }, m4Cookie);
+    if (patched.status !== 200 || patched.body.title !== 'The corridor light was on (revised)' || patched.body.confidence !== 'high_confidence') {
+      throw new Error(`Claim patch failed: ${patched.status} ${JSON.stringify(patched.body)}`);
+    }
+    if ('bogus' in patched.body) throw new Error('Claim patch leaked unknown field');
+    const empty = await request('PATCH', `${m4Base}/claims/${created.body.id}`, {}, m4Cookie);
+    if (empty.status !== 400) throw new Error(`Empty patch accepted: ${empty.status}`);
+    const missing = await request('PATCH', `${m4Base}/claims/${RANDOM_UUID}`, { title: 'x' }, m4Cookie);
+    if (missing.status !== 404) throw new Error(`Foreign claim patch not 404: ${missing.status}`);
+
+    const deleted = await request('DELETE', `${m4Base}/claims/${created.body.id}`, undefined, m4Cookie);
+    if (deleted.status !== 200 || deleted.body.deleted !== true) throw new Error(`Claim delete failed: ${deleted.status}`);
+  });
+
+  await test('M4: claim source ids must belong to this investigation and owner', async () => {
+    const nb = await request('POST', `/api/investigations/${m4InvId}/notebook`, {
+      entryType: 'observation', title: 'M4 source', content: 'A safe notebook source.',
+    }, m4Cookie);
+    if (nb.status !== 201 || !nb.body?.id) throw new Error(`Notebook source create failed: ${nb.status}`);
+    const good = await request('POST', `${m4Base}/claims`, {
+      title: 'Claim with a safe source', claimCategory: 'factual_observation', sourceNotebookEntryId: nb.body.id,
+    }, m4Cookie);
+    if (good.status !== 201 || good.body.sourceNotebookEntryId !== nb.body.id) throw new Error('Valid notebook source rejected');
+
+    const other = await registerAndLogin('m4-source-other');
+    const otherInv = await createInvestigation(other, caseId);
+    const foreignNb = await request('POST', `/api/investigations/${otherInv}/notebook`, {
+      entryType: 'observation', title: 'Foreign source', content: 'Not yours.',
+    }, other);
+    if (foreignNb.status !== 201 || !foreignNb.body?.id) throw new Error('Foreign notebook fixture failed');
+    const foreignClaim = await request('POST', `${m4Base}/claims`, {
+      title: 'Claim with foreign source', claimCategory: 'factual_observation', sourceNotebookEntryId: foreignNb.body.id,
+    }, m4Cookie);
+    if (foreignClaim.status !== 404) throw new Error(`Foreign notebook source accepted: ${foreignClaim.status}`);
+    const bogusClaim = await request('POST', `${m4Base}/claims`, {
+      title: 'Claim with bogus source', claimCategory: 'factual_observation', sourceJournalEntryId: RANDOM_UUID,
+    }, m4Cookie);
+    if (bogusClaim.status !== 404) throw new Error(`Bogus journal source accepted: ${bogusClaim.status}`);
+  });
+
+  await test('M4: hypotheses create, status transitions, multiple active and comparison', async () => {
+    const a = await request('POST', `${m4Base}/hypotheses`, {
+      name: 'Theory A', explanation: 'Working explanation A.', missingInformation: 'Need a timestamp.',
+    }, m4Cookie);
+    const b = await request('POST', `${m4Base}/hypotheses`, {
+      name: 'Theory B', explanation: 'Working explanation B.', alternativeExplanations: 'A mundane cause is possible.',
+    }, m4Cookie);
+    const c = await request('POST', `${m4Base}/hypotheses`, { name: 'Theory C' }, m4Cookie);
+    if (a.status !== 201 || b.status !== 201 || c.status !== 201) throw new Error('Hypothesis create failed');
+    hypPrimary = a.body; hypSecondary = b.body;
+
+    const transition = await request('PATCH', `${m4Base}/hypotheses/${b.body.id}`, { status: 'weakened', confidence: 'low_confidence' }, m4Cookie);
+    if (transition.status !== 200 || transition.body.status !== 'weakened' || transition.body.confidence !== 'low_confidence') {
+      throw new Error('Hypothesis status transition failed');
+    }
+    const snap = await request('GET', m4Base, undefined, m4Cookie);
+    const activeCount = snap.body.hypotheses.filter((h: any) => h.status === 'active').length;
+    if (activeCount < 2) throw new Error('Multiple active hypotheses not preserved');
+    // Transitioning one hypothesis never auto-resolves or completes a case.
+    const inv = await request('GET', `/api/investigations/${m4InvId}`, undefined, m4Cookie);
+    if (inv.body.status !== 'active') throw new Error('Hypothesis status changed investigation status');
+
+    const compare = await request('GET', `${m4Base}/compare?hypothesisIds=${a.body.id},${b.body.id}`, undefined, m4Cookie);
+    if (compare.status !== 200 || !Array.isArray(compare.body.hypotheses) || compare.body.hypotheses.length !== 2) {
+      throw new Error(`Compare failed: ${compare.status} ${JSON.stringify(compare.body)}`);
+    }
+    if (!Array.isArray(compare.body.questions) || !compare.body.disclaimer) throw new Error('Compare missing questions/disclaimer');
+    assertNoM4Leak(compare.body, 'hypothesis comparison');
+    const tooFew = await request('GET', `${m4Base}/compare?hypothesisIds=${a.body.id}`, undefined, m4Cookie);
+    if (tooFew.status !== 400) throw new Error(`Compare with 1 id accepted: ${tooFew.status}`);
+    const tooMany = await request('GET', `${m4Base}/compare?hypothesisIds=${a.body.id},${b.body.id},${c.body.id},${RANDOM_UUID},22222222-2222-4222-8222-222222222222`, undefined, m4Cookie);
+    if (tooMany.status !== 400) throw new Error(`Compare with 5 ids accepted: ${tooMany.status}`);
+    const foreign = await request('GET', `${m4Base}/compare?hypothesisIds=${a.body.id},${RANDOM_UUID}`, undefined, m4Cookie);
+    if (foreign.status !== 404) throw new Error(`Foreign compare id not 404: ${foreign.status}`);
+    if (!visibleEvidenceId) throw new Error('Visible evidence fixture missing');
+    const badStatus = await request('PATCH', `${m4Base}/hypotheses/${a.body.id}`, { status: 'solved' }, m4Cookie);
+    if (badStatus.status !== 400) throw new Error(`Invalid status accepted: ${badStatus.status}`);
+  });
+
+  await test('M4: links support all relationships, both shapes and resolved labels', async () => {
+    if (!visibleEvidenceId) throw new Error('Visible evidence fixture missing');
+    const relationships = ['supports', 'contradicts', 'contextualizes', 'weakens', 'unrelated_inconclusive'];
+    const claims: any[] = [];
+    for (const rel of relationships) {
+      const c = await request('POST', `${m4Base}/claims`, {
+        title: `Claim for ${rel}`, claimCategory: 'interpretation',
+      }, m4Cookie);
+      if (c.status !== 201) throw new Error(`Fixture claim failed for ${rel}: ${c.status}`);
+      claims.push(c.body);
+      const link = await request('POST', `${m4Base}/links`, {
+        ownerType: 'claim', ownerId: c.body.id, targetType: 'evidence', targetId: visibleEvidenceId,
+        relationship: rel, rationale: `My ${rel} reading.`,
+      }, m4Cookie);
+      if (link.status !== 201) throw new Error(`Link ${rel} failed: ${link.status} ${JSON.stringify(link.body)}`);
+      if (!link.body.ownerLabel || !link.body.targetLabel) throw new Error(`Link ${rel} missing resolved labels`);
+      if (rel === 'supports') linkSupports = link.body;
+      if (rel === 'contradicts') linkContradicts = link.body;
+    }
+    claimSupports = claims[0];
+    claimContradicts = claims[1];
+
+    if (!hypPrimary) throw new Error('Hypothesis fixture missing');
+    const membership = await request('POST', `${m4Base}/links`, {
+      ownerType: 'hypothesis', ownerId: hypPrimary.id, targetType: 'claim',
+      targetId: claimSupports.id, relationship: 'included',
+    }, m4Cookie);
+    if (membership.status !== 201) throw new Error(`Included link failed: ${membership.status} ${JSON.stringify(membership.body)}`);
+    linkIncluded = membership.body;
+
+    const materialLink = await request('POST', `${m4Base}/links`, {
+      ownerType: 'hypothesis', ownerId: hypPrimary.id, targetType: 'character',
+      targetId: m4CharacterId ?? RANDOM_UUID, relationship: 'contextualizes',
+    }, m4Cookie);
+    if (m4CharacterId && materialLink.status !== 201) throw new Error(`Character link failed: ${materialLink.status}`);
+    assertNoM4Leak(membership.body, 'included link');
+  });
+
+  await test('M4: hidden evidence and other-case material cannot be linked (404)', async () => {
+    if (!claimSupports) throw new Error('Claim fixture missing');
+    if (hiddenForCaseId) {
+      const hidden = await request('POST', `${m4Base}/links`, {
+        ownerType: 'claim', ownerId: claimSupports.id, targetType: 'evidence',
+        targetId: hiddenForCaseId, relationship: 'supports',
+      }, m4Cookie);
+      if (hidden.status !== 404) throw new Error(`Hidden evidence link accepted: ${hidden.status}`);
+    }
+    const bogus = await request('POST', `${m4Base}/links`, {
+      ownerType: 'claim', ownerId: claimSupports.id, targetType: 'artifact',
+      targetId: RANDOM_UUID, relationship: 'supports',
+    }, m4Cookie);
+    if (bogus.status !== 404) throw new Error(`Bogus artifact link accepted: ${bogus.status}`);
+    const snap = await request('GET', m4Base, undefined, m4Cookie);
+    assertNoM4Leak(snap.body, 'snapshot after hidden link attempts');
+    if (hiddenForCaseId && JSON.stringify(snap.body).includes(hiddenForCaseId)) throw new Error('Hidden UUID leaked after link attempts');
+  });
+
+  await test('M4: illegal link shapes are rejected with 400', async () => {
+    if (!claimSupports || !hypPrimary) throw new Error('Fixtures missing');
+    const cases = [
+      { ownerType: 'claim', ownerId: claimSupports.id, targetType: 'claim', targetId: claimSupports.id, relationship: 'included' },
+      { ownerType: 'claim', ownerId: claimSupports.id, targetType: 'evidence', targetId: visibleEvidenceId, relationship: 'included' },
+      { ownerType: 'hypothesis', ownerId: hypPrimary.id, targetType: 'claim', targetId: claimSupports.id, relationship: 'supports' },
+      { ownerType: 'hypothesis', ownerId: hypPrimary.id, targetType: 'hypothesis', targetId: hypPrimary.id, relationship: 'supports' },
+    ];
+    for (const body of cases) {
+      const res = await request('POST', `${m4Base}/links`, body, m4Cookie);
+      if (res.status !== 400) throw new Error(`Illegal shape accepted (${body.targetType}/${body.relationship}): ${res.status}`);
+    }
+  });
+
+  await test('M4: duplicate relationship returns 409 with existing linkId', async () => {
+    if (!claimContradicts || !visibleEvidenceId) throw new Error('Fixtures missing');
+    const dupe = await request('POST', `${m4Base}/links`, {
+      ownerType: 'claim', ownerId: claimContradicts.id, targetType: 'evidence',
+      targetId: visibleEvidenceId, relationship: 'weakens',
+    }, m4Cookie);
+    if (dupe.status !== 409 || dupe.body.error !== 'Relationship already exists' || !dupe.body.linkId) {
+      throw new Error(`Duplicate handling wrong: ${dupe.status} ${JSON.stringify(dupe.body)}`);
+    }
+    // PATCH cannot convert a material link into an illegal 'included' link.
+    const illegalPatch = await request('PATCH', `${m4Base}/links/${linkContradicts.id}`, { relationship: 'included' }, m4Cookie);
+    if (illegalPatch.status !== 400) throw new Error(`Illegal link patch accepted: ${illegalPatch.status}`);
+    const goodPatch = await request('PATCH', `${m4Base}/links/${linkContradicts.id}`, { rationale: 'Revised reasoning.' }, m4Cookie);
+    if (goodPatch.status !== 200 || goodPatch.body.rationale !== 'Revised reasoning.') throw new Error('Link patch failed');
+    const removed = await request('DELETE', `${m4Base}/links/${linkContradicts.id}`, undefined, m4Cookie);
+    if (removed.status !== 200 || removed.body.deleted !== true) throw new Error('Link delete failed');
+  });
+
+  await test('M4: tensions are surfaced and never auto-resolved', async () => {
+    const snap = await request('GET', m4Base, undefined, m4Cookie);
+    if (snap.status !== 200 || !Array.isArray(snap.body.tensions)) throw new Error('Tensions missing');
+    // claimSupports and the duplicate claim both reference the same visible
+    // evidence with opposing relationships, so a conflict must be surfaced.
+    if (snap.body.tensions.length === 0) throw new Error('Expected at least one derived tension');
+    for (const t of snap.body.tensions) {
+      if (!['material_conflict', 'claim_conflict', 'hypothesis_conflict'].includes(t.kind)) throw new Error(`Unknown tension kind ${t.kind}`);
+      if ('resolved' in t || 'correct' in t) throw new Error('Tension incorrectly auto-resolved');
+    }
+    assertNoM4Leak(snap.body.tensions, 'tensions');
+    // No status/progress mutation from merely viewing derived tensions.
+    const inv = await request('GET', `/api/investigations/${m4InvId}`, undefined, m4Cookie);
+    if (inv.body.status !== 'active') throw new Error('Tension view mutated investigation');
+  });
+
+  await test('M4: reasoning-review has 6 provenance-tagged sections and a deterministic summary', async () => {
+    const res = await request('POST', `${m4Base}/reasoning-review`, {}, m4Cookie);
+    if (res.status !== 200) throw new Error(`Reasoning review failed: ${res.status} ${JSON.stringify(res.body)}`);
+    const expectedKeys = ['unsupported_assumptions', 'conclusions_beyond_evidence', 'overlooked_contradictions', 'missing_information', 'alternative_explanations', 'suggested_questions'];
+    if (!Array.isArray(res.body.sections) || res.body.sections.length !== 6) throw new Error('Expected 6 audit sections');
+    for (const key of expectedKeys) {
+      const section = res.body.sections.find((s: any) => s.key === key);
+      if (!section || !Array.isArray(section.items)) throw new Error(`Missing audit section ${key}`);
+      for (const item of section.items) {
+        if (!['established_fact', 'player_interpretation', 'specialist_opinion', 'unverified_assumption', 'ai_suggestion'].includes(item.provenance)) {
+          throw new Error(`Bad provenance: ${item.provenance}`);
+        }
+      }
+    }
+    if (!res.body.provenanceLegend || typeof res.body.disclaimer !== 'string' || !res.body.disclaimer) throw new Error('Missing provenance legend/disclaimer');
+    if (typeof res.body.aiSummary !== 'string' || !res.body.aiSummary.includes('your notes')) throw new Error('Deterministic summary missing');
+    assertNoM4Leak(res.body, 'reasoning review');
+    if (/\d+(\.\d+)?%|probability|confidenceScore/i.test(JSON.stringify(res.body))) throw new Error('Numeric probability leaked into review');
+    // Deterministic: identical calls produce identical summaries.
+    const again = await request('POST', `${m4Base}/reasoning-review`, {}, m4Cookie);
+    if (again.body.aiSummary !== res.body.aiSummary) throw new Error('aiSummary is not deterministic');
+  });
+
+  await test('M4: specialist-review is advisory (no writes) and grounded', async () => {
+    if (!hypPrimary || m2Specialists.length === 0) throw new Error('Fixtures missing');
+    const before = await request('GET', m4Base, undefined, m4Cookie);
+    const convBefore = await request('GET', `/api/investigations/${m4InvId}/conversation`, undefined, m4Cookie);
+    const key = m2Specialists[0].specialistKey;
+    const res = await request('POST', `${m4Base}/hypotheses/${hypPrimary.id}/specialist-review`, {
+      specialistKey: key, focus: 'falsify',
+    }, m4Cookie);
+    if (res.status !== 200) throw new Error(`Specialist review failed: ${res.status} ${JSON.stringify(res.body)}`);
+    if (res.body.specialistKey !== key || res.body.focus !== 'falsify') throw new Error('Review meta mismatch');
+    if (typeof res.body.content !== 'string' || !res.body.content.includes(m2Specialists[0].name)) throw new Error('Review missing specialist voice');
+    if (res.body.provenance !== 'specialist_opinion' || typeof res.body.disclaimer !== 'string') throw new Error('Review missing provenance/disclaimer');
+    assertNoM4Leak(res.body, 'specialist review');
+    const after = await request('GET', m4Base, undefined, m4Cookie);
+    const convAfter = await request('GET', `/api/investigations/${m4InvId}/conversation`, undefined, m4Cookie);
+    if (JSON.stringify(before.body.claims) !== JSON.stringify(after.body.claims)
+      || JSON.stringify(before.body.hypotheses) !== JSON.stringify(after.body.hypotheses)
+      || JSON.stringify(before.body.links) !== JSON.stringify(after.body.links)) {
+      throw new Error('Specialist review mutated reality map state');
+    }
+    if (JSON.stringify(convBefore.body) !== JSON.stringify(convAfter.body)) throw new Error('Specialist review persisted chat messages');
+    const badFocus = await request('POST', `${m4Base}/hypotheses/${hypPrimary.id}/specialist-review`, { specialistKey: key, focus: 'solve' }, m4Cookie);
+    if (badFocus.status !== 400) throw new Error(`Invalid focus accepted: ${badFocus.status}`);
+    const critiqueNoTarget = await request('POST', `${m4Base}/hypotheses/${hypPrimary.id}/specialist-review`, { specialistKey: key, focus: 'critique' }, m4Cookie);
+    if (critiqueNoTarget.status !== 400) throw new Error('Critique without target accepted');
+  });
+
+  await test('M4: tutorial requires confirm, is idempotent and removable', async () => {
+    const noConfirm = await request('POST', `${m4Base}/tutorial-examples`, {}, m4Cookie);
+    if (noConfirm.status !== 400) throw new Error(`Tutorial without confirm accepted: ${noConfirm.status}`);
+    const created = await request('POST', `${m4Base}/tutorial-examples`, { confirm: true }, m4Cookie);
+    if (created.status !== 201 || !Array.isArray(created.body.claims) || created.body.links.length !== 0) throw new Error(`Tutorial create failed: ${created.status}`);
+    if (!created.body.claims.every((c: any) => c.isTutorial) || !created.body.hypotheses.every((h: any) => h.isTutorial)) {
+      throw new Error('Tutorial rows not labelled');
+    }
+    const again = await request('POST', `${m4Base}/tutorial-examples`, { confirm: true }, m4Cookie);
+    if (again.status !== 409) throw new Error(`Duplicate tutorial accepted: ${again.status}`);
+    const snap = await request('GET', m4Base, undefined, m4Cookie);
+    if (snap.body.tutorialPresent !== true || snap.body.tutorialAvailable !== true) throw new Error('Snapshot tutorial flags wrong');
+    const removed = await request('DELETE', `${m4Base}/tutorial-examples`, undefined, m4Cookie);
+    if (removed.status !== 200 || removed.body.removedClaims < 1 || removed.body.removedHypotheses < 1) throw new Error('Tutorial delete failed');
+    const after = await request('GET', m4Base, undefined, m4Cookie);
+    if (after.body.tutorialPresent !== false) throw new Error('Tutorial still present after delete');
+    if (!after.body.claims.some((c: any) => c.id === claimSupports.id)) throw new Error('Tutorial delete removed player-owned claim');
+    assertNoM4Leak(after.body, 'post-tutorial snapshot');
+  });
+
+  await test('M4: case-specific prompts differ for Code Blue and Blaze', async () => {
+    const codeBlueId = '7d3bae18-779c-5b4f-adf1-6f7a5fb57443';
+    const blazeId = '8160e966-7749-5d8f-a984-261161fbfa65';
+    const cbCookie = await registerAndLogin('m4-codeblue');
+    const blCookie = await registerAndLogin('m4-blaze');
+    const cbInv = await createInvestigation(cbCookie, codeBlueId);
+    const blInv = await createInvestigation(blCookie, blazeId);
+    const cb = await request('GET', `/api/investigations/${cbInv}/reality-map`, undefined, cbCookie);
+    const bl = await request('GET', `/api/investigations/${blInv}/reality-map`, undefined, blCookie);
+    if (cb.status !== 200 || bl.status !== 200) throw new Error('Case-specific snapshot failed');
+    if (!Array.isArray(cb.body.reasoningPrompts) || cb.body.reasoningPrompts.length < 3) throw new Error('Code Blue prompts missing');
+    if (!Array.isArray(bl.body.reasoningPrompts) || bl.body.reasoningPrompts.length < 3) throw new Error('Blaze prompts missing');
+    if (JSON.stringify(cb.body.reasoningPrompts) === JSON.stringify(bl.body.reasoningPrompts)) throw new Error('Prompt packs are not case-specific');
+    for (const p of [...cb.body.reasoningPrompts, ...bl.body.reasoningPrompts]) {
+      if (!p.text.endsWith('?') || !p.claimCategoryHint) throw new Error('Invalid case prompt');
+    }
+    assertNoM4Leak(cb.body, 'Code Blue reality map');
+    assertNoM4Leak(bl.body, 'Blaze reality map');
+    // Non-showcase cases have no prompts / tutorial (fresh user: one active
+    // investigation per user). `caseId` itself is a showcase case, so pick a
+    // genuinely different, non-showcase title.
+    const showcaseTitles = ['The Midnight Heist', 'Code Blue at the Clinic', 'Blaze at Dawn Bakery'];
+    const nonShowcase = allCases.find((c: any) => c.id && !showcaseTitles.includes(c.title));
+    if (!nonShowcase) throw new Error('No non-showcase case available');
+    const nsCookie = await registerAndLogin('m4-nonshowcase');
+    const otherInv = await createInvestigation(nsCookie, nonShowcase.id);
+    const otherSnap = await request('GET', `/api/investigations/${otherInv}/reality-map`, undefined, nsCookie);
+    if (otherSnap.body.reasoningPrompts.length !== 0 || otherSnap.body.tutorialAvailable !== false) {
+      throw new Error('Non-showcase case unexpectedly has prompts/tutorial');
+    }
+  });
+
+  await test('M4: writing reality-map data cannot release evidence or advance progression', async () => {
+    const beforeInv = await request('GET', `/api/investigations/${m4InvId}`, undefined, m4Cookie);
+    const beforeSnap = await request('GET', m4Base, undefined, m4Cookie);
+    const write = await request('POST', `${m4Base}/claims`, {
+      title: 'Isolation check claim', claimCategory: 'unresolved_question', confidence: 'insufficient_information',
+    }, m4Cookie);
+    if (write.status !== 201) throw new Error(`Isolation claim failed: ${write.status}`);
+    const afterInv = await request('GET', `/api/investigations/${m4InvId}`, undefined, m4Cookie);
+    const afterSnap = await request('GET', m4Base, undefined, m4Cookie);
+    if (JSON.stringify(beforeInv.body.discoveredEvidenceIds) !== JSON.stringify(afterInv.body.discoveredEvidenceIds)) {
+      throw new Error('Reality Map write released evidence');
+    }
+    if (beforeInv.body.status !== afterInv.body.status || beforeInv.body.progress !== afterInv.body.progress) {
+      throw new Error('Reality Map write advanced progression');
+    }
+    if (afterSnap.body.claims.length !== beforeSnap.body.claims.length + 1) throw new Error('Claim not persisted');
+  });
+
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
   await pool.end();
   process.exit(failed > 0 ? 1 : 0);

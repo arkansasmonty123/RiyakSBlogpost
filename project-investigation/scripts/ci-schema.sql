@@ -882,3 +882,102 @@ CREATE TABLE public.case_knowledge_packs (
 
 COMMENT ON TABLE public.case_knowledge_packs IS 'M3. Versioned, case-scoped knowledge-pack metadata (learning objectives, review status). No canonical truth.';
 COMMENT ON COLUMN public.knowledge_artifacts.verification_status IS 'M3. draft|pending_review|verified|rejected|needs_reverification. Server-controlled; real sources are never auto-verified.';
+
+
+-- =============================================================================
+-- M4 Reality Map (migration 008) - player-owned claims/hypotheses/links.
+-- Mirrors migrations/008_m4_reality_map.sql. Player notes only; never used by
+-- verdict evaluation, progression or evidence release. No canonical data.
+-- =============================================================================
+
+CREATE TABLE public.investigation_claims (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    investigation_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    title text NOT NULL,
+    description text NOT NULL DEFAULT '',
+    claim_category text NOT NULL CHECK (claim_category IN (
+        'factual_observation', 'interpretation', 'assumption',
+        'causal_explanation', 'motive', 'timeline_assertion', 'unresolved_question'
+    )),
+    confidence text NOT NULL DEFAULT 'insufficient_information' CHECK (confidence IN (
+        'high_confidence', 'moderate_confidence', 'low_confidence', 'insufficient_information'
+    )),
+    notes text NOT NULL DEFAULT '',
+    source_journal_entry_id uuid,
+    source_notebook_entry_id uuid,
+    is_tutorial boolean NOT NULL DEFAULT false,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT investigation_claims_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_investigation_claims_investigation_created
+    ON public.investigation_claims USING btree (investigation_id, created_at DESC);
+
+CREATE TABLE public.investigation_hypotheses (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    investigation_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    name text NOT NULL,
+    explanation text NOT NULL DEFAULT '',
+    status text NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'weakened', 'strengthened', 'archived')),
+    confidence text NOT NULL DEFAULT 'insufficient_information' CHECK (confidence IN (
+        'high_confidence', 'moderate_confidence', 'low_confidence', 'insufficient_information'
+    )),
+    missing_information text NOT NULL DEFAULT '',
+    alternative_explanations text NOT NULL DEFAULT '',
+    player_notes text NOT NULL DEFAULT '',
+    is_tutorial boolean NOT NULL DEFAULT false,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT investigation_hypotheses_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_investigation_hypotheses_investigation_created
+    ON public.investigation_hypotheses USING btree (investigation_id, created_at ASC);
+
+CREATE TABLE public.reality_map_links (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    investigation_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    owner_type text NOT NULL CHECK (owner_type IN ('claim', 'hypothesis')),
+    owner_id uuid NOT NULL,
+    target_type text NOT NULL CHECK (target_type IN (
+        'evidence', 'artifact', 'journal_entry', 'notebook_entry',
+        'specialist', 'character', 'claim', 'hypothesis'
+    )),
+    target_id uuid NOT NULL,
+    relationship text NOT NULL CHECK (relationship IN (
+        'supports', 'contradicts', 'contextualizes', 'weakens',
+        'unrelated_inconclusive', 'included'
+    )),
+    rationale text NOT NULL DEFAULT '',
+    is_tutorial boolean NOT NULL DEFAULT false,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT reality_map_links_pkey PRIMARY KEY (id),
+    CONSTRAINT reality_map_links_owner_target_key UNIQUE (owner_type, owner_id, target_type, target_id),
+    CONSTRAINT reality_map_links_shape_check CHECK (
+        (owner_type = 'claim'
+            AND target_type IN ('evidence', 'artifact', 'journal_entry', 'notebook_entry', 'specialist', 'character')
+            AND relationship <> 'included')
+        OR
+        (owner_type = 'hypothesis' AND target_type = 'claim' AND relationship = 'included')
+        OR
+        (owner_type = 'hypothesis'
+            AND target_type IN ('evidence', 'artifact', 'journal_entry', 'notebook_entry', 'specialist', 'character')
+            AND relationship <> 'included')
+    )
+);
+
+CREATE INDEX idx_reality_map_links_investigation
+    ON public.reality_map_links USING btree (investigation_id);
+CREATE INDEX idx_reality_map_links_owner
+    ON public.reality_map_links USING btree (owner_type, owner_id);
+CREATE INDEX idx_reality_map_links_target
+    ON public.reality_map_links USING btree (target_type, target_id);
+
+COMMENT ON TABLE public.investigation_claims IS 'M4. Player-authored Reality Map claims. Player notes only; never used by verdict, progression or evidence release.';
+COMMENT ON TABLE public.investigation_hypotheses IS 'M4. Player-authored hypotheses. Player notes only; never used by verdict, progression or evidence release.';
+COMMENT ON TABLE public.reality_map_links IS 'M4. Player-authored links to visible material. Player notes only; never used by verdict, progression or evidence release.';
