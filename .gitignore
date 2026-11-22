@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+.pnp/
+.pnp.*
+
+# Builds / output
+.next/
+out/
+dist/
+build/
+coverage/
+.turbo/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Database / local runtime
+*.db
+*.sqlite
+*.sqlite3
+postgres-data/
+.data/
+
+# AI/model assets (large - keep out of repo by default)
+models/
+*.gguf
+*.bin
+*.safetensors
+*.onnx
+
+# Media caches / generated
+.cache/
+tmp/
