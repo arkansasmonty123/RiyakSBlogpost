@@ -28,6 +28,8 @@ export interface CaseSummary {
   corroborationLinks: CorroborationLink[];
   /** Deterministic prompts tied to reviewed items; player-visible, never canonical. */
   reviewPrompts: ReviewPrompt[];
+  /** Player-legible review coverage of the whole file, including optional items. */
+  coverageNote: string;
   openQuestions: string[];
 }
 
@@ -48,15 +50,24 @@ export function buildCaseSummary(save: SaveGame): CaseSummary {
       note: n.content,
     }));
 
+  const discoveredCount = view.evidence.filter((e) => e.discovered).length;
+  const reviewedCount = view.evidence.filter((e) => e.reviewed).length;
+  const evidenceTotal = view.evidence.length;
+  const coverageNote =
+    reviewedCount < evidenceTotal
+      ? `You have reviewed ${reviewedCount} of ${evidenceTotal} items on this file. Only reviewed items can support a claim or a note; the rest stay outside your analysis.`
+      : `You have reviewed all ${evidenceTotal} items on this file. The open questions below still remain unresolved.`;
+
   return {
     phase: save.clock.day <= 5 ? 'Foundations · Days 1–5' : 'First case · Days 6–10',
     framing: FRAMING,
-    discoveredCount: view.evidence.filter((e) => e.discovered).length,
-    reviewedCount: view.evidence.filter((e) => e.reviewed).length,
-    evidenceTotal: view.evidence.length,
+    discoveredCount,
+    reviewedCount,
+    evidenceTotal,
     evidenceNoteCount: save.notebook.filter((n) => n.evidenceId).length,
     corroborationLinks,
     reviewPrompts: reviewPromptsFor(save),
+    coverageNote,
     openQuestions: [...view.unresolvedAmbiguity],
   };
 }

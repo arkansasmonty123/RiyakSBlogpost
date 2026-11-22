@@ -1368,6 +1368,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                   <span className="text-[11px] text-bar-muted">{caseSummary.phase}</span>
                 </div>
                 <p className="text-xs text-bar-muted mt-2">{caseSummary.framing}</p>
+                <p className="text-xs text-bar-muted mt-2">{caseSummary.coverageNote}</p>
                 <div className="flex flex-wrap gap-2 mt-2 text-[11px]">
                   <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">
                     Evidence {caseSummary.discoveredCount}/{caseSummary.evidenceTotal} discovered

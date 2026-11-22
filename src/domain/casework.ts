@@ -309,6 +309,10 @@ function finalReviewHighlights(save: SaveGame): string[] {
   if (reviewed.length > 0) {
     lines.push(`Your file rests on material you actually reviewed — ${reviewed.map((e) => e.title).join(', ')}.`);
   }
+  const totalItems = save.caseFile.evidence.length;
+  lines.push(
+    `You reviewed ${reviewed.length} of ${totalItems} items on the file; unreviewed material was not used to support your conclusions.`,
+  );
   if (save.notebook.some((n) => n.verified === true && !!n.sourceId)) {
     lines.push(
       'You attached a verified, labelled educational source rather than presenting an unverified provision as law.',

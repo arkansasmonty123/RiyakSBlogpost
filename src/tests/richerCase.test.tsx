@@ -81,7 +81,7 @@ describe('richer evidence set (ev-7..ev-9)', () => {
   it('appends three documented items with provenance and player-visible ambiguity', () => {
     const save = createInitialSave();
     const ids = save.caseFile.evidence.map((e) => e.id);
-    expect(ids).toEqual(['ev-1', 'ev-2', 'ev-3', 'ev-4', 'ev-5', 'ev-6', 'ev-7', 'ev-8', 'ev-9']);
+    expect(ids).toEqual(['ev-1', 'ev-2', 'ev-3', 'ev-4', 'ev-5', 'ev-6', 'ev-7', 'ev-8', 'ev-9', 'ev-10', 'ev-11']);
 
     for (const id of NEW_EVIDENCE_IDS) {
       const item = save.caseFile.evidence.find((e) => e.id === id)!;
@@ -312,7 +312,7 @@ describe('case summary and timeline coherence', () => {
     const save = createInitialSave();
     let summary = buildCaseSummary(save);
     expect(summary.phase).toBe('Foundations · Days 1–5');
-    expect(summary.evidenceTotal).toBe(9);
+    expect(summary.evidenceTotal).toBe(11);
     expect(summary.discoveredCount).toBe(0);
     expect(summary.reviewedCount).toBe(0);
 
@@ -375,7 +375,7 @@ describe('case summary and timeline coherence', () => {
     const caseHtml = renderApp('case', save);
     expect(caseHtml).toContain('Case at a glance');
     expect(caseHtml).toContain('Foundations · Days 1–5');
-    expect(caseHtml).toContain('Evidence 1/9 discovered');
+    expect(caseHtml).toContain('Evidence 1/11 discovered');
     expect(caseHtml).toContain('Corroboration &amp; contradiction notes');
     expect(caseHtml).toContain('Camera clock synchronisation note');
 

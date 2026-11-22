@@ -43,6 +43,20 @@ const REVIEW_PROMPT_CATALOG: readonly ReviewPromptDefinition[] = [
     prompt:
       'The earlier account differs in emphasis from the later interview note, and neither fixes the exact order. Consider noting what differs and whether it has been put to the witness, without treating either version as conclusive.',
   },
+  {
+    id: 'rp-adjacent-still',
+    evidenceId: 'ev-10',
+    focus: 'Corroboration limits',
+    prompt:
+      'The corridor still shows movement near the canteen door, but not the unrecorded interval, and its timestamp was not synchronised. Consider noting what it can corroborate and what it cannot, tied to an item you reviewed.',
+  },
+  {
+    id: 'rp-staff-recollection',
+    evidenceId: 'ev-11',
+    focus: 'Account consistency',
+    prompt:
+      'The second staff recollection note differs in detail from the supervisor’s account, and neither fixes the exact order. Consider recording what differs without treating either version as conclusive.',
+  },
 ];
 
 /** Prompts whose evidence the player has legitimately discovered and reviewed. */

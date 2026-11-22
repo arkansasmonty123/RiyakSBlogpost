@@ -761,6 +761,98 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       },
     ],
   },
+  {
+    id: 'd-clerk-custody-gap',
+    characterId: 'clerk',
+    minDay: 3,
+    once: true,
+    kind: 'event',
+    prompt:
+      'Day 3 event — Rao asks whether the filing register should note that the clip export arrived without a documented sealing record.',
+    choices: [
+      {
+        id: 'record-gap',
+        label: 'Ask Rao to record the handling gap in the register, noting only what is documented.',
+        reply:
+          'Rao: "I can note that no sealing record accompanied the export. That is a record of what is missing, not a conclusion about the clip."',
+        effects: [
+          { characterId: 'clerk', dimension: 'trust', amount: 5 },
+          { characterId: 'clerk', dimension: 'respect', amount: 3 },
+        ],
+        memory:
+          'Asked Rao to record in the filing register that the clip export arrived without a sealing record; he noted it as a gap, not a finding.',
+        reveals: ['The filing register records that the clip export arrived without a documented sealing record.'],
+        reputationEffects: [{ dimension: 'reliability', amount: 2 }],
+        setsFlag: 'custodyGapRecorded',
+      },
+      {
+        id: 'leave-clean',
+        label: 'Ask Rao to leave the register as it is so the file looks complete.',
+        reply:
+          'Rao: "I can leave it out, but I keep my own register. An unrecorded gap does not become a smaller gap."',
+        effects: [
+          { characterId: 'clerk', dimension: 'trust', amount: -4 },
+          { characterId: 'clerk', dimension: 'respect', amount: -3 },
+          { characterId: 'clerk', dimension: 'resentment', amount: 3 },
+        ],
+        memory:
+          'Asked Rao to leave the custody gap out of the filing register; he declined to treat the omission as harmless.',
+        reputationEffects: [
+          { dimension: 'integrity', amount: -2 },
+          { dimension: 'reliability', amount: -1 },
+        ],
+        setsFlag: 'custodyGapRecorded',
+      },
+    ],
+  },
+  {
+    id: 'd-specialist-still-scope',
+    characterId: 'specialist',
+    minDay: 6,
+    once: true,
+    kind: 'event',
+    prompt:
+      'Day 6 event — the forensic specialist shows you a still from a neighbouring corridor camera and asks how you will describe it in the file.',
+    choices: [
+      {
+        id: 'scope-limits',
+        label: 'Describe only what the still shows and record that its timestamp was not synchronised.',
+        reply:
+          'Specialist: "That is the right limit. It can show movement near the door; it cannot tell you what the canteen camera missed, and the clock was not checked."',
+        effects: [
+          { characterId: 'specialist', dimension: 'trust', amount: 5 },
+          { characterId: 'specialist', dimension: 'respect', amount: 5 },
+        ],
+        memory:
+          'Scoped the corridor still with the specialist to movement near the door, noting the unsynchronised timestamp.',
+        reveals: [
+          'The corridor still shows movement near the canteen door, but its timestamp was not checked against a common clock.',
+        ],
+        reputationEffects: [
+          { dimension: 'competence', amount: 2 },
+          { dimension: 'reliability', amount: 1 },
+        ],
+        setsFlag: 'stillScopeNoted',
+      },
+      {
+        id: 'overstate-still',
+        label: 'Present the still as fixing the exact sequence of the incident.',
+        reply:
+          'Specialist: "It cannot carry that claim. I will note that you were told the limit before you recorded it."',
+        effects: [
+          { characterId: 'specialist', dimension: 'respect', amount: -5 },
+          { characterId: 'specialist', dimension: 'resentment', amount: 4 },
+        ],
+        memory:
+          'Asked to treat the corridor still as fixing the exact sequence; the specialist recorded the limit you were told.',
+        reputationEffects: [
+          { dimension: 'integrity', amount: -2 },
+          { dimension: 'competence', amount: -1 },
+        ],
+        setsFlag: 'stillScopeNoted',
+      },
+    ],
+  },
 ];
 
 export function createInitialSave(): SaveGame {
@@ -799,6 +891,8 @@ export function createInitialSave(): SaveGame {
       supervisorStatement: false,
       clientPressureHandled: false,
       juniorCredited: false,
+      custodyGapRecorded: false,
+      stillScopeNoted: false,
     },
     characters: [
       {
@@ -1271,6 +1365,8 @@ export function createInitialSave(): SaveGame {
           'ev-7': true,
           'ev-8': false,
           'ev-9': true,
+          'ev-10': false,
+          'ev-11': true,
         },
         hiddenMotives: [
           'Witness had prior dispute with complainant',
@@ -1295,6 +1391,8 @@ export function createInitialSave(): SaveGame {
         'Whether the camera clock and the clinic register times can be reconciled.',
         'Whether the earlier and later eyewitness accounts can be reconciled.',
         'Whether the message screenshot is complete and in context.',
+        'Whether the corridor still and the canteen clip can be read on the same timeline.',
+        'Whether the second staff recollection note can be reconciled with the supervisor’s account.',
       ],
       evidence: [
         {
@@ -1408,6 +1506,32 @@ export function createInitialSave(): SaveGame {
           reliability: 'unknown',
           assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
           provenance: 'Earlier interview note (fictional seed)',
+        },
+        {
+          id: 'ev-10',
+          title: 'Adjacent-camera corridor still',
+          type: 'digital',
+          description:
+            'A still frame from a neighbouring corridor camera showing movement near the canteen door around the reported time. It does not capture the altercation itself, and its timestamp was not checked against a common time reference, so it cannot fix the exact sequence. It may corroborate that the doorway was in use, but it does not show what happened in the unrecorded interval.',
+          discovered: false,
+          reviewed: false,
+          admissibility: 'unknown',
+          reliability: 'unknown',
+          assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
+          provenance: 'Neighbouring corridor camera export (fictional seed)',
+        },
+        {
+          id: 'ev-11',
+          title: 'Second staff recollection note',
+          type: 'testimony',
+          description:
+            'A short note from another canteen staff member who heard raised voices while on a break but did not see how the exchange began. It differs in detail from the supervisor’s account, and neither version fixes the exact order of events. The differences have not been put to either person, so the note can be compared with other accounts but cannot by itself resolve the disputed sequence.',
+          discovered: false,
+          reviewed: false,
+          admissibility: 'unknown',
+          reliability: 'unknown',
+          assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
+          provenance: 'Staff interview note (fictional seed)',
         },
       ],
     },

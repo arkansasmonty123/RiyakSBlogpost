@@ -45,7 +45,7 @@ const CANONICAL_MARKERS = [
 ];
 
 /** Evidence added after the core chain (ev-1..3); optional for progression. */
-const BONUS_EVIDENCE_IDS = ['ev-4', 'ev-5', 'ev-6', 'ev-7', 'ev-8', 'ev-9'];
+const BONUS_EVIDENCE_IDS = ['ev-4', 'ev-5', 'ev-6', 'ev-7', 'ev-8', 'ev-9', 'ev-10', 'ev-11'];
 
 describe('richer First Brief case content', () => {
   it('expands the cast and evidence set while keeping canonical truth stable', () => {
@@ -74,6 +74,8 @@ describe('richer First Brief case content', () => {
       'ev-7',
       'ev-8',
       'ev-9',
+      'ev-10',
+      'ev-11',
     ]);
     // Original canonical facts remain unchanged; new detail is appended, never rewritten.
     expect(save.caseFile.canonicalTruth.actualEvents.slice(0, 3)).toEqual([
@@ -302,6 +304,8 @@ describe('save migration compatibility with expanded content', () => {
       'ev-7',
       'ev-8',
       'ev-9',
+      'ev-10',
+      'ev-11',
     ]);
     for (const id of BONUS_EVIDENCE_IDS) {
       const item = loaded.caseFile.evidence.find((e: { id: string }) => e.id === id)!;
