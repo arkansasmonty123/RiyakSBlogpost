@@ -338,7 +338,7 @@ describe('Day 1–10 no-leak guardrails', () => {
     reviewFirstThreeAssignments(save);
     recordCustodyObservation(save, 'ev-2', 'Export handling is undocumented.');
     challengeEvidenceAdmissibility(save, 'ev-3', 'custody', 'Custody record for the note is missing.');
-    submitSeniorReview(save, 'a7', GOOD_SUMMARY).status;
+    submitSeniorReview(save, 'a7', GOOD_SUMMARY);
     submitFinalBrief(save, GOOD_SUMMARY);
 
     const playerFacing = {

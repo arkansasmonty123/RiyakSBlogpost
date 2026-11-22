@@ -40,7 +40,7 @@ function eventTitle(summary: string): string {
   // Protect common abbreviations so "under Adv. Meera Kulkarni" is not cut at "Adv".
   const protectedAbbrev = summary.replace(/\b(Adv|Dr|Mr|Mrs|Ms|No)\.\s+/g, '$1\u0000 ');
   const firstClause = (protectedAbbrev.split(/\.\s+/)[0] ?? '')
-    .replace(/\u0000/g, '.')
+    .replaceAll('\u0000', '.')
     .replace(/[.:]+$/, '')
     .trim();
   return firstClause.length > 0 && firstClause.length <= 80 ? firstClause : 'Noted event';

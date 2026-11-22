@@ -470,7 +470,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   }
 
   /** Carry a reviewed item straight from the Evidence panel into a new theory claim. */
-  function useEvidenceInTheory(id: string) {
+  function addEvidenceToTheory(id: string) {
     setTheoryEvidenceIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
     setPanel('theory');
   }
@@ -1697,7 +1697,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                             </button>
                             <button
                               className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
-                              onClick={() => useEvidenceInTheory(ev.id)}
+                              onClick={() => addEvidenceToTheory(ev.id)}
                             >
                               Use in theory →
                             </button>
