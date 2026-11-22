@@ -65,6 +65,7 @@ jobs:
             migrations/001_prod007_canonical_truth.sql \
             migrations/002_prod008_progression.sql \
             migrations/005_p2_db_rate_limits.sql \
+            migrations/006_m2_knowledge.sql \
             scripts/ci-seed.sql \
             seed.sql
           do
@@ -73,6 +74,8 @@ jobs:
           done
           echo "Seeding additional playable cases"
           npx tsx scripts/seed-extra-cases.ts
+          echo "Seeding M2 knowledge (specialists/artifacts/disagreements)"
+          npx tsx scripts/seed-knowledge.ts
 
       - name: Typecheck
         run: npm run typecheck
@@ -84,6 +87,11 @@ jobs:
         # GAP-15: read-only integrity lint of the seeded case (solvability,
         # reference integrity and safe-DTO allowlists). Non-schema, data-only.
         run: npm run case:validate
+
+      - name: M2 knowledge validation
+        # Read-only: schema/content rules, showcase-case minimums and a
+        # canonical-leakage guard over all seeded knowledge text.
+        run: npm run knowledge:validate
 
       - name: Frontend production build
         run: npm run build --prefix frontend

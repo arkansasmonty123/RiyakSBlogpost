@@ -1616,6 +1616,252 @@ async function main() {
     }
   });
 
+  // ---------------------------------------------------------------------------
+  // M2 knowledge system (specialists / artifacts / disagreements / notebook /
+  // specialist-aware chat). USE_LLM=false so the deterministic path is exercised.
+  // ---------------------------------------------------------------------------
+  console.log('\n=== M2 Knowledge System Tests ===\n');
+
+  const M2_LEAK_TERMS = ['Victor Sterling', 'hollow base', 'silver trophy', 'Sterling Holdings', '20 million'];
+  function assertNoM2Leak(value: unknown, label: string): void {
+    const serialized = JSON.stringify(value);
+    for (const term of M2_LEAK_TERMS) {
+      if (serialized.includes(term)) throw new Error(`${label} leaked canonical term: ${term}`);
+    }
+    for (const uuid of evidenceUuids) {
+      if (serialized.includes(uuid)) throw new Error(`${label} leaked evidence UUID: ${uuid}`);
+    }
+  }
+  const evidenceUuids: string[] = (await query('SELECT id FROM evidence WHERE case_id = $1', [caseId]))
+    .rows.map((r: any) => String(r.id));
+  const otherCase = allCases.find((c: any) => c.id && c.id !== caseId);
+  const m2Cookie = await registerAndLogin('m2-knowledge');
+
+  let m2Specialists: any[] = [];
+  let m2Artifacts: any[] = [];
+
+  await test('M2: specialists list returns >=3 grounded personas with no canonical leakage', async () => {
+    const res = await request('GET', `/api/cases/${caseId}/specialists`, undefined, m2Cookie);
+    if (res.status !== 200) throw new Error(`Specialists fetch failed: ${res.status} ${JSON.stringify(res.body)}`);
+    if (!Array.isArray(res.body) || res.body.length < 3) throw new Error(`Expected >=3 specialists, got ${JSON.stringify(res.body).slice(0, 200)}`);
+    m2Specialists = res.body;
+    for (const s of m2Specialists) {
+      if (typeof s.specialistKey !== 'string' || !s.specialistKey) throw new Error('Specialist missing specialistKey');
+      if (!Array.isArray(s.limitations) || s.limitations.length === 0) throw new Error(`${s.specialistKey} has no limitations`);
+      if (!s.depthGuidance || typeof s.depthGuidance !== 'object') throw new Error(`${s.specialistKey} has no depth guidance`);
+      if (typeof s.expertiseSummary !== 'string' || s.expertiseSummary.length === 0) throw new Error(`${s.specialistKey} has no expertise summary`);
+    }
+    assertNoM2Leak(res.body, 'specialists list');
+  });
+
+  await test('M2: artifact list uses safe summaries; detail adds content; cross-case 404', async () => {
+    const list = await request('GET', `/api/cases/${caseId}/artifacts`, undefined, m2Cookie);
+    if (list.status !== 200) throw new Error(`Artifacts fetch failed: ${list.status}`);
+    if (!Array.isArray(list.body) || list.body.length < 5) throw new Error(`Expected >=5 artifacts, got ${list.body?.length}`);
+    m2Artifacts = list.body;
+    for (const a of m2Artifacts) {
+      if (typeof a.artifactKey !== 'string' || typeof a.title !== 'string') throw new Error('Artifact missing key/title');
+      if ('content' in a) throw new Error(`Artifact ${a.artifactKey} list DTO leaked content`);
+      if (!('bibliographyRef' in a) || !('sourceAuthor' in a) || !('sourceVerified' in a)) throw new Error('Artifact DTO missing source metadata');
+      if (a.sourceVerified !== true && a.sourceUrl !== null) throw new Error(`Unverified artifact ${a.artifactKey} exposed sourceUrl`);
+    }
+    assertNoM2Leak(m2Artifacts, 'artifacts list');
+
+    const first = m2Artifacts[0];
+    if (!first) throw new Error('No artifact to fetch');
+    const detail = await request('GET', `/api/cases/${caseId}/artifacts/${first.id}`, undefined, m2Cookie);
+    if (detail.status !== 200) throw new Error(`Artifact detail failed: ${detail.status}`);
+    if (typeof detail.body?.content !== 'string' || detail.body.content.length === 0) throw new Error('Artifact detail missing content');
+    if (typeof detail.body?.usageNote !== 'string') throw new Error('Artifact detail missing usageNote');
+    assertNoM2Leak(detail.body, 'artifact detail');
+
+    if (otherCase?.id) {
+      const cross = await request('GET', `/api/cases/${otherCase.id}/artifacts/${first.id}`, undefined, m2Cookie);
+      if (cross.status !== 404) throw new Error(`Cross-case artifact not rejected: ${cross.status}`);
+    }
+  });
+
+  await test('M2: disagreements list returns disciplined, case-scoped positions', async () => {
+    const res = await request('GET', `/api/cases/${caseId}/disagreements`, undefined, m2Cookie);
+    if (res.status !== 200) throw new Error(`Disagreements fetch failed: ${res.status}`);
+    if (!Array.isArray(res.body) || res.body.length < 1) throw new Error('Expected >=1 disagreement');
+    for (const d of res.body) {
+      if (typeof d.topic !== 'string' || !d.topic) throw new Error('Disagreement missing topic');
+      if (typeof d.positionA !== 'string' || typeof d.positionB !== 'string') throw new Error('Disagreement missing positions');
+      if (!d.specialistAKey || !d.specialistBKey || d.specialistAKey === d.specialistBKey) throw new Error('Disagreement specialists invalid');
+      if (!d.uncertaintyNote || !d.distinguishingEvidence) throw new Error('Disagreement missing uncertainty/distinguishing evidence');
+    }
+    assertNoM2Leak(res.body, 'disagreements list');
+  });
+
+  const specialistInvId = await createInvestigation(m2Cookie, caseId);
+
+  await test('M2: specialist chat returns specialist fields, bounded content and meta persistence', async () => {
+    const key = m2Specialists[0]?.specialistKey;
+    if (!key) throw new Error('No specialist key available');
+    const res = await request('POST', `/api/investigations/${specialistInvId}/chat`, {
+      message: 'Can you explain what fingerprint comparison can establish?',
+      specialistKey: key,
+      intent: 'explain',
+      depth: 'working',
+    }, m2Cookie);
+    if (res.status !== 200) throw new Error(`Specialist chat failed: ${res.status} ${JSON.stringify(res.body)}`);
+    if (res.body?.specialistKey !== key) throw new Error(`Wrong specialistKey: ${res.body?.specialistKey}`);
+    if (typeof res.body?.specialistName !== 'string' || !res.body.specialistName) throw new Error('Missing specialistName');
+    if (res.body?.intent !== 'explain' || res.body?.depth !== 'working') throw new Error('Intent/depth not echoed');
+    if (typeof res.body?.content !== 'string' || res.body.content.length === 0 || res.body.content.length > 2000) throw new Error('Content missing or unbounded');
+    if (!res.body.content.startsWith(res.body.specialistName)) throw new Error('Specialist reply missing its voice/label');
+    assertNoM2Leak(res.body.content, 'specialist chat content');
+
+    const conv = await request('GET', `/api/investigations/${specialistInvId}/conversation`, undefined, m2Cookie);
+    const history = conv.body?.messageHistory;
+    if (!Array.isArray(history)) throw new Error('No conversation history');
+    const player = history.filter((m: any) => m.role === 'player' && m.specialistKey === key);
+    const investigator = history.filter((m: any) => m.role === 'investigator' && m.specialistKey === key);
+    if (player.length === 0 || investigator.length === 0) throw new Error('Specialist meta not persisted on messages');
+    if (player[player.length - 1]?.intent !== 'explain' || player[player.length - 1]?.depth !== 'working') {
+      throw new Error('Persisted meta missing intent/depth');
+    }
+  });
+
+  await test('M2: legacy chat without specialistKey keeps the old response shape', async () => {
+    const res = await request('POST', `/api/investigations/${specialistInvId}/chat`, {
+      message: 'Hello team, what should I examine first?',
+    }, m2Cookie);
+    if (res.status !== 200) throw new Error(`Legacy chat failed: ${res.status}`);
+    for (const field of ['role', 'teamRole', 'responderLabel', 'content', 'timestamp']) {
+      if (res.body?.[field] === undefined) throw new Error(`Legacy chat missing ${field}`);
+    }
+    if ('specialistKey' in res.body) throw new Error('Legacy chat unexpectedly has specialistKey');
+    if (!res.body.content.startsWith(res.body.responderLabel)) throw new Error('Legacy reply missing responder voice');
+  });
+
+  await test('M2: critique intent with targetSpecialistKey is bounded and leak-free', async () => {
+    const key = m2Specialists[0]?.specialistKey;
+    const target = m2Specialists[1]?.specialistKey;
+    if (!key || !target) throw new Error('Specialist keys unavailable');
+    const res = await request('POST', `/api/investigations/${specialistInvId}/chat`, {
+      message: 'Challenge that interpretation and give me alternatives.',
+      specialistKey: key,
+      intent: 'critique',
+      depth: 'technical',
+      targetSpecialistKey: target,
+    }, m2Cookie);
+    if (res.status !== 200) throw new Error(`Critique chat failed: ${res.status} ${JSON.stringify(res.body)}`);
+    if (res.body?.intent !== 'critique' || res.body?.depth !== 'technical') throw new Error('Critique intent/depth not echoed');
+    if (typeof res.body?.content !== 'string' || res.body.content.length > 2000) throw new Error('Critique content unbounded');
+    assertNoM2Leak(res.body.content, 'critique chat content');
+  });
+
+  await test('M2: chats with >=3 distinct specialists persist distinct responder meta', async () => {
+    const cookie = await registerAndLogin('m2-distinct');
+    const invId = await createInvestigation(cookie, caseId);
+    const messages = [
+      'What does the CCTV footage and the sensor log show?',
+      'Explain the diamond identification reference material.',
+      'What can forensic accounting documents establish?',
+      'What do fingerprint principles tell us?',
+    ];
+    for (let i = 0; i < Math.min(3, m2Specialists.length); i++) {
+      const key = m2Specialists[i].specialistKey;
+      const res = await request('POST', `/api/investigations/${invId}/chat`, {
+        message: messages[i] ?? 'Please explain the relevant reference material.',
+        specialistKey: key,
+        intent: 'explain',
+        depth: 'plain',
+      }, cookie);
+      if (res.status !== 200) throw new Error(`Specialist ${i} chat failed: ${res.status}`);
+      assertNoM2Leak(res.body.content, `specialist ${i} chat content`);
+    }
+    const conv = await request('GET', `/api/investigations/${invId}/conversation`, undefined, cookie);
+    const keys = new Set(
+      (conv.body?.messageHistory || [])
+        .filter((m: any) => m.role === 'investigator' && typeof m.specialistKey === 'string')
+        .map((m: any) => m.specialistKey),
+    );
+    if (keys.size < 3) throw new Error(`Expected >=3 distinct specialist conversations, got ${keys.size}`);
+  });
+
+  await test('M2: invalid intent/depth/specialist inputs are rejected', async () => {
+    const key = m2Specialists[0]?.specialistKey;
+    const cookie = await registerAndLogin('m2-invalid-input');
+    const invId = await createInvestigation(cookie, caseId);
+    const badIntent = await request('POST', `/api/investigations/${invId}/chat`, { message: 'Hello there', intent: 'bogus' }, cookie);
+    if (badIntent.status !== 400) throw new Error(`Bad intent not rejected: ${badIntent.status}`);
+    const badDepth = await request('POST', `/api/investigations/${invId}/chat`, { message: 'Hello there', depth: 'bogus' }, cookie);
+    if (badDepth.status !== 400) throw new Error(`Bad depth not rejected: ${badDepth.status}`);
+    const badSpecialist = await request('POST', `/api/investigations/${invId}/chat`, { message: 'Hello there', specialistKey: `${key}-not-real` }, cookie);
+    if (badSpecialist.status !== 400) throw new Error(`Unknown specialist not rejected: ${badSpecialist.status}`);
+  });
+
+  await test('M2: notebook CRUD persists entries with safe source snapshots', async () => {
+    const cookie = await registerAndLogin('m2-notebook-crud');
+    const invId = await createInvestigation(cookie, caseId);
+    const artifact = m2Artifacts[0];
+    const specialist = m2Specialists[0];
+    if (!artifact || !specialist) throw new Error('Artifact/specialist fixtures missing');
+
+    const created = await request('POST', `/api/investigations/${invId}/notebook`, {
+      entryType: 'observation',
+      concept: 'Trace handling',
+      title: 'Trace note',
+      content: 'A trace result must be qualified by how it was collected.',
+      artifactId: artifact.id,
+      specialistId: specialist.id,
+    }, cookie);
+    if (created.status !== 201) throw new Error(`Notebook create failed: ${created.status} ${JSON.stringify(created.body)}`);
+    const entryId = created.body?.id;
+    if (!entryId) throw new Error('Notebook entry has no id');
+    if (created.body?.sourceSnapshot?.artifactKey !== artifact.artifactKey) throw new Error('sourceSnapshot not composed from safe artifact DTO');
+    if ('content' in (created.body?.sourceSnapshot || {})) throw new Error('sourceSnapshot leaked raw artifact content field');
+    assertNoM2Leak(created.body, 'notebook create response');
+
+    const listed = await request('GET', `/api/investigations/${invId}/notebook`, undefined, cookie);
+    if (listed.status !== 200 || !Array.isArray(listed.body)) throw new Error('Notebook list failed');
+    if (!listed.body.some((e: any) => e.id === entryId)) throw new Error('Notebook entry not persisted');
+    assertNoM2Leak(listed.body, 'notebook list');
+
+    const patched = await request('PATCH', `/api/investigations/${invId}/notebook/${entryId}`, {
+      content: 'Revised: the print may be secondary transfer.',
+      title: 'Revised trace note',
+    }, cookie);
+    if (patched.status !== 200) throw new Error(`Notebook patch failed: ${patched.status}`);
+    if (patched.body?.content !== 'Revised: the print may be secondary transfer.') throw new Error('Notebook patch did not persist content');
+    assertNoM2Leak(patched.body, 'notebook patch response');
+
+    const removed = await request('DELETE', `/api/investigations/${invId}/notebook/${entryId}`, undefined, cookie);
+    if (removed.status !== 200) throw new Error(`Notebook delete failed: ${removed.status}`);
+    const after = await request('GET', `/api/investigations/${invId}/notebook`, undefined, cookie);
+    if (after.body.some((e: any) => e.id === entryId)) throw new Error('Deleted notebook entry still present');
+  });
+
+  await test('M2: notebook enforces ownership isolation and validates inputs', async () => {
+    const cookie = await registerAndLogin('m2-notebook-owner');
+    const invId = await createInvestigation(cookie, caseId);
+    const created = await request('POST', `/api/investigations/${invId}/notebook`, {
+      entryType: 'question', title: 'Owner note', content: 'Owner-only content',
+    }, cookie);
+    if (created.status !== 201) throw new Error('Setup notebook create failed');
+    const entryId = created.body.id;
+
+    const other = await registerAndLogin('m2-notebook-other');
+    const foreignList = await request('GET', `/api/investigations/${invId}/notebook`, undefined, other);
+    if (foreignList.status !== 403 && foreignList.status !== 404) throw new Error(`Foreign notebook list not rejected: ${foreignList.status}`);
+    const foreignPatch = await request('PATCH', `/api/investigations/${invId}/notebook/${entryId}`, { content: 'hacked' }, other);
+    if (foreignPatch.status !== 403 && foreignPatch.status !== 404) throw new Error(`Foreign notebook patch not rejected: ${foreignPatch.status}`);
+    const foreignDelete = await request('DELETE', `/api/investigations/${invId}/notebook/${entryId}`, undefined, other);
+    if (foreignDelete.status !== 403 && foreignDelete.status !== 404) throw new Error(`Foreign notebook delete not rejected: ${foreignDelete.status}`);
+
+    const badType = await request('POST', `/api/investigations/${invId}/notebook`, { entryType: 'not-a-type' }, cookie);
+    if (badType.status !== 400) throw new Error(`Invalid entryType not rejected: ${badType.status}`);
+    if (m2Artifacts[0]) {
+      const ownArtifact = await request('POST', `/api/investigations/${invId}/notebook`, {
+        entryType: 'note', title: 'Case artifact note', artifactId: m2Artifacts[0].id,
+      }, cookie);
+      if (ownArtifact.status !== 201) throw new Error(`Own-case artifact notebook create failed: ${ownArtifact.status}`);
+    }
+  });
+
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
   await pool.end();
   process.exit(failed > 0 ? 1 : 0);

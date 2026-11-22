@@ -50,9 +50,35 @@ import {
   hashRateLimitKey,
   consumeRateLimit,
   deleteExpiredRateLimits,
+  getSpecialistsByCase,
+  getSpecialistByKey,
+  getKnowledgeArtifactsByCase,
+  getKnowledgeArtifactById,
+  getKnowledgeDisagreementsByCase,
+  createNotebookEntry,
+  getNotebookEntries,
+  updateNotebookEntry,
+  deleteNotebookEntry,
   type CanonicalTruth,
   query,
 } from './db';
+import {
+  KNOWLEDGE_LIMITS,
+  isKnowledgeIntent,
+  isKnowledgeDepth,
+  isNotebookEntryType,
+  toPublicSpecialist,
+  toPublicArtifactSummary,
+  toPublicArtifactDetail,
+  toPublicDisagreement,
+  toPublicNotebookEntry,
+  retrieveRelevantArtifacts,
+  buildSpecialistContext,
+  deterministicSpecialistReply,
+  clip,
+  type KnowledgeIntent,
+  type KnowledgeDepth,
+} from './knowledge';
 import {
   GROUNDING_LIMITS,
   detectTeamRole,
@@ -616,6 +642,64 @@ app.get('/api/cases/:caseId/evidence', authMiddleware, asyncRoute(async (req: Re
     return;
   }
   res.json(await getEvidenceByCase(caseId, res.locals.userId as string));
+}));
+
+// ---------------------------------------------------------------------------
+// M2 knowledge routes (case-scoped; require auth + an existing case).
+// All responses are built from safe DTO allowlists in src/knowledge.ts. These
+// routes never read canonical truth or hidden evidence fields.
+// ---------------------------------------------------------------------------
+
+async function caseExists(caseId: string): Promise<boolean> {
+  const result = await query('SELECT 1 FROM cases WHERE id = $1 LIMIT 1', [caseId]);
+  return result.rows.length > 0;
+}
+
+app.get('/api/cases/:caseId/specialists', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  const caseId = req.params.caseId;
+  if (!isUuid(caseId) || !(await caseExists(caseId))) {
+    res.status(404).json({ error: 'Case not found' });
+    return;
+  }
+  const specialists = await getSpecialistsByCase(caseId);
+  res.json(specialists.map(toPublicSpecialist));
+}));
+
+app.get('/api/cases/:caseId/artifacts', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  const caseId = req.params.caseId;
+  if (!isUuid(caseId) || !(await caseExists(caseId))) {
+    res.status(404).json({ error: 'Case not found' });
+    return;
+  }
+  const artifacts = await getKnowledgeArtifactsByCase(caseId);
+  // List uses the summary DTO only: no `content`, no unverified source URL.
+  res.json(artifacts.map(toPublicArtifactSummary));
+}));
+
+app.get('/api/cases/:caseId/artifacts/:artifactId', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  const { caseId, artifactId } = req.params;
+  if (!isUuid(caseId) || !isUuid(artifactId) || !(await caseExists(caseId))) {
+    res.status(404).json({ error: 'Artifact not found' });
+    return;
+  }
+  // Passing caseId scopes the lookup: an artifact belonging to another case is
+  // indistinguishable from a missing one.
+  const artifact = await getKnowledgeArtifactById(artifactId, caseId);
+  if (!artifact) {
+    res.status(404).json({ error: 'Artifact not found' });
+    return;
+  }
+  res.json(toPublicArtifactDetail(artifact));
+}));
+
+app.get('/api/cases/:caseId/disagreements', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  const caseId = req.params.caseId;
+  if (!isUuid(caseId) || !(await caseExists(caseId))) {
+    res.status(404).json({ error: 'Case not found' });
+    return;
+  }
+  const disagreements = await getKnowledgeDisagreementsByCase(caseId);
+  res.json(disagreements.map(toPublicDisagreement));
 }));
 
 app.get('/api/evidence/:evidenceId', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
@@ -1273,11 +1357,34 @@ investigationRouter.get('/solution', asyncRoute(async (_req: Request, res: Respo
 // character fields are never read on this path, so they cannot leak through a
 // local LLM response or the deterministic fallback.
 investigationRouter.post('/chat', chatLimiter, asyncRoute(async (req: Request, res: Response) => {
-  const { message } = req.body || {};
-  if (!boundedText(message, 4_000)) {
+  const { message, specialistKey, targetSpecialistKey } = req.body || {};
+  const intentRaw = req.body?.intent;
+  const depthRaw = req.body?.depth;
+  if (!boundedText(message, KNOWLEDGE_LIMITS.maxMessageChars)) {
     res.status(400).json({ error: 'message required (1-4000 characters)' });
     return;
   }
+
+  // M2 optional fields are strictly allowlisted/bounded. When absent, the
+  // legacy team-role conversation path is used with byte-identical behaviour.
+  if (intentRaw !== undefined && !isKnowledgeIntent(intentRaw)) {
+    res.status(400).json({ error: 'Invalid intent' });
+    return;
+  }
+  if (depthRaw !== undefined && !isKnowledgeDepth(depthRaw)) {
+    res.status(400).json({ error: 'Invalid depth' });
+    return;
+  }
+  if (specialistKey !== undefined && (typeof specialistKey !== 'string' || specialistKey.length === 0 || specialistKey.length > 120)) {
+    res.status(400).json({ error: 'Invalid specialistKey' });
+    return;
+  }
+  if (targetSpecialistKey !== undefined && (typeof targetSpecialistKey !== 'string' || targetSpecialistKey.length === 0 || targetSpecialistKey.length > 120)) {
+    res.status(400).json({ error: 'Invalid targetSpecialistKey' });
+    return;
+  }
+  const intent: KnowledgeIntent | undefined = intentRaw as KnowledgeIntent | undefined;
+  const depth: KnowledgeDepth | undefined = depthRaw as KnowledgeDepth | undefined;
 
   const investigationId = res.locals.investigation.id;
 
@@ -1343,10 +1450,95 @@ investigationRouter.post('/chat', chatLimiter, asyncRoute(async (req: Request, r
   const addressedSafeSuspects: SuspectContextInput[] = safeBoard.suspects.filter((s) =>
     grounded.addressedSuspects.includes(s.name),
   );
-  const response = await generateAIResponse(message, grounded.context, teamRole, addressedSafeSuspects);
 
-  await addMessage(investigationId, 'player', message);
-  await addMessage(investigationId, 'investigator', response.content);
+  // Default: the legacy team-role responder. Building this spec keeps the
+  // non-specialist chat path byte-for-byte compatible with pre-M2 behaviour.
+  let responderContext = grounded.context;
+  let responderLabelOut = responderLabel(teamRole);
+  let responderSpec: ResponderSpec = {
+    label: responderLabelOut,
+    systemHint: roleSystemHint(teamRole),
+    fallbackFn: (m, addressed) => deterministicReply(m, teamRole, addressed),
+  };
+  let specialistMeta: Record<string, unknown> | undefined;
+
+  if (specialistKey !== undefined) {
+    // Specialist path: add a bounded persona/intent context on top of the
+    // existing grounded context. No canonical truth is ever read or appended.
+    const caseId = investigation.caseId as string;
+    const specialistRow = await getSpecialistByKey(caseId, specialistKey);
+    if (!specialistRow) {
+      res.status(400).json({ error: 'Specialist not found for this case' });
+      return;
+    }
+    const specialist = toPublicSpecialist(specialistRow);
+    const chosenIntent: KnowledgeIntent = intent ?? 'explain';
+    const chosenDepth: KnowledgeDepth = depth ?? 'working';
+
+    const [artifactRows, disagreementRows] = await Promise.all([
+      getKnowledgeArtifactsByCase(caseId),
+      getKnowledgeDisagreementsByCase(caseId),
+    ]);
+    const artifactDetails = artifactRows.map(toPublicArtifactDetail);
+    const relevantArtifacts = retrieveRelevantArtifacts(
+      artifactDetails,
+      message,
+      `${specialist.specialization} ${specialist.knowledgeDomains.join(' ')}`,
+    );
+    const wantsDisagreements = ['critique', 'challenge', 'discriminate', 'alternatives'].includes(chosenIntent);
+    const relevantDisagreements = disagreementRows
+      .map(toPublicDisagreement)
+      .filter((d) => relevantArtifacts.some((a) => d.relatedArtifactKeys.includes(a.artifactKey)))
+      .slice(0, 2);
+    const disagreementsForReply = wantsDisagreements
+      ? (relevantDisagreements.length > 0 ? relevantDisagreements : disagreementRows.map(toPublicDisagreement).slice(0, 2))
+      : [];
+
+    let targetLine = '';
+    if (targetSpecialistKey !== undefined) {
+      const targetRow = await getSpecialistByKey(caseId, targetSpecialistKey);
+      if (!targetRow) {
+        res.status(400).json({ error: 'targetSpecialistKey not found for this case' });
+        return;
+      }
+      const target = toPublicSpecialist(targetRow);
+      targetLine = `\nTARGET SPECIALIST (for critique): ${clip(target.name, 80)} — ${clip(target.expertiseSummary, 240)}. Limitations: ${target.limitations.map((l) => clip(l, 160)).join('; ')}`;
+    }
+
+    const specialistContext = buildSpecialistContext({
+      specialist,
+      intent: chosenIntent,
+      depth: chosenDepth,
+      message,
+      artifacts: relevantArtifacts,
+      disagreements: disagreementsForReply,
+    });
+    responderContext = `${grounded.context}\n\n${specialistContext}${targetLine}`;
+    if (responderContext.length > 9_000) {
+      responderContext = `${responderContext.slice(0, 8_940)}…\n[context truncated for length]`;
+    }
+
+    responderLabelOut = specialist.name;
+    const limitationsText = specialist.limitations.map((l) => clip(l, 160)).join('; ');
+    responderSpec = {
+      label: responderLabelOut,
+      systemHint: `You are ${specialist.name}, ${clip(specialist.title, 80)} (${clip(specialist.discipline, 80)}). ${clip(specialist.expertiseSummary, 400)} Style: ${clip(specialist.communicationStyle, 160)}. Respect these limits: ${limitationsText}. Stay strictly within the provided context and never cite an unverified source URL.`,
+      fallbackFn: (m, addressed) => deterministicSpecialistReply(
+        m, specialist, chosenIntent, chosenDepth, relevantArtifacts, disagreementsForReply,
+      ),
+    };
+    specialistMeta = {
+      specialistKey: specialist.specialistKey,
+      specialistName: specialist.name,
+      intent: chosenIntent,
+      depth: chosenDepth,
+    };
+  }
+
+  const response = await generateAIResponse(message, responderContext, responderSpec, addressedSafeSuspects);
+
+  await addMessage(investigationId, 'player', message, specialistMeta);
+  await addMessage(investigationId, 'investigator', response.content, specialistMeta);
   // Persist bounded rolling memory + the summarized-message cursor atomically.
   const priorRefs = conversation?.contextReferences;
   const contextRefs: Record<string, unknown> = priorRefs && typeof priorRefs === 'object' && !Array.isArray(priorRefs)
@@ -1357,10 +1549,10 @@ investigationRouter.post('/chat', chatLimiter, asyncRoute(async (req: Request, r
     summarizedMessageCount: grounded.summarizedMessageCount,
   });
 
-  res.json({
+  const body: Record<string, unknown> = {
     role: 'investigator',
     teamRole,
-    responderLabel: responderLabel(teamRole),
+    responderLabel: responderLabelOut,
     addressedSuspects: grounded.addressedSuspects,
     context: {
       window: GROUNDING_LIMITS.recentWindow,
@@ -1371,7 +1563,219 @@ investigationRouter.post('/chat', chatLimiter, asyncRoute(async (req: Request, r
     },
     content: response.content,
     timestamp: new Date().toISOString(),
+  };
+  if (specialistMeta) {
+    body.specialistKey = specialistMeta.specialistKey;
+    body.specialistName = specialistMeta.specialistName;
+    body.intent = specialistMeta.intent;
+    body.depth = specialistMeta.depth;
+  }
+  res.json(body);
+}));
+
+// ---------------------------------------------------------------------------
+// M2 notebook routes. Mounted on investigationRouter, so authentication,
+// investigation ownership and offline progression are already enforced, and
+// the user id is always server-derived from the session.
+// ---------------------------------------------------------------------------
+
+function buildNotebookSourceSnapshot(artifact: any): Record<string, unknown> {
+  if (!artifact) return {};
+  const detail = toPublicArtifactDetail(artifact);
+  const snapshot: Record<string, unknown> = {
+    ...detail,
+    contentExcerpt: clip(detail.content, 240),
+  };
+  delete (snapshot as Record<string, unknown>).content;
+  const serialized = JSON.stringify(snapshot);
+  if (serialized.length <= KNOWLEDGE_LIMITS.maxSourceSnapshotChars) return snapshot;
+  return {
+    ...snapshot,
+    description: clip(detail.description, 120),
+    contentExcerpt: '',
+    usageNote: '',
+  };
+}
+
+investigationRouter.get('/notebook', asyncRoute(async (_req: Request, res: Response) => {
+  const entries = await getNotebookEntries(res.locals.investigation.id, res.locals.userId as string);
+  res.json(entries.map(toPublicNotebookEntry));
+}));
+
+investigationRouter.post('/notebook', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const body = req.body || {};
+  if (!isNotebookEntryType(body.entryType)) {
+    res.status(400).json({ error: 'Invalid entryType' });
+    return;
+  }
+  if (body.concept !== undefined && !boundedText(body.concept, KNOWLEDGE_LIMITS.maxConceptChars)) {
+    res.status(400).json({ error: 'concept must be non-blank text' });
+    return;
+  }
+  if (body.title !== undefined && !boundedText(body.title, KNOWLEDGE_LIMITS.maxTitleChars)) {
+    res.status(400).json({ error: 'title must be non-blank text' });
+    return;
+  }
+  if (body.content !== undefined && (typeof body.content !== 'string' || body.content.length > KNOWLEDGE_LIMITS.maxContentChars)) {
+    res.status(400).json({ error: 'content too long' });
+    return;
+  }
+
+  const caseId = res.locals.investigation.caseId as string;
+  let artifactId: string | null = null;
+  let specialistId: string | null = null;
+  let sourceSnapshot: Record<string, unknown> = {};
+
+  if (body.artifactId !== undefined && body.artifactId !== null && body.artifactId !== '') {
+    if (!isUuid(body.artifactId)) {
+      res.status(400).json({ error: 'Invalid artifactId' });
+      return;
+    }
+    const artifact = await getKnowledgeArtifactById(body.artifactId, caseId);
+    if (!artifact) {
+      res.status(404).json({ error: 'Artifact not found in this case' });
+      return;
+    }
+    artifactId = body.artifactId;
+    sourceSnapshot = buildNotebookSourceSnapshot(artifact);
+  }
+  if (body.specialistId !== undefined && body.specialistId !== null && body.specialistId !== '') {
+    if (!isUuid(body.specialistId)) {
+      res.status(400).json({ error: 'Invalid specialistId' });
+      return;
+    }
+    const sp = await query(
+      `SELECT s.id FROM specialists s
+         JOIN case_specialists cs ON cs.specialist_id = s.id
+        WHERE s.id = $1 AND cs.case_id = $2 LIMIT 1`,
+      [body.specialistId, caseId]
+    );
+    if (sp.rows.length === 0) {
+      res.status(404).json({ error: 'Specialist not found in this case' });
+      return;
+    }
+    specialistId = body.specialistId;
+  }
+
+  const entry = await createNotebookEntry(res.locals.investigation.id, res.locals.userId as string, {
+    entryType: body.entryType,
+    concept: body.concept ?? '',
+    title: body.title ?? '',
+    content: body.content ?? '',
+    artifactId,
+    specialistId,
+    sourceSnapshot,
   });
+  res.status(201).json(toPublicNotebookEntry(entry));
+}));
+
+investigationRouter.patch('/notebook/:entryId', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const entryId = req.params.entryId;
+  if (!isUuid(entryId)) {
+    res.status(404).json({ error: 'Notebook entry not found' });
+    return;
+  }
+  const body = req.body || {};
+  const data: {
+    entryType?: string;
+    concept?: string;
+    title?: string;
+    content?: string;
+    artifactId?: string | null;
+    specialistId?: string | null;
+    sourceSnapshot?: Record<string, unknown>;
+  } = {};
+
+  if (body.entryType !== undefined) {
+    if (!isNotebookEntryType(body.entryType)) {
+      res.status(400).json({ error: 'Invalid entryType' });
+      return;
+    }
+    data.entryType = body.entryType;
+  }
+  if (body.concept !== undefined) {
+    if (!boundedText(body.concept, KNOWLEDGE_LIMITS.maxConceptChars)) {
+      res.status(400).json({ error: 'concept must be non-blank text' });
+      return;
+    }
+    data.concept = body.concept;
+  }
+  if (body.title !== undefined) {
+    if (!boundedText(body.title, KNOWLEDGE_LIMITS.maxTitleChars)) {
+      res.status(400).json({ error: 'title must be non-blank text' });
+      return;
+    }
+    data.title = body.title;
+  }
+  if (body.content !== undefined) {
+    if (typeof body.content !== 'string' || body.content.length > KNOWLEDGE_LIMITS.maxContentChars) {
+      res.status(400).json({ error: 'content too long' });
+      return;
+    }
+    data.content = body.content;
+  }
+
+  const caseId = res.locals.investigation.caseId as string;
+  if (body.artifactId !== undefined) {
+    if (body.artifactId === null || body.artifactId === '') {
+      data.artifactId = null;
+      data.sourceSnapshot = {};
+    } else {
+      if (!isUuid(body.artifactId)) {
+        res.status(400).json({ error: 'Invalid artifactId' });
+        return;
+      }
+      const artifact = await getKnowledgeArtifactById(body.artifactId, caseId);
+      if (!artifact) {
+        res.status(404).json({ error: 'Artifact not found in this case' });
+        return;
+      }
+      data.artifactId = body.artifactId;
+      data.sourceSnapshot = buildNotebookSourceSnapshot(artifact);
+    }
+  }
+  if (body.specialistId !== undefined) {
+    if (body.specialistId === null || body.specialistId === '') {
+      data.specialistId = null;
+    } else {
+      if (!isUuid(body.specialistId)) {
+        res.status(400).json({ error: 'Invalid specialistId' });
+        return;
+      }
+      const sp = await query(
+        `SELECT s.id FROM specialists s
+           JOIN case_specialists cs ON cs.specialist_id = s.id
+          WHERE s.id = $1 AND cs.case_id = $2 LIMIT 1`,
+        [body.specialistId, caseId]
+      );
+      if (sp.rows.length === 0) {
+        res.status(404).json({ error: 'Specialist not found in this case' });
+        return;
+      }
+      data.specialistId = body.specialistId;
+    }
+  }
+
+  const updated = await updateNotebookEntry(entryId, res.locals.investigation.id, res.locals.userId as string, data);
+  if (!updated) {
+    res.status(404).json({ error: 'Notebook entry not found' });
+    return;
+  }
+  res.json(toPublicNotebookEntry(updated));
+}));
+
+investigationRouter.delete('/notebook/:entryId', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const entryId = req.params.entryId;
+  if (!isUuid(entryId)) {
+    res.status(404).json({ error: 'Notebook entry not found' });
+    return;
+  }
+  const removed = await deleteNotebookEntry(entryId, res.locals.investigation.id, res.locals.userId as string);
+  if (!removed) {
+    res.status(404).json({ error: 'Notebook entry not found' });
+    return;
+  }
+  res.json({ success: true });
 }));
 
 // Achievements cannot be unlocked by the client. They are awarded server-side
@@ -1451,14 +1855,26 @@ function resolveLlmConfig(): { url: string; model: string; apiKey: string; provi
   };
 }
 
+/**
+ * Responder spec: one shared inference architecture, many grounded voices.
+ * The legacy path constructs this from the detected team role; the M2
+ * specialist path constructs it from a specialist DTO. Both feed the same
+ * generateAIResponse function, so LLM and deterministic paths stay aligned.
+ */
+interface ResponderSpec {
+  label: string;
+  systemHint: string;
+  fallbackFn: (message: string, addressed: SuspectContextInput[]) => string;
+}
+
 async function generateAIResponse(
   message: string,
   context: string,
-  teamRole: TeamRole,
+  responderSpec: ResponderSpec,
   addressed: SuspectContextInput[],
 ): Promise<{ content: string }> {
   const cfg = resolveLlmConfig();
-  const label = responderLabel(teamRole);
+  const label = responderSpec.label;
 
   if (cfg.enabled) {
     try {
@@ -1474,7 +1890,7 @@ async function generateAIResponse(
           messages: [
             {
               role: 'system',
-              content: `You are the ${label} on an AI investigative team in a detective game. ${roleSystemHint(teamRole)} Stay in character. Use ONLY the provided investigation context. NEVER reveal unreleased evidence, character secrets, the culprit, or the canonical solution. NEVER invent new evidence. Challenge weak theories politely. Be concise (max ~80 words).\n\n${context}`,
+              content: `You are the ${label} on an AI investigative team in a detective game. ${responderSpec.systemHint} Stay in character. Use ONLY the provided investigation context. NEVER reveal unreleased evidence, character secrets, the culprit, or the canonical solution. NEVER invent new evidence, quotes or source URLs. Challenge weak theories politely. Be concise (max ~80 words).\n\n${context}`,
             },
             { role: 'user', content: message },
           ],
@@ -1496,7 +1912,7 @@ async function generateAIResponse(
     }
   }
 
-  return { content: capResponse(deterministicReply(message, teamRole, addressed)) };
+  return { content: capResponse(responderSpec.fallbackFn(message, addressed)) };
 }
 
 const server = app.listen(PORT, () => {

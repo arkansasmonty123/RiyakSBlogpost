@@ -88,6 +88,41 @@ const COLUMN_ALIASES: Record<string, string> = {
   unlocked_at: 'unlockedAt',
   dialogue_constraints: 'dialogueConstraints',
   confirmed_alibi: 'confirmedAlibi',
+  // M2 knowledge system (migration 006).
+  specialist_key: 'specialistKey',
+  knowledge_domains: 'knowledgeDomains',
+  communication_style: 'communicationStyle',
+  reasoning_approach: 'reasoningApproach',
+  expertise_summary: 'expertiseSummary',
+  real_discipline_basis: 'realDisciplineBasis',
+  display_order: 'displayOrder',
+  case_relevance: 'caseRelevance',
+  artifact_key: 'artifactKey',
+  artifact_type: 'artifactType',
+  source_author: 'sourceAuthor',
+  source_url: 'sourceUrl',
+  source_verified: 'sourceVerified',
+  bibliography_ref: 'bibliographyRef',
+  publication_date: 'publicationDate',
+  knowledge_class: 'knowledgeClass',
+  related_concepts: 'relatedConcepts',
+  usage_note: 'usageNote',
+  is_fictional: 'isFictional',
+  disagreement_key: 'disagreementKey',
+  specialist_a_id: 'specialistAId',
+  specialist_b_id: 'specialistBId',
+  specialist_a_key: 'specialistAKey',
+  specialist_b_key: 'specialistBKey',
+  specialist_a_name: 'specialistAName',
+  specialist_b_name: 'specialistBName',
+  position_a: 'positionA',
+  position_b: 'positionB',
+  disciplinary_basis: 'disciplinaryBasis',
+  uncertainty_note: 'uncertaintyNote',
+  distinguishing_evidence: 'distinguishingEvidence',
+  related_artifact_keys: 'relatedArtifactKeys',
+  artifact_id: 'artifactId',
+  source_snapshot: 'sourceSnapshot',
 };
 
 function toCamelKey(key: string): string {
@@ -815,7 +850,8 @@ export async function getConversation(investigationId: string) {
 export async function addMessage(
   investigationId: string,
   role: string,
-  content: string
+  content: string,
+  meta?: Record<string, unknown>
 ) {
   let conversation = await getConversation(investigationId);
 
@@ -823,12 +859,24 @@ export async function addMessage(
     conversation = await createConversation(investigationId, [role]);
   }
 
-  const existingHistory = Array.isArray(conversation.messageHistory) ? conversation.messageHistory : [];
-  const messageHistory = existingHistory.concat({
+  // M2: optional responder metadata (specialistKey/Name, intent, depth) is
+  // merged onto the stored message. Existing 3-argument callers are unchanged,
+  // so legacy chat history keeps its original shape. Reserved fields are never
+  // overwritten by caller-supplied meta.
+  const storedMessage: Record<string, unknown> = {
     role,
     content,
     timestamp: new Date(),
-  });
+  };
+  if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+    for (const [key, value] of Object.entries(meta)) {
+      if (key === 'role' || key === 'content' || key === 'timestamp') continue;
+      storedMessage[key] = value;
+    }
+  }
+
+  const existingHistory = Array.isArray(conversation.messageHistory) ? conversation.messageHistory : [];
+  const messageHistory = existingHistory.concat(storedMessage as unknown as Message);
 
   const result = await query(
     `UPDATE conversations
@@ -1492,4 +1540,283 @@ export async function createWeeklyCollection(
 export async function getWeeklyCollections() {
   const result = await query('SELECT * FROM weekly_collections ORDER BY release_date ASC NULLS LAST');
   return mapRows<WeeklyCollection>(result.rows);
+}
+
+// ===========================================================================
+// M2 KNOWLEDGE SYSTEM (migration 006)
+// ---------------------------------------------------------------------------
+// All selects use explicit column allowlists. No query in this section reads
+// canonical_truth, hidden character fields or hidden evidence fields.
+// ===========================================================================
+
+export interface Specialist {
+  id: string;
+  specialistKey: string;
+  name: string;
+  title: string;
+  specialization: string;
+  discipline: string;
+  knowledgeDomains: unknown;
+  personality: string;
+  communicationStyle: string;
+  reasoningApproach: string;
+  expertiseSummary: string;
+  limitations: unknown;
+  depthGuidance: unknown;
+  isFictional: boolean;
+  realDisciplineBasis: string;
+  caseRelevance?: string;
+  displayOrder?: number;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+const SPECIALIST_COLUMNS = `s.id, s.specialist_key, s.name, s.title, s.specialization, s.discipline,
+  s.knowledge_domains, s.personality, s.communication_style, s.reasoning_approach,
+  s.expertise_summary, s.limitations, s.depth_guidance, s.is_fictional,
+  s.real_discipline_basis, s.created_at, s.updated_at`;
+
+export async function getSpecialistsByCase(caseId: string): Promise<Specialist[]> {
+  const result = await query(
+    `SELECT ${SPECIALIST_COLUMNS}, cs.case_relevance, cs.display_order
+       FROM case_specialists cs
+       JOIN specialists s ON s.id = cs.specialist_id
+      WHERE cs.case_id = $1
+      ORDER BY cs.display_order ASC, s.name ASC`,
+    [caseId]
+  );
+  return mapRows<Specialist>(result.rows);
+}
+
+export async function getSpecialistByKey(caseId: string, specialistKey: string): Promise<Specialist | null> {
+  const result = await query(
+    `SELECT ${SPECIALIST_COLUMNS}, cs.case_relevance, cs.display_order
+       FROM case_specialists cs
+       JOIN specialists s ON s.id = cs.specialist_id
+      WHERE cs.case_id = $1 AND s.specialist_key = $2
+      LIMIT 1`,
+    [caseId, specialistKey]
+  );
+  return result.rows[0] ? mapRow<Specialist>(result.rows[0]) : null;
+}
+
+export interface KnowledgeArtifact {
+  id: string;
+  artifactKey: string;
+  title: string;
+  artifactType: string;
+  description: string;
+  content: string;
+  specialistId: string;
+  caseId: string;
+  sourceAuthor: string;
+  sourceUrl: string;
+  sourceVerified: boolean;
+  bibliographyRef: string;
+  publicationDate: string;
+  knowledgeClass: string;
+  reliability: string;
+  relatedConcepts: unknown;
+  isFictional: boolean;
+  usageNote: string;
+  specialistKey?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+const ARTIFACT_COLUMNS = `a.id, a.artifact_key, a.title, a.artifact_type, a.description, a.content,
+  a.specialist_id, a.case_id, a.source_author, a.source_url, a.source_verified,
+  a.bibliography_ref, a.publication_date, a.knowledge_class, a.reliability,
+  a.related_concepts, a.is_fictional, a.usage_note, a.created_at, a.updated_at,
+  s.specialist_key`;
+
+const ARTIFACT_JOIN = ` FROM knowledge_artifacts a
+  LEFT JOIN specialists s ON s.id = a.specialist_id`;
+
+export async function getKnowledgeArtifactsByCase(caseId: string): Promise<KnowledgeArtifact[]> {
+  const result = await query(
+    `SELECT ${ARTIFACT_COLUMNS}${ARTIFACT_JOIN} WHERE a.case_id = $1 ORDER BY a.title ASC`,
+    [caseId]
+  );
+  return mapRows<KnowledgeArtifact>(result.rows);
+}
+
+export async function getKnowledgeArtifactById(
+  artifactId: string,
+  caseId?: string
+): Promise<KnowledgeArtifact | null> {
+  const params: any[] = [artifactId];
+  let where = 'WHERE a.id = $1';
+  if (caseId) {
+    params.push(caseId);
+    where += ' AND a.case_id = $2';
+  }
+  const result = await query(
+    `SELECT ${ARTIFACT_COLUMNS}${ARTIFACT_JOIN} ${where} LIMIT 1`,
+    params
+  );
+  return result.rows[0] ? mapRow<KnowledgeArtifact>(result.rows[0]) : null;
+}
+
+export interface KnowledgeDisagreement {
+  id: string;
+  disagreementKey: string;
+  caseId: string;
+  topic: string;
+  specialistAId: string;
+  specialistBId: string;
+  positionA: string;
+  positionB: string;
+  disciplinaryBasis: string;
+  uncertaintyNote: string;
+  distinguishingEvidence: string;
+  relatedArtifactKeys: unknown;
+  specialistAKey?: string;
+  specialistBKey?: string;
+  specialistAName?: string;
+  specialistBName?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export async function getKnowledgeDisagreementsByCase(caseId: string): Promise<KnowledgeDisagreement[]> {
+  const result = await query(
+    `SELECT d.id, d.disagreement_key, d.case_id, d.topic, d.specialist_a_id, d.specialist_b_id,
+            d.position_a, d.position_b, d.disciplinary_basis, d.uncertainty_note,
+            d.distinguishing_evidence, d.related_artifact_keys, d.created_at, d.updated_at,
+            sa.specialist_key AS specialist_a_key, sb.specialist_key AS specialist_b_key,
+            sa.name AS specialist_a_name, sb.name AS specialist_b_name
+       FROM knowledge_disagreements d
+       JOIN specialists sa ON sa.id = d.specialist_a_id
+       JOIN specialists sb ON sb.id = d.specialist_b_id
+      WHERE d.case_id = $1
+      ORDER BY d.disagreement_key ASC`,
+    [caseId]
+  );
+  return mapRows<KnowledgeDisagreement>(result.rows);
+}
+
+export interface NotebookEntry {
+  id: string;
+  investigationId: string;
+  userId: string;
+  entryType: string;
+  artifactId: string;
+  specialistId: string;
+  concept: string;
+  title: string;
+  content: string;
+  sourceSnapshot: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const NOTEBOOK_COLUMNS = `id, investigation_id, user_id, entry_type, artifact_id, specialist_id,
+  concept, title, content, source_snapshot, created_at, updated_at`;
+
+export async function createNotebookEntry(
+  investigationId: string,
+  userId: string,
+  data: {
+    entryType: string;
+    concept?: string;
+    title?: string;
+    content?: string;
+    artifactId?: string | null;
+    specialistId?: string | null;
+    sourceSnapshot?: Record<string, unknown>;
+  }
+): Promise<NotebookEntry> {
+  const result = await query(
+    `INSERT INTO notebook_entries
+       (investigation_id, user_id, entry_type, artifact_id, specialist_id, concept, title, content, source_snapshot)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) RETURNING ${NOTEBOOK_COLUMNS}`,
+    [
+      investigationId,
+      userId,
+      data.entryType,
+      data.artifactId ?? null,
+      data.specialistId ?? null,
+      data.concept ?? '',
+      data.title ?? '',
+      data.content ?? '',
+      JSON.stringify(data.sourceSnapshot ?? {}),
+    ]
+  );
+  return mapRow<NotebookEntry>(result.rows[0]);
+}
+
+export async function getNotebookEntries(
+  investigationId: string,
+  userId: string
+): Promise<NotebookEntry[]> {
+  const result = await query(
+    `SELECT ${NOTEBOOK_COLUMNS} FROM notebook_entries
+      WHERE investigation_id = $1 AND user_id = $2
+      ORDER BY created_at DESC`,
+    [investigationId, userId]
+  );
+  return mapRows<NotebookEntry>(result.rows);
+}
+
+export async function updateNotebookEntry(
+  entryId: string,
+  investigationId: string,
+  userId: string,
+  data: {
+    entryType?: string;
+    concept?: string;
+    title?: string;
+    content?: string;
+    artifactId?: string | null;
+    specialistId?: string | null;
+    sourceSnapshot?: Record<string, unknown>;
+  }
+): Promise<NotebookEntry | null> {
+  const columns: string[] = [];
+  const values: any[] = [];
+  let next = 1;
+  const add = (column: string, value: unknown): void => {
+    columns.push(`${column} = $${next}`);
+    values.push(value);
+    next += 1;
+  };
+  if (data.entryType !== undefined) add('entry_type', data.entryType);
+  if (data.concept !== undefined) add('concept', data.concept);
+  if (data.title !== undefined) add('title', data.title);
+  if (data.content !== undefined) add('content', data.content);
+  if (data.artifactId !== undefined) add('artifact_id', data.artifactId);
+  if (data.specialistId !== undefined) add('specialist_id', data.specialistId);
+  if (data.sourceSnapshot !== undefined) add('source_snapshot', JSON.stringify(data.sourceSnapshot));
+
+  const params = [entryId, investigationId, userId];
+  if (columns.length === 0) {
+    const current = await query(
+      `SELECT ${NOTEBOOK_COLUMNS} FROM notebook_entries
+        WHERE id = $1 AND investigation_id = $2 AND user_id = $3`,
+      params
+    );
+    return current.rows[0] ? mapRow<NotebookEntry>(current.rows[0]) : null;
+  }
+
+  values.push(entryId, investigationId, userId);
+  const sql = `UPDATE notebook_entries SET ${columns.join(', ')}, updated_at = NOW()
+                WHERE id = $${next} AND investigation_id = $${next + 1} AND user_id = $${next + 2}
+                RETURNING ${NOTEBOOK_COLUMNS}`;
+  const result = await query(sql, values);
+  return result.rows[0] ? mapRow<NotebookEntry>(result.rows[0]) : null;
+}
+
+export async function deleteNotebookEntry(
+  entryId: string,
+  investigationId: string,
+  userId: string
+): Promise<boolean> {
+  const result = await query(
+    `DELETE FROM notebook_entries
+      WHERE id = $1 AND investigation_id = $2 AND user_id = $3
+      RETURNING id`,
+    [entryId, investigationId, userId]
+  );
+  return result.rows.length > 0;
 }

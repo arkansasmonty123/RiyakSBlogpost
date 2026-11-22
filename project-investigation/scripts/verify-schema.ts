@@ -35,6 +35,31 @@ const EXPECTED_TABLES: Record<string, string[]> = {
     'briefing', 'initial_characters', 'initial_facts', 'objectives',
     'created_at', 'updated_at',
   ],
+  // M2 knowledge system (migration 006).
+  specialists: [
+    'id', 'specialist_key', 'name', 'title', 'specialization', 'discipline',
+    'knowledge_domains', 'personality', 'communication_style', 'reasoning_approach',
+    'expertise_summary', 'limitations', 'depth_guidance', 'is_fictional',
+    'real_discipline_basis', 'created_at', 'updated_at',
+  ],
+  case_specialists: [
+    'id', 'case_id', 'specialist_id', 'case_relevance', 'display_order', 'created_at', 'updated_at',
+  ],
+  knowledge_artifacts: [
+    'id', 'artifact_key', 'title', 'artifact_type', 'description', 'content',
+    'specialist_id', 'case_id', 'source_author', 'source_url', 'source_verified',
+    'bibliography_ref', 'publication_date', 'knowledge_class', 'reliability',
+    'related_concepts', 'is_fictional', 'usage_note', 'created_at', 'updated_at',
+  ],
+  knowledge_disagreements: [
+    'id', 'disagreement_key', 'case_id', 'topic', 'specialist_a_id', 'specialist_b_id',
+    'position_a', 'position_b', 'disciplinary_basis', 'uncertainty_note',
+    'distinguishing_evidence', 'related_artifact_keys', 'created_at', 'updated_at',
+  ],
+  notebook_entries: [
+    'id', 'investigation_id', 'user_id', 'entry_type', 'artifact_id', 'specialist_id',
+    'concept', 'title', 'content', 'source_snapshot', 'created_at', 'updated_at',
+  ],
   characters: [
     'id', 'case_id', 'name', 'role', 'personality', 'background', 'knowledge',
     'beliefs', 'secrets', 'dialogue_constraints', 'alibi', 'confirmed_alibi',

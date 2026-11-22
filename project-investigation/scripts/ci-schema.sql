@@ -740,3 +740,112 @@ ALTER TABLE ONLY public.investigations
 --
 
 
+
+-- =============================================================================
+-- M2 knowledge system (migration 006) - additive tables.
+-- Mirrors migrations/006_m2_knowledge.sql so ci-schema.sql remains a complete
+-- schema snapshot. No FKs; references are enforced in application code.
+-- =============================================================================
+
+CREATE TABLE public.specialists (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    specialist_key text NOT NULL,
+    name text,
+    title text,
+    specialization text,
+    discipline text,
+    knowledge_domains jsonb DEFAULT '[]'::jsonb,
+    personality text,
+    communication_style text,
+    reasoning_approach text,
+    expertise_summary text,
+    limitations jsonb DEFAULT '[]'::jsonb,
+    depth_guidance jsonb DEFAULT '{}'::jsonb,
+    is_fictional boolean DEFAULT true,
+    real_discipline_basis text,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT specialists_pkey PRIMARY KEY (id),
+    CONSTRAINT specialists_specialist_key_key UNIQUE (specialist_key)
+);
+
+CREATE TABLE public.case_specialists (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    case_id uuid NOT NULL,
+    specialist_id uuid NOT NULL,
+    case_relevance text,
+    display_order integer DEFAULT 0,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT case_specialists_pkey PRIMARY KEY (id),
+    CONSTRAINT case_specialists_case_id_specialist_id_key UNIQUE (case_id, specialist_id)
+);
+
+CREATE INDEX idx_case_specialists_case_id ON public.case_specialists USING btree (case_id);
+
+CREATE TABLE public.knowledge_artifacts (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    artifact_key text NOT NULL,
+    title text NOT NULL,
+    artifact_type text,
+    description text,
+    content text,
+    specialist_id uuid,
+    case_id uuid,
+    source_author text,
+    source_url text,
+    source_verified boolean DEFAULT false,
+    bibliography_ref text,
+    publication_date text,
+    knowledge_class text,
+    reliability text,
+    related_concepts jsonb DEFAULT '[]'::jsonb,
+    is_fictional boolean DEFAULT false,
+    usage_note text,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT knowledge_artifacts_pkey PRIMARY KEY (id),
+    CONSTRAINT knowledge_artifacts_artifact_key_key UNIQUE (artifact_key)
+);
+
+CREATE INDEX idx_knowledge_artifacts_case_id ON public.knowledge_artifacts USING btree (case_id);
+
+CREATE TABLE public.knowledge_disagreements (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    disagreement_key text NOT NULL,
+    case_id uuid NOT NULL,
+    topic text,
+    specialist_a_id uuid NOT NULL,
+    specialist_b_id uuid NOT NULL,
+    position_a text,
+    position_b text,
+    disciplinary_basis text,
+    uncertainty_note text,
+    distinguishing_evidence text,
+    related_artifact_keys jsonb DEFAULT '[]'::jsonb,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT knowledge_disagreements_pkey PRIMARY KEY (id),
+    CONSTRAINT knowledge_disagreements_disagreement_key_key UNIQUE (disagreement_key),
+    CONSTRAINT knowledge_disagreements_distinct_specialists CHECK (specialist_a_id <> specialist_b_id)
+);
+
+CREATE INDEX idx_knowledge_disagreements_case_id ON public.knowledge_disagreements USING btree (case_id);
+
+CREATE TABLE public.notebook_entries (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    investigation_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    entry_type text NOT NULL,
+    artifact_id uuid,
+    specialist_id uuid,
+    concept text,
+    title text,
+    content text DEFAULT '',
+    source_snapshot jsonb DEFAULT '{}'::jsonb,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT notebook_entries_pkey PRIMARY KEY (id)
+);
+
+CREATE INDEX idx_notebook_entries_investigation_created ON public.notebook_entries USING btree (investigation_id, created_at DESC);
