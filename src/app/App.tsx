@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { loadSave, persistSave, resetSave } from '@/storage/save';
+import { checkDraftCitations } from '@/domain/guards';
 import type { SaveGame, EvidenceItem, NotebookEntry } from '@/domain/types';
 
 const VIEWPOINTS: Record<string, { label: string; description: string; hotspots: Array<{ id: string; label: string; action: string }> }> = {
@@ -109,22 +110,81 @@ export function App() {
     }
   }
 
-  function submitDraft() {
-    const hasIssue = /issue\s*:/i.test(draft) && draft.length > 60;
-    const hasCitationWarning = /section|article|bns|bnss|bsa/i.test(draft) && !/verified|source/i.test(draft.toLowerCase());
+  function submitAssignment(id: string) {
     update((s) => {
-      s.flags.draftSubmitted = true;
+      const a = s.assignments.find((x) => x.id === id);
+      if (!a || a.status === 'submitted' || a.status === 'reviewed') return s;
+      const evidenceOk = a.requiredEvidenceIds.every((eid) => s.caseFile.evidence.some((e) => e.id === eid && e.discovered));
+      const sourcesOk = a.requiredSourceIds.every((sid) => s.notebook.some((n) => n.sourceId === sid));
+      if (!evidenceOk || !sourcesOk) {
+        s.memories.unshift({ id: `m-${Date.now()}`, day: s.clock.day, summary: `Assignment ${a.title} incomplete: missing required evidence/sources.`, participants: ['player'] });
+        return s;
+      }
+      a.status = 'submitted';
+      a.feedback = 'Submitted for senior review.';
+      if (a.id === 'a1') {
+        a.status = 'reviewed';
+        a.feedback = 'Good start. Facts, allegations, and unknowns separated. Continue with evidence-grounded brief.';
+        s.flags.assignment1Submitted = true;
+        s.player.reputation.reliability += 2;
+        s.player.reputation.competence += 1;
+        const a2 = s.assignments.find((x) => x.id === 'a2');
+        if (a2 && a2.status === 'pending') a2.status = 'active';
+        s.memories.unshift({ id: `m-${Date.now()}`, day: s.clock.day, summary: 'Assignment 1 reviewed by senior: positive feedback.', participants: ['player', 'senior'] });
+      }
+      return s;
+    });
+    const a = save.assignments.find((x) => x.id === id);
+    if (a) {
+      const evidenceOk = a.requiredEvidenceIds.every((eid) => save.caseFile.evidence.some((e) => e.id === eid && e.discovered));
+      const sourcesOk = a.requiredSourceIds.every((sid) => save.notebook.some((n) => n.sourceId === sid));
+      if (!evidenceOk || !sourcesOk) {
+        setDialogue('System: Assignment incomplete - discover required evidence and add required sources to notebook.');
+        setPanel('dialogue');
+      } else {
+        addNotebook({ kind: 'feedback', title: `Assignment submitted: ${a.title}`, content: a.id === 'a1' ? 'Reviewed: Good start. Continue to case brief draft.' : 'Submitted for review.', verified: true });
+        setPanel('notebook');
+      }
+    }
+  }
+
+  function submitDraft() {
+    const citationCheck = checkDraftCitations(draft, save.legalSources);
+    if (!citationCheck.ok) {
+      addNotebook({
+        kind: 'feedback',
+        title: 'Draft blocked: citation guardrail',
+        content: `Submission blocked.\n${citationCheck.blocked.map((b) => `- ${b}`).join('\n')}\n\nRule: never fabricate or cite unverified legal provisions/judgments.`,
+        verified: true,
+      });
+      setDialogue('Adv. Meera Kulkarni: "Stop. I see an unverified or fabricated citation. Verify the source first, or remove it."');
+      setPanel('notebook');
+      return;
+    }
+
+    const hasIssue = /issue\s*:/i.test(draft) && draft.length > 60;
+    const discoveredCount = save.caseFile.evidence.filter((e) => e.discovered).length;
+    const hasEvidenceRefs = discoveredCount > 0 && /evidence|medical|cctv|witness|report/i.test(draft);
+    const warnings = citationCheck.warnings;
+    update((s) => {
+      s.flags.assignment2Submitted = true;
       s.player.reputation.reliability += hasIssue ? 2 : -1;
-      s.player.reputation.competence += hasIssue ? 1 : 0;
-      s.memories.unshift({ id: `m-${Date.now()}`, day: s.clock.day, summary: 'Submitted draft for senior review.', participants: ['player', 'senior'] });
+      s.player.reputation.competence += hasIssue && hasEvidenceRefs ? 2 : hasIssue ? 1 : 0;
+      s.player.reputation.integrity += warnings.length ? 0 : 1;
+      const a2 = s.assignments.find((a) => a.id === 'a2');
+      if (a2) { a2.status = 'submitted'; a2.feedback = hasIssue ? 'Structure acceptable; continue evidence-grounded analysis.' : 'Incomplete structure.'; }
+      s.memories.unshift({ id: `m-${Date.now()}`, day: s.clock.day, summary: 'Submitted case brief draft for senior review.', participants: ['player', 'senior'] });
       return s;
     });
     addNotebook({
       kind: 'feedback',
-      title: 'Senior feedback (deterministic stub)',
-      content: hasIssue
-        ? `Draft structure detected. ${hasCitationWarning ? 'Warning: legal references appear without verified source notes. ' : ''}Next: tie each claim to discovered evidence and mark unknowns.`
-        : 'Draft is too thin. Include Issue, Facts (known/claimed/disputed), Verified Law, Analysis, Conclusion.',
+      title: 'Senior feedback (deterministic)',
+      content: [
+        hasIssue ? 'Structure: acceptable.' : 'Structure: incomplete - include Issue, Facts (known/claimed/disputed), Verified Law/Source Notes, Analysis, Conclusion.',
+        hasEvidenceRefs ? 'Evidence grounding: present.' : 'Evidence grounding: weak - tie claims to discovered evidence.',
+        warnings.length ? `Warnings: ${warnings.join(' ')}` : 'Citation guard: no blocked issues detected.',
+        'Reminder: canonical truth is not known; distinguish known/claimed/disputed/unknown.'
+      ].join('\n'),
       verified: true,
     });
     setPanel('notebook');
@@ -174,7 +234,7 @@ export function App() {
 
         <section className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4">
           <div className="flex gap-2 flex-wrap mb-3 text-sm">
-            {['case','evidence','draft','notebook','dialogue'].map((p) => (
+            {['case','assignments','evidence','research','draft','notebook','dialogue'].map((p) => (
               <button key={p} onClick={() => setPanel(p)} className={`px-2 py-1 rounded border ${panel===p?'border-bar-gold text-bar-gold':'border-white/10 text-bar-muted'}`}>{p}</button>
             ))}
           </div>
@@ -188,6 +248,22 @@ export function App() {
               <div><div className="text-bar-gold text-xs">Known/Player knowledge</div><ul className="list-disc ml-5">{save.caseFile.playerKnowledge.map((k,i)=><li key={i}>{k}</li>)}</ul></div>
               <div><div className="text-bar-gold text-xs">Allegations</div><ul className="list-disc ml-5">{save.caseFile.allegations.map((k,i)=><li key={i}>{k}</li>)}</ul></div>
               <div><div className="text-bar-gold text-xs">Unresolved ambiguity</div><div>{save.caseFile.unresolvedAmbiguity}</div></div>
+            </div>
+          )}
+
+          {panel === 'assignments' && (
+            <div className="space-y-2 text-sm">
+              {save.assignments.map((a) => (
+                <div key={a.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
+                  <div className="flex justify-between"><span className="text-bar-gold">{a.title}</span><span className="text-xs text-bar-muted">Day {a.day} • {a.status}</span></div>
+                  <div className="text-sm mt-1">{a.description}</div>
+                  <div className="text-xs text-bar-muted mt-1">Required evidence: {a.requiredEvidenceIds.join(', ') || 'none'} • Required sources: {a.requiredSourceIds.join(', ') || 'none'}</div>
+                  {a.feedback && <div className="text-xs mt-1 text-bar-text">Feedback: {a.feedback}</div>}
+                  {(a.status === 'active' || a.status === 'pending') && (
+                    <button className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => submitAssignment(a.id)}>Submit / Evaluate</button>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 
@@ -205,6 +281,21 @@ export function App() {
                 </div>
               ))}
               <div className="text-xs text-bar-muted">Discovered: {discoveredEvidence.length}/{save.caseFile.evidence.length}</div>
+            </div>
+          )}
+
+          {panel === 'research' && (
+            <div className="space-y-2 text-sm">
+              <p className="text-xs text-bar-muted">Verified legal sources only. Unverified/placeholder entries cannot be cited as authoritative.</p>
+              {save.legalSources.map((s) => (
+                <div key={s.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
+                  <div className="flex justify-between gap-2"><span className="text-bar-gold">{s.title}</span><span className={`text-xs ${s.verificationStatus==='verified'?'text-green-300':'text-yellow-300'}`}>{s.verificationStatus}</span></div>
+                  <div className="text-xs text-bar-muted">{s.citation}</div>
+                  <div className="text-xs text-bar-muted">{s.provenance}</div>
+                  {s.notes && <div className="text-xs mt-1">{s.notes}</div>}
+                  <button className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => addNotebook({ kind:'research', title:`Source: ${s.title}`, content:`${s.citation}\n${s.provenance}`, sourceId:s.id, source:s.citation, verified:s.verificationStatus==='verified' })}>Add to notebook</button>
+                </div>
+              ))}
             </div>
           )}
 

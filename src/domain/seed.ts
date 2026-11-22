@@ -12,7 +12,7 @@ export function createInitialSave(): SaveGame {
     },
     clock: { day: 1, slot: 'morning' },
     selectedViewpoint: 'entrance',
-    flags: { introSeen: false, caseAccepted: false, draftSubmitted: false },
+    flags: { introSeen: false, caseAccepted: false, assignment1Submitted: false, assignment2Submitted: false },
     characters: [
       {
         id: 'senior',
@@ -47,6 +47,66 @@ export function createInitialSave(): SaveGame {
     memories: [
       { id: 'm1', day: 1, summary: 'Joined the firm as an intern under Adv. Meera Kulkarni.', participants: ['player', 'senior'] },
     ],
+    legalSources: [
+      {
+        id: 'ls-1',
+        title: 'Bharatiya Nyaya Sanhita (BNS) — placeholder reference',
+        citation: 'BNS (placeholder - verify exact provision before use)',
+        sourceType: 'statute',
+        jurisdiction: 'India',
+        verificationStatus: 'placeholder',
+        provenance: 'Placeholder only. Do not treat as authoritative citation. Verify against official enacted text and effective date before production use.',
+        notes: 'Use for workflow testing; real provision/citation must be verified.',
+      },
+      {
+        id: 'ls-2',
+        title: 'Bharatiya Nagarik Suraksha Sanhita (BNSS) — placeholder reference',
+        citation: 'BNSS (placeholder - verify exact provision before use)',
+        sourceType: 'statute',
+        jurisdiction: 'India',
+        verificationStatus: 'placeholder',
+        provenance: 'Placeholder only. Verify against official enacted text before production use.',
+      },
+      {
+        id: 'ls-3',
+        title: 'Bharatiya Sakshya Adhiniyam (BSA) — placeholder reference',
+        citation: 'BSA (placeholder - verify exact provision before use)',
+        sourceType: 'statute',
+        jurisdiction: 'India',
+        verificationStatus: 'placeholder',
+        provenance: 'Placeholder only. Verify against official enacted text before production use.',
+      },
+      {
+        id: 'ls-4',
+        title: 'Evidence handling principle (educational summary)',
+        citation: 'Educational summary: authenticity, chain of custody, admissibility, reliability',
+        sourceType: 'summary',
+        jurisdiction: 'Fictional',
+        verificationStatus: 'verified',
+        provenance: 'Internal educational summary for prototype gameplay; not a statutory citation or legal advice.',
+        notes: 'Safe to show in prototype as labeled summary.',
+      },
+    ],
+    assignments: [
+      {
+        id: 'a1',
+        day: 1,
+        title: 'Initial fact matrix',
+        description: 'Identify known facts, allegations, disputed points, and unknowns for The Canteen Altercation. Discover at least one piece of evidence.',
+        status: 'active',
+        requiredEvidenceIds: ['ev-1'],
+        requiredSourceIds: ['ls-4'],
+      },
+      {
+        id: 'a2',
+        day: 3,
+        title: 'Case brief draft',
+        description: 'Draft a short case brief with Issue, Facts, Verified Law/Source Notes, Analysis, and Conclusion. Do not fabricate citations.',
+        status: 'pending',
+        requiredEvidenceIds: ['ev-1', 'ev-2'],
+        requiredSourceIds: ['ls-4'],
+      },
+    ],
     notebook: [
       {
         id: 'n1',
@@ -63,7 +123,7 @@ export function createInitialSave(): SaveGame {
       status: 'active',
       canonicalTruth: {
         actualEvents: ['A shove occurred after an argument.', 'A phone recording is incomplete and may be misleading.', 'Medical report confirms minor injury but timing is disputed.'],
-        responsibleParties: ['To be determined by evidence - canonical truth withheld from player UI'],
+        responsibleParties: ['Canonical party responsibility withheld from player view'],
         actualTimeline: ['18:10 argument', '18:12 shove', '18:20 clinic visit'],
         evidenceAuthenticity: { 'ev-1': true, 'ev-2': true, 'ev-3': false },
         hiddenMotives: ['Witness had prior dispute with complainant'],

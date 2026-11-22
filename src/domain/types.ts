@@ -84,14 +84,40 @@ export interface CaseFile {
   evidence: EvidenceItem[];
 }
 
+export type SourceVerificationStatus = 'verified' | 'unverified' | 'placeholder';
+
+export interface LegalSource {
+  id: string;
+  title: string;
+  citation: string;
+  sourceType: 'statute' | 'judgment' | 'rule' | 'commentary' | 'summary';
+  jurisdiction: 'India' | 'Fictional';
+  verificationStatus: SourceVerificationStatus;
+  provenance: string;
+  effectiveDate?: string;
+  notes?: string;
+}
+
 export interface NotebookEntry {
   id: string;
   day: number;
-  kind: 'note' | 'provision' | 'fact' | 'mistake' | 'feedback';
+  kind: 'note' | 'provision' | 'fact' | 'mistake' | 'feedback' | 'research';
   title: string;
   content: string;
+  sourceId?: string;
   source?: string;
   verified?: boolean;
+}
+
+export interface Assignment {
+  id: string;
+  day: number;
+  title: string;
+  description: string;
+  status: 'pending' | 'active' | 'submitted' | 'reviewed';
+  requiredEvidenceIds: string[];
+  requiredSourceIds: string[];
+  feedback?: string;
 }
 
 export interface SaveGame {
@@ -103,6 +129,8 @@ export interface SaveGame {
   relationships: Relationship[];
   memories: MemoryEvent[];
   caseFile: CaseFile;
+  legalSources: LegalSource[];
+  assignments: Assignment[];
   notebook: NotebookEntry[];
   selectedViewpoint: string;
   flags: Record<string, boolean>;
