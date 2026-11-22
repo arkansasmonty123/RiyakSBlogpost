@@ -82,6 +82,8 @@ export interface DialogueScene {
   prompt: string;
   minDay: number;
   once: boolean;
+  /** `event` marks a day-gated world event with consequences; defaults to conversation. */
+  kind?: 'conversation' | 'event';
   choices: DialogueChoice[];
 }
 

@@ -9,6 +9,7 @@ import { describeHotspotAction, getLocationForViewpoint, getViewpoint, LOCATIONS
 import { assertNoCanonicalTruthLeak, toPlayerCaseView } from '@/domain/caseAccess';
 import { buildCaseJournal, groupJournalByDay, JOURNAL_KINDS } from '@/domain/journal';
 import type { JournalKind } from '@/domain/journal';
+import { buildCaseSummary } from '@/domain/caseSummary';
 import { advanceClock, currentObjective, isAssignmentUnlocked, makeId, MAX_DAY, reviewAssignment } from '@/domain/progression';
 import { applyDialogueChoice, availableDialogueScenes } from '@/domain/dialogue';
 import { addEvidenceNote, discoverEvidenceItem, reviewEvidence, setEvidenceAssessment } from '@/domain/evidence';
@@ -178,6 +179,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     [journal],
   );
   const chapterPhase = save.clock.day <= 5 ? 'Foundations · Days 1–5' : 'First case · Days 6–10';
+  const caseSummary = useMemo(() => buildCaseSummary(save), [save]);
   const objectiveIndex = objective
     ? save.assignments.findIndex((a) => a.id === objective.assignmentId) + 1
     : save.assignments.length;
@@ -238,6 +240,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     assertNoCanonicalTruthLeak(completion);
     assertNoCanonicalTruthLeak(journal);
     assertNoCanonicalTruthLeak(theorySupport);
+    assertNoCanonicalTruthLeak(caseSummary);
   }
 
   function update(mutator: (s: SaveGame) => SaveGame) {
@@ -900,9 +903,12 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
               </div>
               {dialogueScenes.length > 0 && (
                 <div className="space-y-2">
-                  <div className="text-xs text-bar-gold">Available conversations (Day {save.clock.day})</div>
+                  <div className="text-xs text-bar-gold">Available conversations &amp; events (Day {save.clock.day})</div>
                   {dialogueScenes.map((scene) => (
                     <div key={scene.id} className="bg-bar-panel2 p-3 rounded border border-white/5">
+                      {scene.kind === 'event' && (
+                        <span className="inline-block mb-1 px-2 py-0.5 rounded border border-bar-gold/40 bg-bar-gold/10 text-[11px] uppercase tracking-wide text-bar-gold">World event</span>
+                      )}
                       <div className="text-sm">{scene.prompt}</div>
                       <div className="grid gap-2 mt-2">
                         {scene.choices.map((choice) => (
@@ -933,6 +939,38 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                 <p className="text-xs text-bar-muted mt-2">
                   This file holds only what you have legitimately learned. It is not a finding about what happened, who was responsible, or whether any item is authentic.
                 </p>
+              </section>
+
+              <section className="bg-bar-panel2 p-3 rounded border border-white/5" aria-labelledby="case-at-a-glance-heading">
+                <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                  <h3 id="case-at-a-glance-heading" className="text-xs uppercase tracking-wide text-bar-gold">Case at a glance</h3>
+                  <span className="text-[11px] text-bar-muted">{caseSummary.phase}</span>
+                </div>
+                <p className="text-xs text-bar-muted mt-2">{caseSummary.framing}</p>
+                <div className="flex flex-wrap gap-2 mt-2 text-[11px]">
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">Evidence {caseSummary.discoveredCount}/{caseSummary.evidenceTotal} discovered</span>
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">{caseSummary.reviewedCount} reviewed</span>
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">{caseSummary.evidenceNoteCount} evidence-linked notes</span>
+                </div>
+                {caseSummary.corroborationLinks.length > 0 && (
+                  <div className="mt-3">
+                    <h4 className="text-xs uppercase tracking-wide text-bar-gold">Corroboration &amp; contradiction notes</h4>
+                    <ul className="list-disc ml-5 mt-2 space-y-1 text-xs text-bar-text/90">
+                      {caseSummary.corroborationLinks.map((link) => (
+                        <li key={link.id}>
+                          <span className="capitalize text-bar-gold">{link.relation}</span> · Day {link.day} · {link.evidenceTitle}: {link.note}
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                      onClick={() => { setJournalFilter('evidence'); setPanel('journal'); }}
+                    >
+                      See these notes in the timeline →
+                    </button>
+                  </div>
+                )}
               </section>
 
               <FileSection
@@ -1483,6 +1521,9 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                 <div className="text-bar-gold text-xs mb-1">Case timeline / journal</div>
                 <p className="text-xs text-bar-muted">A chronological record of what you have legitimately learned and written. It contains only player-visible information: the true sequence of events, responsibility and authenticity are never recorded here.</p>
                 <p className="text-xs text-bar-muted mt-1">Entries linked to an evidence item can be opened in the evidence board using “In evidence board” below.</p>
+                <p className="text-xs text-bar-muted mt-1">
+                  {caseSummary.phase} · {caseSummary.discoveredCount}/{caseSummary.evidenceTotal} evidence items discovered · {caseSummary.reviewedCount} reviewed. The case summary and this timeline draw on the same player-visible record.
+                </p>
               </div>
 
               <div className="bg-bar-panel2 p-3 rounded border border-white/5">

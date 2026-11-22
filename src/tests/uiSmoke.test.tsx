@@ -69,7 +69,8 @@ describe('App render smoke test', () => {
     expect(journalHtml).toContain('aria-label="Case timeline"');
     expect(journalHtml).toContain('Day 1');
     expect(journalHtml).toContain('First day');
-    expect(journalHtml).toContain('Noted event');
+    // Events carry a readable title drawn from the player's own memory.
+    expect(journalHtml).toContain('Joined the firm as an intern under Adv. Meera Kulkarni');
     expect(journalHtml).toContain('aria-label="Filter journal by kind"');
     const lower = journalHtml.toLowerCase();
     for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {

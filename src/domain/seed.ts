@@ -628,6 +628,89 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       },
     ],
   },
+  {
+    id: 'd-client-pressure',
+    characterId: 'client',
+    minDay: 4,
+    once: true,
+    kind: 'event',
+    prompt: 'Day 4 event — the client asks for a confident view of the matter before the evidence review is complete.',
+    choices: [
+      {
+        id: 'provisional-view',
+        label: 'Offer only a provisional view tied to what has actually been reviewed.',
+        reply: 'Client: "Then tell me what the material supports now, and what is still open. I would rather know that than be told more than you can show."',
+        effects: [
+          { characterId: 'client', dimension: 'trust', amount: 6 },
+          { characterId: 'client', dimension: 'respect', amount: 3 },
+          { characterId: 'senior', dimension: 'respect', amount: 3 },
+        ],
+        memory: 'Told the client you would give only a provisional, evidence-tied view; they accepted the limit.',
+        reveals: ['The client asked for a view before the review was complete and accepted a provisional, evidence-tied answer.'],
+        reputationEffects: [{ dimension: 'reliability', amount: 2 }],
+        setsFlag: 'clientPressureHandled',
+      },
+      {
+        id: 'promise-outcome',
+        label: 'Promise the client the outcome they want to hear.',
+        reply: 'Client: "That sounds reassuring, but I would rather you did not promise what the file cannot support." Adv. Meera Kulkarni notes the exchange.',
+        effects: [
+          { characterId: 'client', dimension: 'trust', amount: -5 },
+          { characterId: 'client', dimension: 'respect', amount: -3 },
+          { characterId: 'senior', dimension: 'respect', amount: -4 },
+          { characterId: 'senior', dimension: 'resentment', amount: 3 },
+        ],
+        memory: 'Promised the client an outcome the file could not support; the senior corrected you.',
+        reputationEffects: [
+          { dimension: 'integrity', amount: -2 },
+          { dimension: 'reliability', amount: -1 },
+        ],
+        setsFlag: 'clientPressureHandled',
+      },
+    ],
+  },
+  {
+    id: 'd-junior-credit',
+    characterId: 'junior',
+    minDay: 9,
+    once: true,
+    kind: 'event',
+    prompt: 'Day 9 event — Priya Nair asks whether the research note she prepared will be named in the file.',
+    choices: [
+      {
+        id: 'credit-note',
+        label: 'Credit Priya’s note explicitly in the file and your notebook.',
+        reply: 'Priya Nair: "Thank you. The note records only which reviewed items support each point. It does not resolve the disputed sequence, and I would not want it to look like it does."',
+        effects: [
+          { characterId: 'junior', dimension: 'trust', amount: 6 },
+          { characterId: 'junior', dimension: 'respect', amount: 4 },
+          { characterId: 'junior', dimension: 'loyalty', amount: 3 },
+          { characterId: 'junior', dimension: 'professionalDependence', amount: -3 },
+        ],
+        memory: 'Credited Priya Nair’s research note in the file and notebook; she welcomed the attribution.',
+        reveals: ['Priya Nair’s research note records which reviewed items support each point; it does not resolve the disputed sequence.'],
+        reputationEffects: [
+          { dimension: 'integrity', amount: 2 },
+          { dimension: 'reliability', amount: 1 },
+        ],
+        setsFlag: 'juniorCredited',
+      },
+      {
+        id: 'claim-note',
+        label: 'Present the research as your own work without naming her.',
+        reply: 'Priya Nair: "I see. I will keep my own copy of the note. Please do not treat it as a conclusion about what happened."',
+        effects: [
+          { characterId: 'junior', dimension: 'trust', amount: -6 },
+          { characterId: 'junior', dimension: 'respect', amount: -5 },
+          { characterId: 'junior', dimension: 'resentment', amount: 4 },
+          { characterId: 'junior', dimension: 'rivalry', amount: 4 },
+        ],
+        memory: 'Presented Priya Nair’s research as your own; she kept her own copy of the note.',
+        reputationEffects: [{ dimension: 'integrity', amount: -2 }],
+        setsFlag: 'juniorCredited',
+      },
+    ],
+  },
 ];
 
 export function createInitialSave(): SaveGame {
@@ -664,6 +747,8 @@ export function createInitialSave(): SaveGame {
       rivalRespect: false,
       supervisorConsulted: false,
       supervisorStatement: false,
+      clientPressureHandled: false,
+      juniorCredited: false,
     },
     characters: [
       {
@@ -979,7 +1064,8 @@ export function createInitialSave(): SaveGame {
           '18:15 complainant leaves the canteen area',
           '18:20 clinic visit',
         ],
-        evidenceAuthenticity: { 'ev-1': true, 'ev-2': true, 'ev-3': false, 'ev-4': true, 'ev-5': false, 'ev-6': true },
+        // Append-only: new items receive hidden authenticity values; nothing above is rewritten.
+        evidenceAuthenticity: { 'ev-1': true, 'ev-2': true, 'ev-3': false, 'ev-4': true, 'ev-5': false, 'ev-6': true, 'ev-7': true, 'ev-8': false, 'ev-9': true },
         hiddenMotives: [
           'Witness had prior dispute with complainant',
           'A portion of the phone recording was removed before it was shared',
@@ -1000,6 +1086,9 @@ export function createInitialSave(): SaveGame {
       unresolvedAmbiguity: [
         'What happened in the missing 20 seconds of video?',
         'Whether the injury timing aligns with the reported sequence.',
+        'Whether the camera clock and the clinic register times can be reconciled.',
+        'Whether the earlier and later eyewitness accounts can be reconciled.',
+        'Whether the message screenshot is complete and in context.',
       ],
       evidence: [
         {
@@ -1037,6 +1126,24 @@ export function createInitialSave(): SaveGame {
           discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
           assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
           provenance: 'Clinic register (fictional seed)',
+        },
+        {
+          id: 'ev-7', title: 'Camera clock synchronisation note', type: 'documentary', description: 'A short technical note recording that the canteen camera clock was not checked against a common time reference on the day. It bears on how the clip’s timing lines up with other records, but does not by itself establish when anything occurred.',
+          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
+          provenance: 'Camera maintenance note (fictional seed)',
+        },
+        {
+          id: 'ev-8', title: 'Contemporaneous message screenshot', type: 'digital', description: 'A screenshot of a short message said to have been sent soon after the incident. It may support the account that the sender left the area, but the full thread and the device were not produced, so its context is incomplete.',
+          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
+          provenance: 'Screenshot supplied with the intake papers (fictional seed)',
+        },
+        {
+          id: 'ev-9', title: 'Earlier eyewitness account', type: 'testimony', description: 'A brief earlier account attributed to the eyewitness. It differs in emphasis from the later interview note. Neither version fixes the exact order of events, and the differences have not yet been put to the witness.',
+          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
+          provenance: 'Earlier interview note (fictional seed)',
         },
       ],
     },

@@ -29,6 +29,21 @@ function journalKindFor(entry: NotebookEntry): JournalKind {
   return 'note';
 }
 
+/**
+ * Give a recorded event a short, scannable title drawn only from the memory summary the
+ * player already received. No canonical data is read, so a title can never reveal more
+ * than the event detail beneath it.
+ */
+function eventTitle(summary: string): string {
+  // Protect common abbreviations so "under Adv. Meera Kulkarni" is not cut at "Adv".
+  const protectedAbbrev = summary.replace(/\b(Adv|Dr|Mr|Mrs|Ms|No)\.\s+/g, '$1\u0000 ');
+  const firstClause = (protectedAbbrev.split(/\.\s+/)[0] ?? '')
+    .replace(/\u0000/g, '.')
+    .replace(/[.:]+$/, '')
+    .trim();
+  return firstClause.length > 0 && firstClause.length <= 80 ? firstClause : 'Noted event';
+}
+
 /** Build a deterministic, ascending chronological journal of what the player knows. */
 export function buildCaseJournal(save: SaveGame): JournalEntry[] {
   let order = 0;
@@ -41,7 +56,7 @@ export function buildCaseJournal(save: SaveGame): JournalEntry[] {
       id: `journal-memory-${memory.id}`,
       day: memory.day,
       kind: 'event',
-      title: 'Noted event',
+      title: eventTitle(memory.summary),
       detail: memory.summary,
       order: order++,
     });
