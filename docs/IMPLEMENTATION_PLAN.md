@@ -1,9 +1,16 @@
 # THE BAR — Phased Implementation Plan
 
 **Date:** 2026-11-22 (updated 2026-11-22)  
-**Status:** Phase 0 complete; early P0 prototype implementation in progress (beyond Phase 0)  
+**Status:** Phase 0 complete; P0 prototype actively implemented (Phases 1–5 partially/mostly complete under ADR-001 size-conscious deviations; Phase 6 not started)  
 **Primary reference:** [`../THE_BAR_MASTER_CONTEXT.md`](../THE_BAR_MASTER_CONTEXT.md)  
 **Companion docs:** [`AUDIT.md`](./AUDIT.md), [`DECISIONS.md`](./DECISIONS.md), [`PROJECT_INFO.md`](./PROJECT_INFO.md)
+
+## Current implementation snapshot (evidence-based)
+
+- **Stack (ADR-001 deviation):** Vite + React + TS + Tailwind, localStorage save, deterministic stubs. No Next.js/Postgres/Prisma (deferred by size/complexity; recorded).
+- **Verification baseline:** `npm run typecheck` PASS, `npm test` PASS (**166/166, 19 files**), `npm run build` PASS, CI workflow present (`.github/workflows/ci.yml`).
+- **Implemented:** Day 1–10 playable slice, 12-char cast, 2 locations/8 viewpoints, case truth separation + no-leak guards, evidence discovery/review/custody/challenge, assignments, drafting+version history, deterministic senior review/final brief, completion summary + Legal Mind Profile (lite), journal/timeline, theory board, source intake/provenance/validation/CLI, CSS/SVG scene art, onboarding/help, save v1→v2 migration.
+- **Not implemented / blocked:** real verified legal corpus (D-005/D-011, content-owner blocked), runtime AI provider/RAG (Phase 6), Postgres/Prisma/transactional DB audit log (ADR-001 deviation), full 30-day chapter content depth, courtroom hearings, formal lint/format/env validation pipeline, real-browser a11y matrix in CI.
 
 ## Planning principles
 
@@ -39,111 +46,94 @@
 
 ## Phase 1 — Technical Foundation (Thin Skeleton)
 
-**Objective:** Runnable modular monolith with persistence, tests, and CI.
+**Status:** ⚠️ **Mostly complete (ADR-001 deviation)** — runnable prototype foundation exists; DB/ORM and some tooling deferred.
 
-| Work item | Deliverable | Dependencies | Exit criteria |
-|---|---|---|---|
-| Scaffold selected stack | App boots locally | Phase 0 ADRs | Dev server/build pass |
-| TypeScript/lint/format/test setup | Tooling configs + scripts | Scaffold | `typecheck`, `lint`, `test` pass |
-| PostgreSQL + migrations/ORM | DB schema baseline, migration workflow | Stack/DB decision | Fresh DB reproducible |
-| Env/secrets/config | `.env.example`, config validation | Scaffold | No secrets hardcoded; config validated |
-| CI baseline | CI workflow for lint/typecheck/test | Git + scripts | CI green on clean checkout |
-| Domain boundaries | Module folders/contracts for player/world/cases/legal/ai/ui | Scaffold | Clear boundaries, no premature microservices |
+| Work item | Deliverable | Dependencies | Exit criteria | Status / Evidence |
+|---|---|---|---|---|
+| Scaffold selected stack | App boots locally | Phase 0 ADRs | Dev server/build pass | ✅ Vite+React+TS+Tailwind scaffold; `build`/`dev`/`preview` scripts pass |
+| TypeScript/lint/format/test setup | Tooling configs + scripts | Scaffold | `typecheck`, `lint`, `test` pass | ⚠️ `typecheck` PASS, `test` PASS (166). **Missing:** lint/format scripts/config |
+| PostgreSQL + migrations/ORM | DB schema baseline, migration workflow | Stack/DB decision | Fresh DB reproducible | ⏸️ Deferred by ADR-001. localStorage + migration-safe merge used for P0; Postgres/Prisma revisit later |
+| Env/secrets/config | `.env.example`, config validation | Scaffold | No secrets hardcoded; config validated | ⚠️ No secrets hardcoded; **missing** `.env.example` + runtime config validation |
+| CI baseline | CI workflow for lint/typecheck/test | Git + scripts | CI green on clean checkout | ✅ `.github/workflows/ci.yml` runs npm ci/typecheck/test/build on push/PR (Node 22). No remote run verified yet |
+| Domain boundaries | Module folders/contracts for player/world/cases/legal/ai/ui | Scaffold | Clear boundaries, no premature microservices | ✅ `src/domain/*`, `src/storage/*`, `src/app/*` modular separation; deterministic domain modules present |
 
-**Suggested candidate stack (unconfirmed):** Next.js App Router, TypeScript, Tailwind, PostgreSQL, Prisma.  
-**Risks:** Picking stack before platform/AI decisions; over-engineering.  
-**Verification:** CI green; fresh setup documented.
+**Deviation note:** ADR-001 chose Vite+React+TS+Tailwind+localStorage for P0 size-consciousness; Next.js/Postgres/Prisma remain future candidates.
 
 ---
 
 ## Phase 2 — Core Domain Model & Persistence
 
-**Objective:** Persist minimum vertical-slice state with strict truth boundaries.
+**Status:** ⚠️ **Mostly complete for P0 prototype (localStorage model)** — core models/boundaries/tests exist; DB transactions/audit log deferred.
 
-| Work item | Deliverable | Dependencies | Exit criteria |
-|---|---|---|---|
-| Player profile/career state | Player, career stage, game-only progression | Phase 1 | Save/load works; tests pass |
-| In-game clock | World clock, time advance, schedule hooks | Phase 1 | Deterministic time advance tests |
-| Character model | Identity, role, personality, goals, schedule, knowledge boundaries | Phase 1 | CRUD + boundary tests |
-| Relationship/memory model | Multidimensional relationships + event memories | Character model | Specific events remembered; no single-score shortcut |
-| Case truth model | Canonical truth, character knowledge, player knowledge, allegations, admissible/reliable, unresolved ambiguity | Phase 1 | **No-leak tests** pass |
-| Evidence model | Evidence type, provenance, authenticity, discoverability, chain/admissibility metadata | Case model | Evidence access/visibility tests |
-| Legal source model | Source, citation, version/effective date, verification status, label type | Phase 1 | Provenance required; no fabricated seed citations |
-| Transactional mutation/audit | Service layer + transactions + audit/event log | Domain models | Important state changes atomic/audited |
-
-**Risks:** Truth leakage through API/UI; schema too rigid/too loose.  
-**Verification:** Unit/integration tests for save/load, clock, truth boundaries, evidence visibility, provenance constraints.
+| Work item | Deliverable | Dependencies | Exit criteria | Status / Evidence |
+|---|---|---|---|---|
+| Player profile/career state | Player, career stage, game-only progression | Phase 1 | Save/load works; tests pass | ✅ `PlayerProfile`, career stage, reputation; save/load in localStorage with migration |
+| In-game clock | World clock, time advance, schedule hooks | Phase 1 | Deterministic time advance tests | ✅ Day/slot clock, advanceTime, Day 1–10 cap, deterministic tests |
+| Character model | Identity, role, personality, goals, schedule, knowledge boundaries | Phase 1 | CRUD + boundary tests | ✅ 12 characters with role/goals/knowledge boundaries/portraits; boundary-respecting dialogue tests |
+| Relationship/memory model | Multidimensional relationships + event memories | Character model | Specific events remembered; no single-score shortcut | ✅ Multidimensional relationships, clamped updates, memory events in save/tests |
+| Case truth model | Canonical truth, character knowledge, player knowledge, allegations, admissible/reliable, unresolved ambiguity | Phase 1 | **No-leak tests** pass | ✅ `CaseFile` separation; `toPlayerCaseView`/`assertNoCanonicalTruthLeak`; SSR smoke/no-leak tests |
+| Evidence model | Evidence type, provenance, authenticity, discoverability, chain/admissibility metadata | Case model | Evidence access/visibility tests | ✅ Evidence types/provenance/discovery/review/assessment/challenge/custody; authenticity hidden |
+| Legal source model | Source, citation, version/effective date, verification status, label type | Phase 1 | Provenance required; no fabricated seed citations | ✅ `LegalSource` provenance/verification model, intake workflow, validation/CLI, no fabricated verified citations |
+| Transactional mutation/audit | Service layer + transactions + audit/event log | Domain models | Important state changes atomic/audited | ⚠️ Partial: deterministic state updates + memory/event records; **missing** formal DB transactions/audit log (deferred with ADR-001 DB choice) |
 
 ---
 
 ## Phase 3 — Minimal Content & Verified Legal Seed
 
-**Objective:** Author the first coherent playable content slice with verified legal grounding.
+**Status:** ⚠️ **Partially complete** — playable fictional content exists; real verified legal corpus blocked.
 
-| Work item | Deliverable | Dependencies | Exit criteria |
-|---|---|---|---|
-| Fictional firm/district | One firm, core locations metadata | Phase 2 | Seeded, consistent world IDs |
-| Core cast | 8–12 characters (can start with 3–5 active in slice) | Phase 2 | Character sheets + relationships seeded |
-| Principal case | Disputed altercation case with stable canonical truth | Phase 2 | Case coherent; truth stable after activation |
-| Smaller assignments | 1–3 research/drafting assignments | Case model | Assignments playable in loop |
-| Verified legal sources | Only required BNS/BNSS/BSA/Const provisions, verified/provenanced | Legal policy + access | Every citation has provenance or is blocked |
-| Player notebook | Notes/provisions/case summaries/mistakes/feedback | Phase 2 | Persisted and searchable |
-
-**Risks:** Legal sourcing/licensing delays; accidental fabrication.  
-**Verification:** Content validation tests; citation/provenance checks; legal review checklist.
+| Work item | Deliverable | Dependencies | Exit criteria | Status / Evidence |
+|---|---|---|---|---|
+| Fictional firm/district | One firm, core locations metadata | Phase 2 | Seeded, consistent world IDs | ⚠️ Partial: fictional firm/chamber/reception/consultation context exists in scenes/seed; formal district/firm metadata model still light |
+| Core cast | 8–12 characters (can start with 3–5 active in slice) | Phase 2 | Character sheets + relationships seeded | ✅ 12 characters with roles/goals/boundaries/relationships/interactions |
+| Principal case | Disputed altercation case with stable canonical truth | Phase 2 | Case coherent; truth stable after activation | ✅ "The Canteen Altercation" with append-only canonical truth, evidence, allegations, ambiguities |
+| Smaller assignments | 1–3 research/drafting assignments | Case model | Assignments playable in loop | ✅ 8 assignments across Day 1–10 flow (fact matrix through final brief/review) |
+| Verified legal sources | Only required BNS/BNSS/BSA/Const provisions, verified/provenanced | Legal policy + access | Every citation has provenance or is blocked | ❌ Blocked (D-005/D-011): no official verifiable corpus ingested. Placeholder/unverified records + validation workflow exist; no fabricated citations marked verified |
+| Player notebook | Notes/provisions/case summaries/mistakes/feedback | Phase 2 | Persisted and searchable | ✅ Notebook entries (note/fact/research/feedback/theory-related flows), filters, evidence/journal linkage |
 
 ---
 
 ## Phase 4 — Core Gameplay Loop (Deterministic First)
 
-**Objective:** Deliver playable end-to-end loop without requiring advanced AI.
+**Status:** ✅ **Mostly complete for P0 prototype** — core loop playable end-to-end; AI critique still stubbed.
 
-| Work item | Deliverable | Dependencies | Exit criteria |
-|---|---|---|---|
-| Dialogue/interaction system | Structured choices + limited free-form input; memory-aware state updates | Phase 2/3 | Deterministic tests for state changes |
-| Evidence discovery | Inspect/interview/request exam/challenge authenticity/custody (minimal) | Phase 2/3 | Discovery updates player knowledge only |
-| Legal research flow | Search/browse verified sources, attach to notes/case theory | Phase 3 | No unverified authority presented as authoritative |
-| Drafting workspace | Editable legal artifact with version/save | Phase 2 | Draft persisted; version history |
-| Evaluation/feedback | Deterministic rubric + senior feedback; optional AI critique behind flag | Phase 3 | Feedback explains strengths/weaknesses; no fabricated citations |
-| Consequences | Career/relationship/reputation updates via deterministic rules | Phase 2 | State changes transactional and tested |
-
-**Risks:** AI-first temptation; brittle evaluation.  
-**Verification:** End-to-end test for "assignment → research → evidence → draft → feedback → consequence".
+| Work item | Deliverable | Dependencies | Exit criteria | Status / Evidence |
+|---|---|---|---|---|
+| Dialogue/interaction system | Structured choices + limited free-form input; memory-aware state updates | Phase 2/3 | Deterministic tests for state changes | ✅ Day-gated dialogues/events, choice effects, memory/relationship/reputation updates, knowledge-boundary tests |
+| Evidence discovery | Inspect/interview/request exam/challenge authenticity/custody (minimal) | Phase 2/3 | Discovery updates player knowledge only | ✅ Discover/review, custody log, admissibility/reliability challenge, contradiction/corroboration notes; authenticity hidden |
+| Legal research flow | Search/browse verified sources, attach to notes/case theory | Phase 3 | No unverified authority presented as authoritative | ✅ Research panel, source intake, provenance badges, notebook add, citation guard; real verified corpus still blocked |
+| Drafting workspace | Editable legal artifact with version/save | Phase 2 | Draft persisted; version history | ✅ Draft textarea, version snapshots with day/slot/timestamp, load prior version, capped history |
+| Evaluation/feedback | Deterministic rubric + senior feedback; optional AI critique behind flag | Phase 3 | Feedback explains strengths/weaknesses; no fabricated citations | ✅ Deterministic senior review/final brief feedback, citation guard blocking; **AI critique stubbed/not integrated** |
+| Consequences | Career/relationship/reputation updates via deterministic rules | Phase 2 | State changes transactional and tested | ✅ Reputation/relationship/memory/assignment progression consequences; completion profile |
 
 ---
 
 ## Phase 5 — Illustrated 2D Scene Prototype
 
-**Objective:** Validate §17 visual interaction architecture before scaling assets.
+**Status:** ⚠️ **Prototype complete, art pipeline incomplete** — scene architecture validated; final art/assets/style guide pending.
 
-| Work item | Deliverable | Dependencies | Exit criteria |
-|---|---|---|---|
-| Scene system | Viewpoint/background/hotspot/transition model | Phase 1 | Scene data-driven and persisted |
-| First chamber prototype | 4 viewpoints, 5 hotspots, 1 character, multiple expressions | Art assets + Phase 4 | Playable on desktop/mobile widths |
-| Hotspot interactions | Detail view/dialogue/document/navigation actions | Phase 4 | All hotspots functional and accessible |
-| Art direction/asset provenance | Style guide, character refs, palette, asset licenses/origins | Phase 0 decision | Assets documented and rights clear |
-| Responsive/accessibility | Keyboard/focus/labels/contrast/mobile layout | UI scaffold | Basic a11y checks pass |
-
-**Risks:** Inconsistent art; asset rights ambiguity; scene system too coupled to one room.  
-**Verification:** Manual QA + UI tests/snapshots where useful; accessibility checklist.
+| Work item | Deliverable | Dependencies | Exit criteria | Status / Evidence |
+|---|---|---|---|---|
+| Scene system | Viewpoint/background/hotspot/transition model | Phase 1 | Scene data-driven and persisted | ✅ `src/domain/scenes.ts` data-driven locations/viewpoints/hotspots; selected viewpoint persisted in save |
+| First chamber prototype | 4 viewpoints, 5 hotspots, 1 character, multiple expressions | Art assets + Phase 4 | Playable on desktop/mobile widths | ✅ Exceeded minimum: 2 locations, 8 viewpoints, many hotspots, 12 characters with portrait states; CSS/SVG placeholder art (no external image assets) |
+| Hotspot interactions | Detail view/dialogue/document/navigation actions | Phase 4 | All hotspots functional and accessible | ✅ Hotspots trigger navigation/dialogue/panel/time actions; accessible buttons/labels |
+| Art direction/asset provenance | Style guide, character refs, palette, asset licenses/origins | Phase 0 decision | Assets documented and rights clear | ❌ Not done: no final art style guide, no licensed/original asset pack, no character reference sheet pipeline |
+| Responsive/accessibility | Keyboard/focus/labels/contrast/mobile layout | UI scaffold | Basic a11y checks pass | ⚠️ Partial: semantic landmarks, skip link, focus-visible, aria labels/pressed/expanded/live, reduced motion, mobile layouts; browser a11y matrix smoke done, full screen-reader/axe audit not yet formalized |
 
 ---
 
 ## Phase 6 — Runtime AI & Legal RAG (Guarded)
 
-**Objective:** Add runtime intelligence safely and optionally.
+**Status:** ⏸️ **Not started** — deterministic guardrail foundations exist; runtime AI intentionally stubbed/disabled.
 
-| Work item | Deliverable | Dependencies | Exit criteria |
-|---|---|---|---|
-| AI provider abstraction | Configurable adapter (local/hosted/disabled) | Phase 0 decision | App runs with AI disabled |
-| Role interfaces | Character/evaluation first; others later | Phase 4 | Clear contracts per role |
-| RAG over verified corpus | Retrieval with provenance/version/effective date | Phase 3 legal corpus | Retrieved sources traceable |
-| Deterministic validation | Citation/date/provision/evidence-access/schema checks | Phase 2/3 | Fabricated/invalid outputs blocked |
-| Cost/latency controls | Event-driven calls, caching, summaries, routing | AI integration | No per-click LLM calls; budgets/logging |
-| Safety red-team tests | Truth leakage, citation fabrication, knowledge-boundary violations | All above | Tests/guardrails catch known bad cases |
-
-**Risks:** Hallucinated legal authority; prompt injection through user text; cost spikes.  
-**Verification:** Automated guardrail tests; manual adversarial checks; logs/metrics.
+| Work item | Deliverable | Dependencies | Exit criteria | Status / Evidence |
+|---|---|---|---|---|
+| AI provider abstraction | Configurable adapter (local/hosted/disabled) | Phase 0 decision | App runs with AI disabled | ⚠️ Partial: app runs with AI disabled/stubbed; no formal provider adapter interface yet |
+| Role interfaces | Character/evaluation first; others later | Phase 4 | Clear contracts per role | ❌ Not started |
+| RAG over verified corpus | Retrieval with provenance/version/effective date | Phase 3 legal corpus | Retrieved sources traceable | ❌ Blocked by D-005/D-011 (no verified corpus) |
+| Deterministic validation | Citation/date/provision/evidence-access/schema checks | Phase 2/3 | Fabricated/invalid outputs blocked | ⚠️ Partial foundations: citation guard, source validation, no-leak guards, deterministic rules; no AI output schema pipeline yet |
+| Cost/latency controls | Event-driven calls, caching, summaries, routing | AI integration | No per-click LLM calls; budgets/logging | ❌ Not started |
+| Safety red-team tests | Truth leakage, citation fabrication, knowledge-boundary violations | All above | Tests/guardrails catch known bad cases | ⚠️ Partial: truth-leak/citation/knowledge-boundary tests exist for deterministic flows; AI red-team tests not started |
 
 ---
 
