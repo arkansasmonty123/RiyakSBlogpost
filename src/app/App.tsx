@@ -40,6 +40,15 @@ import type {
 } from '@/domain/types';
 
 const PANELS = ['case', 'assignments', 'evidence', 'casework', 'theory', 'research', 'draft', 'notebook', 'journal', 'dialogue'] as const;
+
+/** Static greetings shown when a character hotspot opens the dialogue panel. No canonical truth. */
+const DIALOGUE_GREETINGS: Record<string, string> = {
+  receptionist: 'Deepa: "I keep the diary and the visitor log. I can tell you who signed in and when — not what was said in private."',
+  opposing: 'Adv. Vikram Rathore: "I argue from the material that has been disclosed. Let us keep it that way."',
+  junior: 'Priya Nair: "I work from the record and the disclosed material. Ask me what I actually know."',
+  medical: 'Dr. Kavita Iyer: "I can explain what the clinic record shows. I cannot tell you who caused the injury."',
+};
+
 type WorkPanel = (typeof PANELS)[number];
 /** `completion` is reached only after the final brief closes the chapter. */
 type Panel = WorkPanel | 'completion';
@@ -398,11 +407,9 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
         : 'Adv. Meera Kulkarni: "A fictional altercation case has arrived. Interview carefully, collect evidence, and draft a brief. I will review it."');
       update((s) => { s.flags.caseAccepted = true; return s; });
     }
-    if (kind === 'dialogue' && (value === 'receptionist' || value === 'opposing')) {
+    if (kind === 'dialogue' && Object.prototype.hasOwnProperty.call(DIALOGUE_GREETINGS, value)) {
       setPanel('dialogue');
-      setDialogue(value === 'receptionist'
-        ? 'Deepa: "I keep the diary and the visitor log. I can tell you who signed in and when — not what was said in private."'
-        : 'Adv. Vikram Rathore: "I argue from the material that has been disclosed. Let us keep it that way."');
+      setDialogue(DIALOGUE_GREETINGS[value]);
     }
   }
 

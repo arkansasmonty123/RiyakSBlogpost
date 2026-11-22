@@ -35,7 +35,7 @@ describe('richer First Brief case content', () => {
   it('expands the cast and evidence set while keeping canonical truth stable', () => {
     const save = createInitialSave();
     expect(save.characters.map((c) => c.id)).toEqual([
-      'senior', 'peer', 'clerk', 'client', 'witness', 'specialist', 'opposing', 'receptionist',
+      'senior', 'peer', 'clerk', 'client', 'witness', 'specialist', 'opposing', 'receptionist', 'junior', 'medical',
     ]);
     expect(save.caseFile.evidence.map((e) => e.id)).toEqual([
       'ev-1', 'ev-2', 'ev-3', 'ev-4', 'ev-5', 'ev-6',

@@ -129,4 +129,48 @@ describe('App render smoke test', () => {
       expect(lower).not.toContain(forbidden);
     }
   });
+
+  it('renders the new cast hotspots, viewpoint and day-gated conversations', () => {
+    const save = createInitialSave();
+    save.clock.day = 6;
+    save.selectedViewpoint = 'consultation-room';
+    const data: Record<string, string> = { [SAVE_KEY]: JSON.stringify(save) };
+    const globals = globalThis as Record<string, unknown>;
+    const previousWindow = globals.window;
+    globals.window = {
+      localStorage: {
+        getItem: (key: string) => data[key] ?? null,
+        setItem: (key: string, value: string) => { data[key] = value; },
+        removeItem: (key: string) => { delete data[key]; },
+      },
+    };
+    let consultationHtml = '';
+    let deskHtml = '';
+    let dialogueHtml = '';
+    try {
+      consultationHtml = renderToString(<App />).replace(/<!-- -->/g, '');
+      save.selectedViewpoint = 'desk';
+      data[SAVE_KEY] = JSON.stringify(save);
+      deskHtml = renderToString(<App />).replace(/<!-- -->/g, '');
+      dialogueHtml = renderToString(<App initialPanel="dialogue" />).replace(/<!-- -->/g, '');
+    } finally {
+      globals.window = previousWindow;
+    }
+
+    expect(consultationHtml).toContain('Consultation Room');
+    expect(consultationHtml).toContain('Medical Consultant (Dr. Kavita Iyer)');
+    expect(consultationHtml).toContain('Junior Advocate (Priya)');
+    expect(consultationHtml).toContain('aria-label="Consultation Room hotspots"');
+    expect(deskHtml).toContain('Junior Advocate (Priya)');
+    expect(dialogueHtml).toContain('Priya Nair, a junior advocate at the firm');
+    expect(dialogueHtml).toContain('Dr. Kavita Iyer, a visiting clinician');
+    expect(dialogueHtml).toContain('Compare the two accounts and record only what each actually supports.');
+    expect(dialogueHtml).toContain('Ask, in plain terms, what the injury report can and cannot establish.');
+    for (const html of [consultationHtml, deskHtml, dialogueHtml]) {
+      const lower = html.toLowerCase();
+      for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+        expect(lower).not.toContain(forbidden);
+      }
+    }
+  });
 });

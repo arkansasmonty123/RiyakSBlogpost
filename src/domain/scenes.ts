@@ -39,8 +39,8 @@ export const LOCATIONS: Record<string, SceneLocation> = {
   reception: {
     id: 'reception',
     label: 'Office Reception',
-    description: 'The front desk, corridor and waiting area just outside the chamber.',
-    viewpointIds: ['reception-desk', 'corridor', 'waiting-area'],
+    description: 'The front desk, corridor, waiting area and consultation room just outside the chamber.',
+    viewpointIds: ['reception-desk', 'corridor', 'waiting-area', 'consultation-room'],
   },
 };
 
@@ -63,11 +63,12 @@ export const VIEWPOINTS: Record<string, SceneViewpoint> = {
     id: 'desk',
     locationId: 'chamber',
     label: 'Desk',
-    description: 'Case files, drafts, and notes are spread across the desk.',
+    description: 'Case files, drafts, and notes are spread across the desk, with a junior advocate working at the neighbouring desk.',
     hotspots: [
       { id: 'casefile', label: 'Case File', action: 'panel:case' },
       { id: 'assignments', label: 'Assignments', action: 'panel:assignments' },
       { id: 'draft', label: 'Draft Pad', action: 'panel:draft' },
+      { id: 'colleague', label: 'Junior Advocate (Priya)', action: 'dialogue:junior' },
       { id: 'back', label: 'Back to Entrance', action: 'view:entrance' },
     ],
   },
@@ -117,6 +118,7 @@ export const VIEWPOINTS: Record<string, SceneViewpoint> = {
     description: 'A narrow corridor between the reception desk and the consulting rooms. Time only moves when you choose to advance the in-game clock.',
     hotspots: [
       { id: 'opposing', label: 'Opposing Counsel', action: 'dialogue:opposing' },
+      { id: 'consultation', label: 'Consultation Room', action: 'view:consultation-room' },
       { id: 'reception-desk', label: 'Reception Desk', action: 'view:reception-desk' },
       { id: 'waiting', label: 'Waiting Area', action: 'view:waiting-area' },
       { id: 'back', label: 'Back to Chamber', action: 'view:entrance' },
@@ -130,6 +132,19 @@ export const VIEWPOINTS: Record<string, SceneViewpoint> = {
     hotspots: [
       { id: 'receptionist', label: 'Receptionist (Deepa)', action: 'dialogue:receptionist' },
       { id: 'opposing', label: 'Opposing Counsel', action: 'dialogue:opposing' },
+      { id: 'corridor', label: 'Corridor', action: 'view:corridor' },
+      { id: 'consultation', label: 'Consultation Room', action: 'view:consultation-room' },
+      { id: 'back', label: 'Back to Chamber', action: 'view:entrance' },
+    ],
+  },
+  'consultation-room': {
+    id: 'consultation-room',
+    locationId: 'reception',
+    label: 'Consultation Room',
+    description: 'A small room off the corridor where colleagues and visiting specialists review a record together. A professional discussion here is not a finding on the case.',
+    hotspots: [
+      { id: 'medical', label: 'Medical Consultant (Dr. Kavita Iyer)', action: 'dialogue:medical' },
+      { id: 'junior', label: 'Junior Advocate (Priya)', action: 'dialogue:junior' },
       { id: 'corridor', label: 'Corridor', action: 'view:corridor' },
       { id: 'back', label: 'Back to Chamber', action: 'view:entrance' },
     ],

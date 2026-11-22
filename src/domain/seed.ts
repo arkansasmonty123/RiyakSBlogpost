@@ -414,6 +414,77 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       },
     ],
   },
+  {
+    id: 'd-junior-review',
+    characterId: 'junior',
+    minDay: 4,
+    once: true,
+    prompt: 'Priya Nair, a junior advocate at the firm, asks how you are keeping the clinic record separate from the eyewitness account.',
+    choices: [
+      {
+        id: 'compare-sources',
+        label: 'Compare the two accounts and record only what each actually supports.',
+        reply: 'Priya Nair: "Agreed. The clinic record notes an injury; the witness describes movement. Neither tells us, on its own, who moved first."',
+        effects: [
+          { characterId: 'junior', dimension: 'trust', amount: 5 },
+          { characterId: 'junior', dimension: 'respect', amount: 4 },
+          { characterId: 'junior', dimension: 'professionalDependence', amount: -2 },
+        ],
+        memory: 'Compared the clinic record with the eyewitness account alongside Priya Nair, keeping each to its own limits.',
+        reveals: ['Priya Nair states the clinic record notes an injury and the eyewitness account describes movement; neither alone establishes who moved first.'],
+        reputationEffects: [{ dimension: 'competence', amount: 2 }],
+        setsFlag: 'juniorConsulted',
+      },
+      {
+        id: 'ask-fault',
+        label: 'Ask Priya who she believes was really at fault.',
+        reply: 'Priya Nair: "I will not guess. We argue from the record; anything beyond it is not my file to hand you."',
+        effects: [
+          { characterId: 'junior', dimension: 'respect', amount: -5 },
+          { characterId: 'junior', dimension: 'trust', amount: -4 },
+          { characterId: 'junior', dimension: 'resentment', amount: 3 },
+        ],
+        memory: 'Asked Priya Nair for a conclusion on fault; she declined to speculate.',
+        reputationEffects: [{ dimension: 'integrity', amount: -1 }],
+      },
+    ],
+  },
+  {
+    id: 'd-medical-record',
+    characterId: 'medical',
+    minDay: 6,
+    once: true,
+    prompt: 'Dr. Kavita Iyer, a visiting clinician, reviews what the clinic record can and cannot show about the reported injury.',
+    choices: [
+      {
+        id: 'ask-clinic-limits',
+        label: 'Ask, in plain terms, what the injury report can and cannot establish.',
+        reply: 'Dr. Kavita Iyer: "It records a minor injury and the time of examination. It cannot fix the exact moment of injury, and it says nothing about who caused it. That is not a clinical conclusion."',
+        effects: [
+          { characterId: 'medical', dimension: 'trust', amount: 5 },
+          { characterId: 'medical', dimension: 'respect', amount: 6 },
+        ],
+        memory: 'Consulted Dr. Kavita Iyer on what the injury report can and cannot establish.',
+        reveals: ['The clinician states the injury report records the injury and examination time but cannot fix the exact moment of injury or attribute fault.'],
+        reputationEffects: [
+          { dimension: 'competence', amount: 2 },
+          { dimension: 'reliability', amount: 1 },
+        ],
+        setsFlag: 'medicalConsulted',
+      },
+      {
+        id: 'ask-attribute-fault',
+        label: 'Ask the clinician to state from the report who caused the injury.',
+        reply: 'Dr. Kavita Iyer: "The report does not answer that, and I will not make it say more than it does."',
+        effects: [
+          { characterId: 'medical', dimension: 'respect', amount: -5 },
+          { characterId: 'medical', dimension: 'resentment', amount: 4 },
+        ],
+        memory: 'Asked Dr. Kavita Iyer to attribute fault from the injury report; she refused.',
+        reputationEffects: [{ dimension: 'integrity', amount: -1 }],
+      },
+    ],
+  },
 ];
 
 export function createInitialSave(): SaveGame {
@@ -444,6 +515,8 @@ export function createInitialSave(): SaveGame {
       reviewAccepted: false,
       finalBriefSubmitted: false,
       chapterOneComplete: false,
+      juniorConsulted: false,
+      medicalConsulted: false,
     },
     characters: [
       {
@@ -525,6 +598,30 @@ export function createInitialSave(): SaveGame {
         ],
         goals: ['Keep the front desk and visitor log accurate', 'Route visitors without disclosing private matters'],
       },
+      {
+        id: 'junior',
+        name: 'Priya Nair',
+        role: 'Junior Advocate (colleague)',
+        portrait: 'thinking',
+        knowledgeBoundaries: [
+          'Knows office workflow, assigned tasks and the material disclosed in the matter',
+          'Does not know privileged client admissions unless they are shared with her',
+          'Cannot know the case’s canonical truth or facts outside the disclosed record',
+        ],
+        goals: ['Build a meticulous, evidence-grounded practice', 'Earn the senior’s trust and wider responsibility'],
+      },
+      {
+        id: 'medical',
+        name: 'Dr. Kavita Iyer',
+        role: 'Medical Consultant (clinic)',
+        portrait: 'neutral',
+        knowledgeBoundaries: [
+          'Can explain what the clinic record shows and the general limits of an injury report',
+          'Cannot say who caused an injury or fix the exact moment it occurred',
+          'Does not know the case’s canonical truth, the recording or facts outside the clinic record',
+        ],
+        goals: ['State clinical findings accurately', 'Avoid overstating what an injury report proves'],
+      },
     ],
     relationships: [
       { fromId: 'player', toId: 'senior', trust: 35, respect: 40, loyalty: 30, rivalry: 0, resentment: 0, affection: 10, professionalDependence: 60 },
@@ -535,6 +632,8 @@ export function createInitialSave(): SaveGame {
       { fromId: 'player', toId: 'specialist', trust: 30, respect: 40, loyalty: 15, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 20 },
       { fromId: 'player', toId: 'opposing', trust: 15, respect: 30, loyalty: 5, rivalry: 45, resentment: 0, affection: 0, professionalDependence: 15 },
       { fromId: 'player', toId: 'receptionist', trust: 30, respect: 25, loyalty: 20, rivalry: 0, resentment: 0, affection: 10, professionalDependence: 20 },
+      { fromId: 'player', toId: 'junior', trust: 35, respect: 30, loyalty: 25, rivalry: 10, resentment: 0, affection: 10, professionalDependence: 25 },
+      { fromId: 'player', toId: 'medical', trust: 25, respect: 35, loyalty: 15, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 20 },
     ],
     memories: [
       { id: 'm1', day: 1, summary: 'Joined the firm as an intern under Adv. Meera Kulkarni.', participants: ['player', 'senior'] },
