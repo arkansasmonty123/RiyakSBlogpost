@@ -178,6 +178,111 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       },
     ],
   },
+  {
+    id: 'd-witness-statement',
+    characterId: 'witness',
+    minDay: 6,
+    once: true,
+    prompt: 'The eyewitness who gave the statement sits with you. Ask only what they personally observed.',
+    choices: [
+      {
+        id: 'ask-personal-view',
+        label: 'Ask the witness to describe only what they personally saw and heard.',
+        reply: 'Witness: "I heard raised voices and saw movement near the door. I cannot be certain of the exact order in the part the camera did not catch."',
+        effects: [
+          { characterId: 'witness', dimension: 'trust', amount: 6 },
+          { characterId: 'witness', dimension: 'respect', amount: 4 },
+          { characterId: 'senior', dimension: 'respect', amount: 2 },
+        ],
+        memory: 'Asked the eyewitness to confine their account to what they personally observed; they acknowledged uncertainty about the unrecorded interval.',
+        reveals: [
+          'Witness states they heard raised voices and saw movement near the canteen door.',
+          'Witness states they cannot be certain of the exact sequence in the unrecorded interval.',
+        ],
+        reputationEffects: [{ dimension: 'reliability', amount: 2 }],
+        setsFlag: 'witnessInterviewed',
+      },
+      {
+        id: 'push-for-certainty',
+        label: 'Ask the witness to state definitively who acted first.',
+        reply: 'Witness: "I will not say more than I actually saw. Asking me to guess would not help your file."',
+        effects: [
+          { characterId: 'witness', dimension: 'resentment', amount: 5 },
+          { characterId: 'witness', dimension: 'trust', amount: -4 },
+          { characterId: 'witness', dimension: 'respect', amount: -3 },
+        ],
+        memory: 'Pressed the eyewitness for a definitive first move; they refused to speculate.',
+        reputationEffects: [{ dimension: 'integrity', amount: -1 }],
+      },
+    ],
+  },
+  {
+    id: 'd-specialist-metadata',
+    characterId: 'specialist',
+    minDay: 7,
+    once: true,
+    prompt: 'A digital forensics specialist reviews what a location export can and cannot show.',
+    choices: [
+      {
+        id: 'ask-limits',
+        label: 'Ask, in plain terms, what the export can and cannot establish.',
+        reply: 'Specialist: "An export shows what the device recorded at the time, but not whether anything was removed. I can explain that limit; I cannot certify completeness from the file alone."',
+        effects: [
+          { characterId: 'specialist', dimension: 'respect', amount: 6 },
+          { characterId: 'specialist', dimension: 'trust', amount: 4 },
+        ],
+        memory: 'Consulted the digital forensics specialist about the limits of a location export.',
+        reveals: ['Specialist states an export cannot, on its own, prove that nothing was removed.'],
+        reputationEffects: [{ dimension: 'competence', amount: 2 }],
+        setsFlag: 'specialistConsulted',
+      },
+      {
+        id: 'ask-declare-fact',
+        label: 'Ask the specialist to declare the accused’s position as proven fact.',
+        reply: 'Specialist: "That overstates what the file shows. I will not certify a fact the material cannot support."',
+        effects: [
+          { characterId: 'specialist', dimension: 'respect', amount: -4 },
+          { characterId: 'specialist', dimension: 'resentment', amount: 3 },
+        ],
+        memory: 'Asked the specialist to overstate what the export could prove; they declined.',
+        reputationEffects: [{ dimension: 'integrity', amount: -1 }],
+      },
+    ],
+  },
+  {
+    id: 'd-peer-integrity',
+    characterId: 'peer',
+    minDay: 8,
+    once: true,
+    prompt: 'Arjun suggests treating the incomplete clip as if it showed the whole event.',
+    choices: [
+      {
+        id: 'flag-gap',
+        label: 'Insist on recording the gap rather than presenting the clip as complete.',
+        reply: 'Arjun: "Fair. I will note the gap too. Better than a file that falls apart later."',
+        effects: [
+          { characterId: 'peer', dimension: 'respect', amount: 5 },
+          { characterId: 'peer', dimension: 'trust', amount: 3 },
+          { characterId: 'peer', dimension: 'rivalry', amount: -3 },
+        ],
+        memory: 'Insisted with Arjun that the missing segment be recorded rather than presented as complete.',
+        reputationEffects: [{ dimension: 'integrity', amount: 2 }],
+        setsFlag: 'peerIntegrityChoice',
+      },
+      {
+        id: 'use-as-complete',
+        label: 'Agree to present the clip as complete to strengthen the case.',
+        reply: 'Arjun: "Your call — but I will keep my own note that the segment is missing."',
+        effects: [
+          { characterId: 'peer', dimension: 'respect', amount: -4 },
+          { characterId: 'peer', dimension: 'trust', amount: -3 },
+          { characterId: 'peer', dimension: 'rivalry', amount: 4 },
+        ],
+        memory: 'Agreed with Arjun to present the incomplete clip as complete; he kept his own note of the gap.',
+        reputationEffects: [{ dimension: 'integrity', amount: -2 }],
+      },
+    ],
+  },
 ];
 
 export function createInitialSave(): SaveGame {
@@ -199,6 +304,9 @@ export function createInitialSave(): SaveGame {
       assignment2Submitted: false,
       assignment3Submitted: false,
       clientInterviewDone: false,
+      witnessInterviewed: false,
+      specialistConsulted: false,
+      peerIntegrityChoice: false,
       custodyLogged: false,
       admissibilityChallenged: false,
       reviewAccepted: false,
@@ -241,12 +349,36 @@ export function createInitialSave(): SaveGame {
         ],
         goals: ['Give an accurate statement', 'Understand the process'],
       },
+      {
+        id: 'witness',
+        name: 'The Eyewitness',
+        role: 'Eyewitness (canteen matter)',
+        portrait: 'thinking',
+        knowledgeBoundaries: [
+          'Can describe only what they personally saw and heard',
+          'Cannot know what the unrecorded interval showed or who was at fault',
+        ],
+        goals: ['Give a truthful account', 'Avoid being drawn into speculation'],
+      },
+      {
+        id: 'specialist',
+        name: 'Forensic Specialist',
+        role: 'Digital forensics specialist',
+        portrait: 'neutral',
+        knowledgeBoundaries: [
+          'Can explain what an export shows and its general limitations',
+          'Cannot certify authenticity or completeness from a file alone',
+        ],
+        goals: ['Explain technical limits clearly', 'Avoid overstating what material proves'],
+      },
     ],
     relationships: [
       { fromId: 'player', toId: 'senior', trust: 35, respect: 40, loyalty: 30, rivalry: 0, resentment: 0, affection: 10, professionalDependence: 60 },
       { fromId: 'player', toId: 'peer', trust: 45, respect: 35, loyalty: 35, rivalry: 10, resentment: 0, affection: 20, professionalDependence: 20 },
       { fromId: 'player', toId: 'clerk', trust: 30, respect: 30, loyalty: 20, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 25 },
       { fromId: 'player', toId: 'client', trust: 25, respect: 30, loyalty: 20, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 15 },
+      { fromId: 'player', toId: 'witness', trust: 20, respect: 25, loyalty: 10, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 10 },
+      { fromId: 'player', toId: 'specialist', trust: 30, respect: 40, loyalty: 15, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 20 },
     ],
     memories: [
       { id: 'm1', day: 1, summary: 'Joined the firm as an intern under Adv. Meera Kulkarni.', participants: ['player', 'senior'] },
@@ -404,17 +536,43 @@ export function createInitialSave(): SaveGame {
       title: 'The Canteen Altercation (Fictional)',
       status: 'active',
       canonicalTruth: {
-        actualEvents: ['A shove occurred after an argument.', 'A phone recording is incomplete and may be misleading.', 'Medical report confirms minor injury but timing is disputed.'],
+        actualEvents: [
+          'A shove occurred after an argument.',
+          'A phone recording is incomplete and may be misleading.',
+          'Medical report confirms minor injury but timing is disputed.',
+          'A canteen staff member was posted nearby but did not intervene.',
+          'The complainant attended the clinic after leaving the canteen area.',
+        ],
         responsibleParties: ['Canonical party responsibility withheld from player view'],
-        actualTimeline: ['18:10 argument', '18:12 shove', '18:20 clinic visit'],
-        evidenceAuthenticity: { 'ev-1': true, 'ev-2': true, 'ev-3': false },
-        hiddenMotives: ['Witness had prior dispute with complainant'],
-        unresolvedAmbiguities: ['Exact first physical contact'],
+        actualTimeline: [
+          '18:05 staff member begins duty near the canteen',
+          '18:10 argument',
+          '18:12 shove',
+          '18:15 complainant leaves the canteen area',
+          '18:20 clinic visit',
+        ],
+        evidenceAuthenticity: { 'ev-1': true, 'ev-2': true, 'ev-3': false, 'ev-4': true, 'ev-5': false, 'ev-6': true },
+        hiddenMotives: [
+          'Witness had prior dispute with complainant',
+          'A portion of the phone recording was removed before it was shared',
+        ],
+        unresolvedAmbiguities: ['Exact first physical contact', 'Whether the missing footage would change the account'],
       },
-      playerKnowledge: ['An altercation was reported outside a canteen.'],
-      allegations: ['Complainant alleges intentional assault.', 'Accused alleges self-defense.'],
+      playerKnowledge: [
+        'An altercation was reported outside a canteen.',
+        'A clinic visit followed the reported incident.',
+        'CCTV coverage of the area is partial.',
+      ],
+      allegations: [
+        'Complainant alleges intentional assault.',
+        'Accused alleges self-defense.',
+        'Complainant states the available clip does not show how the argument began.',
+      ],
       admissibleMaterial: [],
-      unresolvedAmbiguity: ['What happened in the missing 20 seconds of video?'],
+      unresolvedAmbiguity: [
+        'What happened in the missing 20 seconds of video?',
+        'Whether the injury timing aligns with the reported sequence.',
+      ],
       evidence: [
         {
           id: 'ev-1', title: 'Medical report summary', type: 'medical', description: 'Minor injury noted; timing disputed.',
@@ -434,6 +592,24 @@ export function createInitialSave(): SaveGame {
           assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
           provenance: 'Interview note (fictional seed)',
         },
+        {
+          id: 'ev-4', title: 'Canteen duty roster', type: 'documentary', description: 'A staff duty roster showing who was posted near the canteen. It records presence, not movements.',
+          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
+          provenance: 'Fictional staff roster (fictional seed)',
+        },
+        {
+          id: 'ev-5', title: 'Phone location export', type: 'digital', description: 'A location-and-time export from a phone. Its completeness and integrity are not established.',
+          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
+          provenance: 'Device export (fictional seed)',
+        },
+        {
+          id: 'ev-6', title: 'Clinic intake register extract', type: 'documentary', description: 'An extract noting arrival at the clinic. The person who reported the injury is not recorded.',
+          discovered: false, reviewed: false, admissibility: 'unknown', reliability: 'unknown',
+          assessment: { admissibility: 'unknown', reliability: 'unknown', rationale: '' },
+          provenance: 'Clinic register (fictional seed)',
+        },
       ],
     },
     usedDialogueSceneIds: [],
@@ -441,5 +617,6 @@ export function createInitialSave(): SaveGame {
     custodyLog: [],
     challenges: [],
     reviewRounds: [],
+    caseTheory: { claims: [] },
   };
 }

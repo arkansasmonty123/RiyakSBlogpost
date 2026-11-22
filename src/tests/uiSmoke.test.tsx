@@ -10,6 +10,8 @@ describe('App render smoke test', () => {
   // React SSR inserts `<!-- -->` separators between adjacent text nodes.
   const html = renderToString(<App />).replace(/<!-- -->/g, '');
   const researchHtml = renderToString(<App initialPanel="research" />).replace(/<!-- -->/g, '');
+  const theoryHtml = renderToString(<App initialPanel="theory" />).replace(/<!-- -->/g, '');
+  const caseworkHtml = renderToString(<App initialPanel="casework" />).replace(/<!-- -->/g, '');
 
   it('renders the prototype shell, day clock and current objective', () => {
     expect(html).toContain('THE BAR');
@@ -37,6 +39,30 @@ describe('App render smoke test', () => {
     expect(researchHtml).toContain('NON-AUTHORITATIVE EXCERPT/SUMMARY');
     expect(researchHtml).toContain('Source Intake creates drafts only');
     expect(researchHtml).toContain('Citation / identifier:');
+  });
+
+  it('renders an organised, player-legible case theory panel without canonical truth', () => {
+    expect(theoryHtml).toContain('Case theory — organise your working file');
+    expect(theoryHtml).toContain('aria-label="Case theory claim"');
+    expect(theoryHtml).toContain('Link reviewed evidence');
+    expect(theoryHtml).toContain('known (0)');
+    expect(theoryHtml).toContain('claimed (0)');
+    expect(theoryHtml).toContain('disputed (0)');
+    const lower = theoryHtml.toLowerCase();
+    for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+      expect(lower).not.toContain(forbidden);
+    }
+  });
+
+  it('renders custody/challenge workflow guidance without canonical truth', () => {
+    expect(caseworkHtml).toContain('Working order');
+    expect(caseworkHtml).toContain('Relevance addresses whether the item helps prove a fact in issue.');
+    expect(caseworkHtml).toContain('Authenticity remains undetermined');
+    expect(caseworkHtml).toContain('Neither establishes authenticity');
+    const lower = caseworkHtml.toLowerCase();
+    for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+      expect(lower).not.toContain(forbidden);
+    }
   });
 
   it('never presents fabricated provisions or judgments as verified in the research panel', () => {

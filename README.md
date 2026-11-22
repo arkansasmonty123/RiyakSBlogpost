@@ -2,7 +2,7 @@
 
 **THE BAR** is a planned immersive, persistent legal-career simulator set in India. The player begins as a newcomer/intern under a senior lawyer and builds a career through legal work, relationships, difficult cases, professional choices, and courtroom experience.
 
-> **Status:** P0 prototype implemented — "The First Brief — Office Prototype" (ADR-002). A playable 7-day first-chapter slice runs locally; runtime AI remains stubbed/disabled.
+> **Status:** P0 prototype implemented — "The First Brief — Office Prototype" (ADR-002). A playable 10-day first-chapter slice runs locally; runtime AI remains stubbed/disabled.
 
 ## Primary reference
 
@@ -20,9 +20,9 @@
 - Repository: `/home/divyanshukumarsinha241/project-courtroom`
 - Git: initialized (local)
 - Application: **P0 prototype** (Vite + React + TypeScript + Tailwind), localStorage save (v1 saves migrate to v2)
-- Gameplay: Days 1–10 progression with unlockable assignments, dialogue consequences (relationships + memories), evidence review/assessment/contradiction notes, notebook, editable draft with version history, deterministic citation guard and senior feedback
+- Gameplay: Days 1–10 progression with unlockable assignments, dialogue consequences (relationships + bounded reputation changes + memories), six-character cast and six evidence items for the fictional canteen matter, witness/specialist/peer interactions that add player knowledge only, evidence review/assessment/contradiction notes, evidence-linked case theory, notebook with kind filters, editable draft with version history, deterministic citation guard and senior feedback
 - Legal provenance: the Research panel shows each source's name, citation/identifier, type, jurisdiction, verification badge, effective date and clearly labeled non-authoritative provenance/excerpt. **Source Intake** drafts records as `unverified` or `placeholder` with deterministic validation (required fields, no self-verification, citation-like strings forced to placeholder). The game never auto-verifies a source; only traceable, verified sources can be cited as authoritative.
-- Tests: `vitest` (53 passing tests across domain, provenance/intake validation, migration, guardrails and SSR smoke checks)
+- Tests: `vitest` (68 passing tests across domain, provenance/intake validation, case depth/knowledge boundaries, save migration, guardrails and SSR smoke checks)
 - Runtime AI: deterministic stub only (no provider/model bundled)
 - Verified legal corpus/data: minimal fictional seed only (one internal educational summary is marked verified; statutory entries are explicit placeholders). No real legal corpus ingested; no statutory provision, judgment or citation has been fabricated or presented as verified.
 - Visual assets: placeholder/composed UI (no final art assets)

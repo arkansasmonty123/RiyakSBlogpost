@@ -34,7 +34,7 @@ function mergeById<T extends { id: string }>(baseItems: T[], parsed: unknown): T
 }
 
 function mergeEvidence(base: EvidenceItem[], parsed: unknown): EvidenceItem[] {
-  return mergeById<EvidenceItem>(base, parsed).map((item) => ({
+  const merged = mergeById<EvidenceItem>(base, parsed).map((item) => ({
     ...item,
     discovered: item.discovered ?? false,
     reviewed: item.reviewed ?? false,
@@ -47,6 +47,13 @@ function mergeEvidence(base: EvidenceItem[], parsed: unknown): EvidenceItem[] {
       rationale: item.assessment?.rationale ?? '',
     },
   }));
+  // Content added after a save was written must still appear: append any seed item that
+  // an older save does not know about (as undiscovered, with default assessment fields).
+  const seen = new Set(merged.map((item) => item.id));
+  for (const item of base) {
+    if (!seen.has(item.id)) merged.push({ ...item });
+  }
+  return merged;
 }
 
 /**
@@ -135,6 +142,15 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
       custodyLog: Array.isArray(parsed.custodyLog) ? parsed.custodyLog : base.custodyLog,
       challenges: Array.isArray(parsed.challenges) ? parsed.challenges : base.challenges,
       reviewRounds: Array.isArray(parsed.reviewRounds) ? parsed.reviewRounds : base.reviewRounds,
+      // Case theory is absent in older saves; fall back to an empty, player-authored file.
+      caseTheory: {
+        claims: Array.isArray(parsed.caseTheory?.claims)
+          ? parsed.caseTheory!.claims.filter((c) =>
+              c && typeof c.id === 'string' && typeof c.text === 'string' && typeof c.day === 'number'
+              && (c.status === 'known' || c.status === 'claimed' || c.status === 'disputed')
+              && Array.isArray(c.evidenceIds))
+          : base.caseTheory.claims,
+      },
     };
   } catch {
     return createInitialSave();

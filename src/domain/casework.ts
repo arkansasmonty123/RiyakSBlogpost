@@ -79,7 +79,9 @@ export interface ChallengeResult {
   feedback?: string;
 }
 
-const GROUND_FEEDBACK: Record<ChallengeGround, string> = {
+export const CHALLENGE_GROUNDS: readonly ChallengeGround[] = ['relevance', 'reliability', 'custody', 'provenance'];
+
+export const GROUND_FEEDBACK: Record<ChallengeGround, string> = {
   relevance: 'Relevance addresses whether the item helps prove a fact in issue.',
   reliability: 'Reliability addresses whether the item is what it appears to be and how it was produced.',
   custody: 'Custody addresses who handled the item and whether that handling is documented.',

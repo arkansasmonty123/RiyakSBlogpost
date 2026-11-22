@@ -6,8 +6,16 @@ import { assertNoCanonicalTruthLeak, toPlayerCaseView } from '@/domain/caseAcces
 import { advanceClock, currentObjective, isAssignmentUnlocked, makeId, MAX_DAY, reviewAssignment } from '@/domain/progression';
 import { applyDialogueChoice, availableDialogueScenes } from '@/domain/dialogue';
 import { addEvidenceNote, discoverEvidenceItem, reviewEvidence, setEvidenceAssessment } from '@/domain/evidence';
-import { challengeEvidenceAdmissibility, recordCustodyObservation, submitFinalBrief, submitSeniorReview } from '@/domain/casework';
+import {
+  challengeEvidenceAdmissibility,
+  CHALLENGE_GROUNDS,
+  GROUND_FEEDBACK,
+  recordCustodyObservation,
+  submitFinalBrief,
+  submitSeniorReview,
+} from '@/domain/casework';
 import { loadDraftVersion, MAX_DRAFT_CHARS, saveDraftVersion, setCurrentDraft } from '@/domain/draft';
+import { addTheoryClaim, groupTheoryClaims, THEORY_STATUSES } from '@/domain/theory';
 import type {
   Admissibility,
   Assignment,
@@ -17,6 +25,7 @@ import type {
   SaveGame,
   SourceJurisdiction,
   SourceType,
+  TheoryStatus,
 } from '@/domain/types';
 
 const VIEWPOINTS: Record<string, { label: string; description: string; hotspots: Array<{ id: string; label: string; action: string }> }> = {
@@ -61,7 +70,7 @@ const VIEWPOINTS: Record<string, { label: string; description: string; hotspots:
   },
 };
 
-const PANELS = ['case', 'assignments', 'evidence', 'casework', 'research', 'draft', 'notebook', 'dialogue'] as const;
+const PANELS = ['case', 'assignments', 'evidence', 'casework', 'theory', 'research', 'draft', 'notebook', 'dialogue'] as const;
 type Panel = (typeof PANELS)[number];
 
 function makeNotebookEntry(entry: Omit<NotebookEntry, 'id' | 'day'>, save: SaveGame): NotebookEntry {
@@ -118,6 +127,10 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const [sourceForm, setSourceForm] = useState<SourceFormState>(emptySourceForm);
   const [intakeError, setIntakeError] = useState('');
   const [intakeNotice, setIntakeNotice] = useState('');
+  const [theoryText, setTheoryText] = useState('');
+  const [theoryStatus, setTheoryStatus] = useState<TheoryStatus>('known');
+  const [theoryEvidenceIds, setTheoryEvidenceIds] = useState<string[]>([]);
+  const [notebookFilter, setNotebookFilter] = useState<'all' | NotebookEntry['kind']>('all');
 
   const viewpoint = VIEWPOINTS[save.selectedViewpoint] ?? VIEWPOINTS.entrance;
   // The UI only ever reads the sanitized player view, never the canonical case file.
@@ -126,6 +139,15 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const dialogueScenes = useMemo(() => availableDialogueScenes(save), [save]);
   const discoveredCount = playerCase.evidence.filter((e) => e.discovered).length;
   const reviewedEvidence = playerCase.evidence.filter((e) => e.reviewed);
+  const groupedTheory = useMemo(() => groupTheoryClaims(save), [save]);
+  const evidenceTitleById = useMemo(
+    () => new Map(playerCase.evidence.map((e) => [e.id, e.title])),
+    [playerCase.evidence],
+  );
+  const notebookKinds = useMemo(
+    () => [...new Set(save.notebook.map((n) => n.kind))],
+    [save.notebook],
+  );
   const caseTargetId = caseTarget || reviewedEvidence[0]?.id || '';
   const a7 = save.assignments.find((a) => a.id === 'a7');
   const a8 = save.assignments.find((a) => a.id === 'a8');
@@ -245,6 +267,22 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     }
   }
 
+  function toggleTheoryEvidence(id: string) {
+    setTheoryEvidenceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function doAddTheory() {
+    const outcome: { result?: ReturnType<typeof addTheoryClaim> } = {};
+    update((s) => { outcome.result = addTheoryClaim(s, theoryText, theoryStatus, theoryEvidenceIds); return s; });
+    if (outcome.result?.ok) {
+      setTheoryText('');
+      setTheoryEvidenceIds([]);
+      setDialogue('System: Case-theory claim added to your file and notebook. It is your working theory, not a finding on authenticity or responsibility.');
+    } else {
+      setDialogue(`System: ${outcome.result?.reason ?? 'Unable to record theory claim.'}`);
+    }
+  }
+
   function doSeniorReview() {
     const outcome: { result?: ReturnType<typeof submitSeniorReview> } = {};
     update((s) => { outcome.result = submitSeniorReview(s, 'a7', reviewSummary); return s; });
@@ -303,14 +341,17 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
       setDialogue(`System: ${result.reason ?? 'Unavailable.'}`);
       return;
     }
+    const standing = result.reputationEffects?.length
+      ? `\n\nStanding change: ${result.reputationEffects.map((e) => `${e.dimension} ${e.amount > 0 ? '+' : ''}${e.amount}`).join(', ')}.`
+      : '';
     working.notebook.unshift(makeNotebookEntry({
       kind: 'note',
       title: `Interaction: ${result.characterName ?? 'Colleague'}`,
-      content: `${result.reply}\n\nRemembered: ${result.memory}`,
+      content: `${result.reply}\n\nRemembered: ${result.memory}${standing}`,
       verified: false,
     }, working));
     update(() => working);
-    setDialogue(`${result.reply}\n\nRemembered: ${result.memory}`);
+    setDialogue(`${result.reply}\n\nRemembered: ${result.memory}${standing}`);
   }
 
   function submitAssignment(id: string) {
@@ -424,7 +465,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
 
       <main className="grid md:grid-cols-[1.4fr_1fr] gap-4 p-4">
         <section className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg text-bar-gold">Senior Chamber — {viewpoint.label}</h2>
             <div className="flex gap-2 text-xs">
               {Object.entries(VIEWPOINTS).map(([k, v]) => (
@@ -529,6 +570,11 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
 
           {panel === 'evidence' && (
             <div className="space-y-2 text-sm">
+              <div className="bg-bar-panel2 p-2 rounded border border-white/5">
+                <div className="text-xs text-bar-gold">How to read this list</div>
+                <p className="text-xs text-bar-muted mt-1">Inspect an item to discover it, then mark it reviewed before recording your own assessment. The baseline labels below are non-authoritative practice values, not findings; authenticity is never determined in this panel.</p>
+                <p className="text-xs text-bar-muted mt-1">Admissibility: unknown · admissible · questionable · inadmissible. Reliability: unknown · high · medium · low.</p>
+              </div>
               {playerCase.evidence.map((ev) => (
                 <div key={ev.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
                   <div className="flex justify-between gap-2"><span className="text-bar-gold">{ev.title}</span><span className="text-xs text-bar-muted">{ev.type}</span></div>
@@ -588,6 +634,18 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
               <p className="text-xs text-bar-muted">Everything here is your own recorded observation and reasoning. Authenticity, hidden motives and canonical outcomes are never determined in this panel.</p>
 
               <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-2">Working order (each step unlocks the next)</div>
+                <ol className="list-decimal ml-5 text-xs text-bar-muted space-y-1">
+                  <li>Review evidence in the Evidence panel.</li>
+                  <li>Log a chain-of-custody observation for a reviewed item.</li>
+                  <li>Challenge how a reviewed item may be relied upon, stating a ground and rationale.</li>
+                  <li>Organise your theory in the Case Theory panel.</li>
+                  <li>Complete senior review, then submit the final brief.</li>
+                </ol>
+                <p className="text-xs text-bar-muted mt-2">A custody note records how an item was handled; a challenge tests how it may be relied upon. Neither establishes authenticity.</p>
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
                 <div className="text-bar-gold text-xs mb-2">Chain of custody — log an observation</div>
                 {reviewedEvidence.length === 0 ? (
                   <p className="text-xs text-bar-muted">Review an evidence item in the Evidence panel first.</p>
@@ -608,6 +666,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
 
               <div className="bg-bar-panel2 p-3 rounded border border-white/5">
                 <div className="text-bar-gold text-xs mb-2">Admissibility — question how an item may be relied upon</div>
+                <p role="note" className="text-xs text-bar-muted mb-2">{GROUND_FEEDBACK[challengeGround]} Authenticity remains undetermined.</p>
                 {reviewedEvidence.length === 0 ? (
                   <p className="text-xs text-bar-muted">Review an evidence item in the Evidence panel first.</p>
                 ) : (
@@ -619,7 +678,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                     </label>
                     <label className="text-xs flex flex-col gap-1">Ground
                       <select className="bg-bar-bg border border-white/10 rounded p-1" value={challengeGround} onChange={(e) => setChallengeGround(e.target.value as ChallengeGround)}>
-                        {(['relevance', 'reliability', 'custody', 'provenance'] as ChallengeGround[]).map((g) => <option key={g} value={g}>{g}</option>)}
+                        {CHALLENGE_GROUNDS.map((g) => <option key={g} value={g}>{g}</option>)}
                       </select>
                     </label>
                     <label className="text-xs flex flex-col gap-1">Rationale
@@ -680,6 +739,60 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                   <p className="text-xs text-bar-muted">Unlocks on Day 10 after the senior accepts your revision.</p>
                 )}
               </div>
+            </div>
+          )}
+
+          {panel === 'theory' && (
+            <div className="space-y-3 text-sm">
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-1">Case theory — organise your working file</div>
+                <p className="text-xs text-bar-muted">Record what you know, what is merely claimed, and what remains disputed. Every claim is your own working note; link only evidence you have discovered and reviewed. This panel never determines authenticity or responsibility.</p>
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-bar-gold/30 grid gap-2">
+                <label className="text-xs flex flex-col gap-1">Your claim
+                  <textarea aria-label="Case theory claim" className="bg-bar-bg border border-white/10 rounded p-2 min-h-20" maxLength={1000} value={theoryText} onChange={(e) => setTheoryText(e.target.value)} placeholder="e.g. The medical report notes a minor injury, but its timing is not established." />
+                </label>
+                <label className="text-xs flex flex-col gap-1">Status
+                  <select className="bg-bar-bg border border-white/10 rounded p-1" value={theoryStatus} onChange={(e) => setTheoryStatus(e.target.value as TheoryStatus)}>
+                    {THEORY_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </label>
+                <fieldset className="text-xs">
+                  <legend className="text-bar-gold mb-1">Link reviewed evidence</legend>
+                  {reviewedEvidence.length === 0 ? (
+                    <p className="text-bar-muted">Review an evidence item in the Evidence panel first.</p>
+                  ) : (
+                    <div className="grid gap-1">
+                      {reviewedEvidence.map((e) => (
+                        <label key={e.id} className="flex items-center gap-2">
+                          <input type="checkbox" checked={theoryEvidenceIds.includes(e.id)} onChange={() => toggleTheoryEvidence(e.id)} />
+                          {e.title}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </fieldset>
+                <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit" onClick={doAddTheory}>Add claim</button>
+              </div>
+
+              {THEORY_STATUSES.map((status) => (
+                <section key={status} aria-label={`${status} claims`} className="bg-bar-panel2 p-3 rounded border border-white/5">
+                  <div className="text-bar-gold text-xs mb-2 uppercase tracking-wide">{status} ({groupedTheory[status].length})</div>
+                  {groupedTheory[status].length === 0 ? (
+                    <p className="text-xs text-bar-muted">No {status} claims yet.</p>
+                  ) : (
+                    <ul className="grid gap-2">
+                      {groupedTheory[status].map((c) => (
+                        <li key={c.id} className="text-xs border-l-2 border-bar-gold/30 pl-2">
+                          <div>{c.text}</div>
+                          <div className="text-bar-muted mt-1">Day {c.day}{c.evidenceIds.length ? ` · Linked: ${c.evidenceIds.map((id) => evidenceTitleById.get(id) ?? id).join(', ')}` : ''}</div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              ))}
             </div>
           )}
 
@@ -829,14 +942,35 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
           )}
 
           {panel === 'notebook' && (
-            <div className="space-y-2 text-sm max-h-[60vh] overflow-auto">
-              {save.notebook.map((n) => (
-                <div key={n.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
-                  <div className="flex justify-between"><span className="text-bar-gold">{n.title}</span><span className="text-xs text-bar-muted">Day {n.day} • {n.kind}</span></div>
-                  <div className="whitespace-pre-wrap text-sm mt-1">{n.content}</div>
-                  {n.source && <div className="text-xs text-bar-muted mt-1">Source: {n.source} {n.verified ? '(verified)' : '(unverified)'}</div>}
-                </div>
-              ))}
+            <div className="space-y-2 text-sm">
+              <div role="group" aria-label="Filter notebook by kind" className="flex flex-wrap gap-2">
+                <button
+                  aria-pressed={notebookFilter === 'all'}
+                  onClick={() => setNotebookFilter('all')}
+                  className={`px-2 py-1 rounded border text-xs ${notebookFilter === 'all' ? 'border-bar-gold text-bar-gold' : 'border-white/10 text-bar-muted'}`}
+                >
+                  All ({save.notebook.length})
+                </button>
+                {notebookKinds.map((kind) => (
+                  <button
+                    key={kind}
+                    aria-pressed={notebookFilter === kind}
+                    onClick={() => setNotebookFilter(kind)}
+                    className={`px-2 py-1 rounded border text-xs ${notebookFilter === kind ? 'border-bar-gold text-bar-gold' : 'border-white/10 text-bar-muted'}`}
+                  >
+                    {kind} ({save.notebook.filter((n) => n.kind === kind).length})
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-2 max-h-[60vh] overflow-auto">
+                {save.notebook.filter((n) => notebookFilter === 'all' || n.kind === notebookFilter).map((n) => (
+                  <div key={n.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
+                    <div className="flex justify-between gap-2"><span className="text-bar-gold">{n.title}</span><span className="text-xs text-bar-muted">Day {n.day} • {n.kind}</span></div>
+                    <div className="whitespace-pre-wrap text-sm mt-1">{n.content}</div>
+                    {n.source && <div className="text-xs text-bar-muted mt-1">Source: {n.source} {n.verified ? '(verified)' : '(unverified)'}</div>}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </section>

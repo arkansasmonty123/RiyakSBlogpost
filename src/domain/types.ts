@@ -19,6 +19,13 @@ export interface PlayerProfile {
   };
 }
 
+/** A bounded, deterministic change to one player reputation dimension. */
+export type ReputationDimension = keyof PlayerProfile['reputation'];
+export interface ReputationEffect {
+  dimension: ReputationDimension;
+  amount: number;
+}
+
 export interface GameClock {
   day: number; // in-game day, starts at 1
   slot: 'morning' | 'afternoon' | 'evening';
@@ -63,6 +70,8 @@ export interface DialogueChoice {
   memory: string;
   /** Player-knowledge facts legitimately learned from this exchange (never canonical truth). */
   reveals?: string[];
+  /** Optional bounded, deterministic reputation consequence of this interaction. */
+  reputationEffects?: ReputationEffect[];
   /** Optional milestone flag set when this choice is resolved. */
   setsFlag?: string;
 }
@@ -175,7 +184,7 @@ export interface LegalSource {
 export interface NotebookEntry {
   id: string;
   day: number;
-  kind: 'note' | 'provision' | 'fact' | 'mistake' | 'feedback' | 'research' | 'contradiction';
+  kind: 'note' | 'provision' | 'fact' | 'mistake' | 'feedback' | 'research' | 'contradiction' | 'theory';
   title: string;
   content: string;
   sourceId?: string;
@@ -253,6 +262,25 @@ export interface DraftState {
   versions: DraftVersion[];
 }
 
+/** How the player provisionally regards their own theory claim — never canonical truth. */
+export type TheoryStatus = 'known' | 'claimed' | 'disputed';
+
+/**
+ * A player-authored case-theory claim. It may only link evidence the player has actually
+ * discovered and reviewed, and it never records a finding on authenticity or responsibility.
+ */
+export interface TheoryClaim {
+  id: string;
+  day: number;
+  text: string;
+  status: TheoryStatus;
+  evidenceIds: string[];
+}
+
+export interface CaseTheory {
+  claims: TheoryClaim[];
+}
+
 export interface SaveGame {
   version: 2;
   savedAt: string;
@@ -274,4 +302,6 @@ export interface SaveGame {
   custodyLog: CustodyObservation[];
   challenges: AdmissibilityChallenge[];
   reviewRounds: ReviewRound[];
+  /** Player-authored, evidence-linked case theory. Player-legible; never canonical truth. */
+  caseTheory: CaseTheory;
 }
