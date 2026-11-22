@@ -4,6 +4,7 @@ import { checkDraftCitations } from '@/domain/guards';
 import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/completion';
 import { markHelpSeen, shouldShowHelp } from '@/domain/onboarding';
 import { canCiteAsAuthoritative, intakeSource, MAX_SOURCE_FIELDS, SOURCE_JURISDICTIONS, SOURCE_TYPES } from '@/domain/legalSources';
+import { describeHotspotAction, getLocationForViewpoint, getViewpoint, LOCATIONS, viewpointsForLocation } from '@/domain/scenes';
 import { assertNoCanonicalTruthLeak, toPlayerCaseView } from '@/domain/caseAccess';
 import { buildCaseJournal, groupJournalByDay, JOURNAL_KINDS } from '@/domain/journal';
 import type { JournalKind } from '@/domain/journal';
@@ -37,49 +38,6 @@ import type {
   SourceType,
   TheoryStatus,
 } from '@/domain/types';
-
-const VIEWPOINTS: Record<string, { label: string; description: string; hotspots: Array<{ id: string; label: string; action: string }> }> = {
-  entrance: {
-    label: 'Entrance',
-    description: 'The chamber door opens into a quiet, book-lined office. The day begins here.',
-    hotspots: [
-      { id: 'door', label: 'Door', action: 'view:bookshelf' },
-      { id: 'senior', label: 'Senior Mentor', action: 'dialogue:senior' },
-      { id: 'desk', label: 'Desk', action: 'view:desk' },
-      { id: 'window', label: 'Window', action: 'view:window' },
-    ],
-  },
-  desk: {
-    label: 'Desk',
-    description: 'Case files, drafts, and notes are spread across the desk.',
-    hotspots: [
-      { id: 'casefile', label: 'Case File', action: 'panel:case' },
-      { id: 'assignments', label: 'Assignments', action: 'panel:assignments' },
-      { id: 'draft', label: 'Draft Pad', action: 'panel:draft' },
-      { id: 'back', label: 'Back to Entrance', action: 'view:entrance' },
-    ],
-  },
-  bookshelf: {
-    label: 'Bookshelf',
-    description: 'Legal texts and reference materials line the wall. Only verified sources should be cited.',
-    hotspots: [
-      { id: 'research', label: 'Legal Research', action: 'panel:research' },
-      { id: 'notebook', label: 'Notebook', action: 'panel:notebook' },
-      { id: 'evidence', label: 'Evidence', action: 'panel:evidence' },
-      { id: 'casework', label: 'Casework', action: 'panel:casework' },
-      { id: 'journal', label: 'Timeline / Journal', action: 'panel:journal' },
-      { id: 'back', label: 'Back to Entrance', action: 'view:entrance' },
-    ],
-  },
-  window: {
-    label: 'Window',
-    description: 'Outside, the district moves on its own schedule. The world does not wait for the player.',
-    hotspots: [
-      { id: 'clock', label: 'Advance Time', action: 'time:advance' },
-      { id: 'back', label: 'Back to Entrance', action: 'view:entrance' },
-    ],
-  },
-};
 
 const PANELS = ['case', 'assignments', 'evidence', 'casework', 'theory', 'research', 'draft', 'notebook', 'journal', 'dialogue'] as const;
 type WorkPanel = (typeof PANELS)[number];
@@ -149,7 +107,9 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const [editingLinks, setEditingLinks] = useState<string[]>([]);
   const [showHelp, setShowHelp] = useState(() => shouldShowHelp(save));
 
-  const viewpoint = VIEWPOINTS[save.selectedViewpoint] ?? VIEWPOINTS.entrance;
+  const viewpoint = getViewpoint(save.selectedViewpoint);
+  const location = getLocationForViewpoint(save.selectedViewpoint);
+  const locationViewpoints = viewpointsForLocation(location.id);
   // The UI only ever reads the sanitized player view, never the canonical case file.
   const playerCase = useMemo(() => toPlayerCaseView(save.caseFile), [save.caseFile]);
   const objective = useMemo(() => currentObjective(save), [save]);
@@ -438,6 +398,12 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
         : 'Adv. Meera Kulkarni: "A fictional altercation case has arrived. Interview carefully, collect evidence, and draft a brief. I will review it."');
       update((s) => { s.flags.caseAccepted = true; return s; });
     }
+    if (kind === 'dialogue' && (value === 'receptionist' || value === 'opposing')) {
+      setPanel('dialogue');
+      setDialogue(value === 'receptionist'
+        ? 'Deepa: "I keep the diary and the visitor log. I can tell you who signed in and when — not what was said in private."'
+        : 'Adv. Vikram Rathore: "I argue from the material that has been disclosed. Let us keep it that way."');
+    }
   }
 
   function doDialogueChoice(sceneId: string, choiceId: string) {
@@ -688,19 +654,34 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
 
       <main id="main-content" className="grid lg:grid-cols-[1.35fr_1fr] gap-4 p-4">
         <section className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4" aria-labelledby="chamber-heading">
-          <div className="flex flex-col gap-2 mb-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-bar-muted">Static scene · viewpoint</p>
-              <h2 id="chamber-heading" className="text-lg text-bar-gold">Senior Chamber — {viewpoint.label}</h2>
+          <div className="flex flex-col gap-2 mb-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.18em] text-bar-muted">Static scene · viewpoint</p>
+                <h2 id="chamber-heading" className="text-lg text-bar-gold">{location.label} — {viewpoint.label}</h2>
+              </div>
+              <div className="flex gap-2 text-xs flex-wrap" role="group" aria-label="Locations">
+                {Object.values(LOCATIONS).map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => onHotspot(`view:${l.viewpointIds[0]}`)}
+                    aria-pressed={location.id === l.id}
+                    className={`px-2 py-1 rounded border transition-colors ${location.id === l.id ? 'border-bar-gold text-bar-gold bg-bar-gold/10' : 'border-white/10 text-bar-muted hover:bg-white/5'}`}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
             </div>
             <div className="flex gap-2 text-xs flex-wrap" role="group" aria-label="Viewpoints">
-              {Object.entries(VIEWPOINTS).map(([k, v]) => (
+              {locationViewpoints.map((v) => (
                 <button
-                  key={k}
+                  key={v.id}
                   type="button"
-                  onClick={() => onHotspot(`view:${k}`)}
-                  aria-pressed={save.selectedViewpoint === k}
-                  className={`px-2 py-1 rounded border transition-colors ${save.selectedViewpoint === k ? 'border-bar-gold text-bar-gold bg-bar-gold/10' : 'border-white/10 text-bar-muted hover:bg-white/5'}`}
+                  onClick={() => onHotspot(`view:${v.id}`)}
+                  aria-pressed={save.selectedViewpoint === v.id}
+                  className={`px-2 py-1 rounded border transition-colors ${save.selectedViewpoint === v.id ? 'border-bar-gold text-bar-gold bg-bar-gold/10' : 'border-white/10 text-bar-muted hover:bg-white/5'}`}
                 >
                   {v.label}
                 </button>
@@ -710,6 +691,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
           <div className="relative overflow-hidden rounded-md border border-bar-gold/15 bg-gradient-to-br from-[#1b202b] via-[#151922] to-[#10131a] p-4 sm:p-5 min-h-56">
             <div className="absolute inset-0 pointer-events-none opacity-40" aria-hidden="true" style={{ backgroundImage: 'radial-gradient(circle at 20% 20%, rgba(200,167,90,0.18), transparent 35%), radial-gradient(circle at 80% 0%, rgba(232,226,213,0.08), transparent 30%), linear-gradient(to top, rgba(0,0,0,0.25), transparent 45%)' }} />
             <div className="relative">
+              <p className="text-xs text-bar-muted mb-2 max-w-2xl">{location.description}</p>
               <p className="text-sm text-bar-muted mb-4 max-w-2xl">{viewpoint.description}</p>
               <div className="grid sm:grid-cols-2 gap-2" role="group" aria-label={`${viewpoint.label} hotspots`}>
                 {viewpoint.hotspots.map((h) => (
@@ -720,7 +702,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                     className="text-left p-3 rounded border border-bar-gold/20 bg-bar-panel/50 hover:bg-white/5 hover:border-bar-gold/40 transition-colors"
                   >
                     <div className="text-bar-gold text-sm font-medium">{h.label}</div>
-                    <div className="text-xs text-bar-muted mt-0.5">{h.action.startsWith('view:') ? 'Move to viewpoint' : h.action.startsWith('panel:') ? `Open ${h.action.split(':')[1]} panel` : h.action.startsWith('time:') ? 'Advance in-game time' : 'Start conversation'}</div>
+                    <div className="text-xs text-bar-muted mt-0.5">{describeHotspotAction(h.action)}</div>
                   </button>
                 ))}
               </div>

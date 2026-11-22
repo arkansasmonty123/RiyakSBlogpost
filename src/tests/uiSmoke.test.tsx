@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { App } from '@/app/App';
+import { createInitialSave } from '@/domain/seed';
+import { SAVE_KEY } from '@/storage/save';
 
 /**
  * Lightweight UI smoke checks: render the real component tree in Node so a runtime
@@ -21,6 +23,8 @@ describe('App render smoke test', () => {
     expect(html).toContain('Day 1');
     expect(html).toContain('Advance time');
     expect(html).toContain('Senior Chamber');
+    expect(html).toContain('Office Reception');
+    expect(html).toContain('Entrance');
   });
 
   it('does not render canonical case truth in the initial HTML', () => {
@@ -89,6 +93,38 @@ describe('App render smoke test', () => {
     for (const forbidden of ['section 302', 'section 101', 'air 19', ' v. ', 'verified judgment']) {
       expect(lower).not.toContain(forbidden);
     }
+    for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+      expect(lower).not.toContain(forbidden);
+    }
+  });
+
+  it('renders the second location, its viewpoints and its character hotspots without canonical truth', () => {
+    const save = createInitialSave();
+    save.selectedViewpoint = 'corridor';
+    const data: Record<string, string> = { [SAVE_KEY]: JSON.stringify(save) };
+    const globals = globalThis as Record<string, unknown>;
+    const previousWindow = globals.window;
+    globals.window = {
+      localStorage: {
+        getItem: (key: string) => data[key] ?? null,
+        setItem: (key: string, value: string) => { data[key] = value; },
+        removeItem: (key: string) => { delete data[key]; },
+      },
+    };
+    let corridorHtml = '';
+    try {
+      corridorHtml = renderToString(<App />).replace(/<!-- -->/g, '');
+    } finally {
+      globals.window = previousWindow;
+    }
+
+    expect(corridorHtml).toContain('Office Reception');
+    expect(corridorHtml).toContain('Corridor');
+    expect(corridorHtml).toContain('Reception Desk');
+    expect(corridorHtml).toContain('Waiting Area');
+    expect(corridorHtml).toContain('Opposing Counsel');
+    expect(corridorHtml).toContain('aria-label="Locations"');
+    const lower = corridorHtml.toLowerCase();
     for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
       expect(lower).not.toContain(forbidden);
     }

@@ -1,11 +1,14 @@
 import { MAX_DRAFT_CHARS, MAX_DRAFT_VERSIONS } from '@/domain/draft';
 import { validateSourceProvenance } from '@/domain/legalSources';
+import { isValidViewpoint } from '@/domain/scenes';
 import { createInitialSave } from '@/domain/seed';
 import type {
   Assignment,
+  Character,
   DraftState,
   EvidenceItem,
   LegalSource,
+  Relationship,
   SaveGame,
   SourceVerificationStatus,
 } from '@/domain/types';
@@ -94,6 +97,42 @@ function mergeAssignments(base: Assignment[], parsed: unknown): Assignment[] {
   }));
 }
 
+/**
+ * Cast expansion is additive: a save written before the new characters existed keeps its
+ * stored versions of known characters, while the missing ones are appended from defaults.
+ */
+function mergeCharacters(base: Character[], parsed: unknown): Character[] {
+  if (!Array.isArray(parsed) || parsed.length === 0) return base;
+  const defaults = new Map(base.map((item) => [item.id, item]));
+  const merged = (parsed as Character[])
+    .filter((item) => item && typeof item === 'object' && typeof item.id === 'string')
+    .map((item) => ({ ...(defaults.get(item.id) ?? ({} as Character)), ...item }));
+  const seen = new Set(merged.map((item) => item.id));
+  for (const item of base) {
+    if (!seen.has(item.id)) merged.push({ ...item });
+  }
+  return merged;
+}
+
+function relationshipKey(item: Relationship): string {
+  return `${item.fromId}:${item.toId}`;
+}
+
+/** Relationship expansion is additive and keyed by the participant pair (no `id` field). */
+function mergeRelationships(base: Relationship[], parsed: unknown): Relationship[] {
+  if (!Array.isArray(parsed) || parsed.length === 0) return base;
+  const defaults = new Map(base.map((item) => [relationshipKey(item), item]));
+  const merged = (parsed as Relationship[])
+    .filter((item) => item && typeof item === 'object'
+      && typeof item.fromId === 'string' && typeof item.toId === 'string')
+    .map((item) => ({ ...(defaults.get(relationshipKey(item)) ?? ({} as Relationship)), ...item }));
+  const seen = new Set(merged.map(relationshipKey));
+  for (const item of base) {
+    if (!seen.has(relationshipKey(item))) merged.push({ ...item });
+  }
+  return merged;
+}
+
 function mergeDraft(base: DraftState, parsed: unknown): DraftState {
   if (!parsed || typeof parsed !== 'object') return base;
   const value = parsed as Partial<DraftState>;
@@ -121,8 +160,8 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
       savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : base.savedAt,
       player: { ...base.player, ...(parsed.player ?? {}) },
       clock: { ...base.clock, ...(parsed.clock ?? {}) },
-      characters: parsed.characters?.length ? (parsed.characters as SaveGame['characters']) : base.characters,
-      relationships: parsed.relationships?.length ? (parsed.relationships as SaveGame['relationships']) : base.relationships,
+      characters: mergeCharacters(base.characters, parsed.characters),
+      relationships: mergeRelationships(base.relationships, parsed.relationships),
       memories: parsed.memories?.length ? (parsed.memories as SaveGame['memories']) : base.memories,
       caseFile: {
         ...base.caseFile,
@@ -134,6 +173,10 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
       assignments: mergeAssignments(base.assignments, parsed.assignments),
       notebook: parsed.notebook?.length ? (parsed.notebook as SaveGame['notebook']) : base.notebook,
       flags: { ...base.flags, ...(parsed.flags ?? {}) },
+      // A stale or unknown viewpoint id must never leave the scene panel without a view.
+      selectedViewpoint: isValidViewpoint(parsed.selectedViewpoint)
+        ? parsed.selectedViewpoint
+        : base.selectedViewpoint,
       usedDialogueSceneIds: Array.isArray(parsed.usedDialogueSceneIds)
         ? parsed.usedDialogueSceneIds.filter((id): id is string => typeof id === 'string')
         : base.usedDialogueSceneIds,

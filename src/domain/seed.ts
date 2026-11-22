@@ -283,6 +283,137 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
       },
     ],
   },
+  {
+    id: 'd-receptionist-diary',
+    characterId: 'receptionist',
+    minDay: 2,
+    once: true,
+    prompt: 'Deepa at reception offers to check the visitor diary for the canteen matter.',
+    choices: [
+      {
+        id: 'ask-diary-dates',
+        label: 'Ask which dates are entered and who signed in — nothing about private conversations.',
+        reply: 'Deepa: "I can tell you the dates entered and who signed in. I cannot tell you what anyone discussed behind a closed door, because I was not in the room."',
+        effects: [
+          { characterId: 'receptionist', dimension: 'trust', amount: 5 },
+          { characterId: 'receptionist', dimension: 'respect', amount: 3 },
+        ],
+        memory: 'Asked Deepa for visitor-diary dates only; she gave the entries and declined to report private conversations.',
+        reveals: ['Reception diary records a sign-in entry for the client on their first visit.'],
+        reputationEffects: [{ dimension: 'reliability', amount: 1 }],
+      },
+      {
+        id: 'ask-private-meeting',
+        label: 'Ask Deepa what the senior and the client discussed in private.',
+        reply: 'Deepa: "I was at the desk, not in the room. I do not know what was said, and I would not repeat it if I did."',
+        effects: [
+          { characterId: 'receptionist', dimension: 'trust', amount: -4 },
+          { characterId: 'receptionist', dimension: 'respect', amount: -5 },
+          { characterId: 'receptionist', dimension: 'resentment', amount: 3 },
+        ],
+        memory: 'Pressed Deepa for the content of a private meeting; she declined and corrected you.',
+        reputationEffects: [{ dimension: 'integrity', amount: -1 }],
+      },
+    ],
+  },
+  {
+    id: 'd-opposing-disclosure',
+    characterId: 'opposing',
+    minDay: 3,
+    once: true,
+    prompt: 'Adv. Vikram Rathore meets you in the reception area and asks what material has been disclosed.',
+    choices: [
+      {
+        id: 'stick-to-disclosed',
+        label: 'Confirm you will rely only on disclosed, reviewed material.',
+        reply: 'Adv. Vikram Rathore: "Sensible. I will do the same. Let us argue the material we actually have, not stories about what might be in a missing segment."',
+        effects: [
+          { characterId: 'opposing', dimension: 'respect', amount: 6 },
+          { characterId: 'opposing', dimension: 'trust', amount: 3 },
+          { characterId: 'opposing', dimension: 'rivalry', amount: -3 },
+        ],
+        memory: 'Told Adv. Vikram Rathore you would argue only from disclosed, reviewed material.',
+        reveals: ['Opposing counsel states they will rely only on material disclosed in the matter.'],
+        reputationEffects: [{ dimension: 'integrity', amount: 2 }],
+      },
+      {
+        id: 'ask-client-confidence',
+        label: 'Ask him what his client told him in confidence.',
+        reply: 'Adv. Vikram Rathore: "You know I cannot discuss privileged instructions. Ask me about the disclosed record instead."',
+        effects: [
+          { characterId: 'opposing', dimension: 'respect', amount: -4 },
+          { characterId: 'opposing', dimension: 'resentment', amount: 4 },
+          { characterId: 'opposing', dimension: 'rivalry', amount: 4 },
+        ],
+        memory: 'Asked opposing counsel to disclose privileged instructions; he refused.',
+        reputationEffects: [{ dimension: 'integrity', amount: -1 }],
+      },
+    ],
+  },
+  {
+    id: 'd-receptionist-corridor',
+    characterId: 'receptionist',
+    minDay: 5,
+    once: true,
+    prompt: 'In the corridor, Deepa asks whether the waiting area is booked for the client consultation.',
+    choices: [
+      {
+        id: 'confirm-booking',
+        label: 'Confirm the time and room without saying what the meeting is about.',
+        reply: 'Deepa: "Understood. I will note that the room is in use and leave the purpose blank."',
+        effects: [
+          { characterId: 'receptionist', dimension: 'trust', amount: 4 },
+          { characterId: 'receptionist', dimension: 'loyalty', amount: 3 },
+        ],
+        memory: 'Confirmed a waiting-area booking to Deepa without disclosing the meeting’s purpose.',
+        reputationEffects: [{ dimension: 'reliability', amount: 1 }],
+      },
+      {
+        id: 'share-private-reason',
+        label: 'Tell Deepa the full confidential reason for the meeting.',
+        reply: 'Deepa: "You do not need to tell me. I only need the time and the room."',
+        effects: [
+          { characterId: 'receptionist', dimension: 'trust', amount: -2 },
+          { characterId: 'receptionist', dimension: 'respect', amount: -3 },
+        ],
+        memory: 'Volunteered confidential meeting details to Deepa; she redirected you to logistics only.',
+        reputationEffects: [{ dimension: 'integrity', amount: -1 }],
+      },
+    ],
+  },
+  {
+    id: 'd-opposing-gap',
+    characterId: 'opposing',
+    minDay: 9,
+    once: true,
+    prompt: 'On the eve of the final brief, Adv. Vikram Rathore presses on how you will treat the incomplete clip.',
+    choices: [
+      {
+        id: 'note-gap',
+        label: 'Say the missing segment will be recorded as a gap, not argued as fact.',
+        reply: 'Adv. Vikram Rathore: "Then we agree on the limits of the material. The rest is argument."',
+        effects: [
+          { characterId: 'opposing', dimension: 'respect', amount: 5 },
+          { characterId: 'opposing', dimension: 'rivalry', amount: -2 },
+        ],
+        memory: 'Told opposing counsel the missing segment would be recorded as a gap, not asserted as fact.',
+        reveals: ['Opposing counsel agrees the missing segment cannot be treated as proven fact.'],
+        reputationEffects: [{ dimension: 'competence', amount: 2 }],
+      },
+      {
+        id: 'overstate-clip',
+        label: 'Say you will present the clip as complete.',
+        reply: 'Adv. Vikram Rathore: "That is not what the file shows. I will note the difference if you choose that route."',
+        effects: [
+          { characterId: 'opposing', dimension: 'respect', amount: -5 },
+          { characterId: 'opposing', dimension: 'rivalry', amount: 5 },
+          { characterId: 'opposing', dimension: 'resentment', amount: 3 },
+        ],
+        memory: 'Told opposing counsel you would present the clip as complete; he noted the difference.',
+        reputationEffects: [{ dimension: 'integrity', amount: -2 }],
+      },
+    ],
+  },
 ];
 
 export function createInitialSave(): SaveGame {
@@ -372,6 +503,28 @@ export function createInitialSave(): SaveGame {
         ],
         goals: ['Explain technical limits clearly', 'Avoid overstating what material proves'],
       },
+      {
+        id: 'opposing',
+        name: 'Adv. Vikram Rathore',
+        role: 'Opposing Counsel',
+        portrait: 'neutral',
+        knowledgeBoundaries: [
+          'Knows only the material disclosed in the matter and their own client’s account',
+          'Cannot know your private notes, unverified theories or the case’s canonical truth',
+        ],
+        goals: ['Test the other side’s case against the disclosed material', 'Protect their client’s interests within the law'],
+      },
+      {
+        id: 'receptionist',
+        name: 'Deepa',
+        role: 'Receptionist / Office Staff',
+        portrait: 'smiling',
+        knowledgeBoundaries: [
+          'Knows the appointment diary, visitor log and which rooms are in use',
+          'Does not know confidential case details or what was said in private meetings',
+        ],
+        goals: ['Keep the front desk and visitor log accurate', 'Route visitors without disclosing private matters'],
+      },
     ],
     relationships: [
       { fromId: 'player', toId: 'senior', trust: 35, respect: 40, loyalty: 30, rivalry: 0, resentment: 0, affection: 10, professionalDependence: 60 },
@@ -380,6 +533,8 @@ export function createInitialSave(): SaveGame {
       { fromId: 'player', toId: 'client', trust: 25, respect: 30, loyalty: 20, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 15 },
       { fromId: 'player', toId: 'witness', trust: 20, respect: 25, loyalty: 10, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 10 },
       { fromId: 'player', toId: 'specialist', trust: 30, respect: 40, loyalty: 15, rivalry: 0, resentment: 0, affection: 5, professionalDependence: 20 },
+      { fromId: 'player', toId: 'opposing', trust: 15, respect: 30, loyalty: 5, rivalry: 45, resentment: 0, affection: 0, professionalDependence: 15 },
+      { fromId: 'player', toId: 'receptionist', trust: 30, respect: 25, loyalty: 20, rivalry: 0, resentment: 0, affection: 10, professionalDependence: 20 },
     ],
     memories: [
       { id: 'm1', day: 1, summary: 'Joined the firm as an intern under Adv. Meera Kulkarni.', participants: ['player', 'senior'] },
