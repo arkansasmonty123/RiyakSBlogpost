@@ -32,7 +32,14 @@ import type {
   Investigation,
   InvestigationStats,
   JournalEntry,
+  KnowledgeDepth,
+  KnowledgeIntent,
   NotificationSettings,
+  PublicArtifactDetail,
+  PublicArtifactSummary,
+  PublicDisagreement,
+  PublicNotebookEntry,
+  PublicSpecialist,
   ScheduledEvent,
   Solution,
   Suspect,
@@ -41,13 +48,19 @@ import type {
 } from '../api';
 import { SolutionPanel } from '../components/SolutionPanel';
 import { AchievementsPanel } from '../components/AchievementsPanel';
+import { ExpertsPanel } from '../components/ExpertsPanel';
+import { KnowledgeArtifactCard } from '../components/KnowledgeArtifactCard';
+import { KnowledgeArtifactDrawer } from '../components/KnowledgeArtifactDrawer';
+import { KnowledgeNotebook } from '../components/KnowledgeNotebook';
 
 type Tab =
   | 'chat'
   | 'evidence'
   | 'suspects'
+  | 'experts'
   | 'timeline'
   | 'journal'
+  | 'notebook'
   | 'deductions'
   | 'accuse'
   | 'achievements';
@@ -56,8 +69,10 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'chat', label: 'Group Chat' },
   { id: 'evidence', label: 'Evidence' },
   { id: 'suspects', label: 'Suspect Board' },
+  { id: 'experts', label: 'Experts' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'journal', label: 'Journal' },
+  { id: 'notebook', label: 'Notebook' },
   { id: 'deductions', label: 'Deductions' },
   { id: 'accuse', label: 'Accusation' },
   { id: 'achievements', label: 'Achievements' },
@@ -148,6 +163,20 @@ export const InvestigationRoomPage = () => {
   // P2-POLISH: compact, owner-scoped stats summary. Cosmetic - failures never
   // break the room (the panel is simply omitted until data is available).
   const [stats, setStats] = useState<InvestigationStats | null>(null);
+
+  // M2 knowledge system (case-scoped experts/artifacts/disagreements + notebook).
+  // All data is player-safe; canonical truth is never returned by these endpoints.
+  const [specialists, setSpecialists] = useState<PublicSpecialist[]>([]);
+  const [artifacts, setArtifacts] = useState<PublicArtifactSummary[]>([]);
+  const [disagreements, setDisagreements] = useState<PublicDisagreement[]>([]);
+  const [notebookEntries, setNotebookEntries] = useState<PublicNotebookEntry[]>([]);
+  const [selectedSpecialistKey, setSelectedSpecialistKey] = useState<string | null>(null);
+  const [selectedIntent, setSelectedIntent] = useState<KnowledgeIntent>('explain');
+  const [selectedDepth, setSelectedDepth] = useState<KnowledgeDepth>('working');
+  const [targetSpecialistKey, setTargetSpecialistKey] = useState<string | null>(null);
+  const [artifactDrawer, setArtifactDrawer] = useState<PublicArtifactSummary | null>(null);
+  const [notebookBusy, setNotebookBusy] = useState(false);
+  const [notebookError, setNotebookError] = useState<string | null>(null);
 
   // Async progression (PROD-008)
   const [checkpointState, setCheckpointState] = useState<CheckpointState | null>(null);
@@ -276,6 +305,16 @@ export const InvestigationRoomPage = () => {
       setSelectedCheckpoint('');
       setSelectedTheoryEvidence([]);
       setTheoryText('');
+      setSpecialists([]);
+      setArtifacts([]);
+      setDisagreements([]);
+      setNotebookEntries([]);
+      setSelectedSpecialistKey(null);
+      setSelectedIntent('explain');
+      setSelectedDepth('working');
+      setTargetSpecialistKey(null);
+      setArtifactDrawer(null);
+      setNotebookError(null);
 
       if (!caseId) {
         setLoadError('No case selected.');
@@ -342,7 +381,7 @@ export const InvestigationRoomPage = () => {
         setDiscoveredIds(new Set(inv.discoveredEvidenceIds ?? []));
         setSeenDevelopmentIds(loadSeenDevelopmentIds(inv.id));
 
-        const [evidenceData, suspectBoardData, conversation, journalData, eventData, accusationData, checkpointData, developmentData, notificationSettingsData] =
+        const [evidenceData, suspectBoardData, conversation, journalData, eventData, accusationData, checkpointData, developmentData, notificationSettingsData, specialistsData, artifactsData, disagreementsData, notebookData] =
           await Promise.all([
             api.getEvidence(caseId),
             api.getSuspectBoard(inv.id),
@@ -359,6 +398,10 @@ export const InvestigationRoomPage = () => {
             api.getCheckpoints(inv.id),
             api.getDevelopments(inv.id),
             api.getNotificationSettings().catch(() => ({ developments: true })),
+            api.getSpecialists(caseId).catch(() => []),
+            api.getArtifacts(caseId).catch(() => []),
+            api.getDisagreements(caseId).catch(() => []),
+            api.getNotebook(inv.id).catch(() => []),
           ]);
 
         if (cancelled) return;
@@ -373,6 +416,10 @@ export const InvestigationRoomPage = () => {
         setCheckpointState(checkpointData);
         setDevelopments(Array.isArray(developmentData) ? developmentData : []);
         setNotificationSettings(notificationSettingsData ?? { developments: true });
+        setSpecialists(Array.isArray(specialistsData) ? specialistsData : []);
+        setArtifacts(Array.isArray(artifactsData) ? artifactsData : []);
+        setDisagreements(Array.isArray(disagreementsData) ? disagreementsData : []);
+        setNotebookEntries(Array.isArray(notebookData) ? notebookData : []);
         const firstOpen = checkpointData?.checkpoints.find((cp) => !cp.completed);
         setSelectedCheckpoint(firstOpen?.id ?? checkpointData?.checkpoints[0]?.id ?? '');
 
@@ -648,7 +695,68 @@ export const InvestigationRoomPage = () => {
       <div className="tab-panel" key={activeTab}>
         {activeTab === 'chat' && (
           <section>
-            <h3>Group Chat</h3>
+            <div className="section-heading">
+              <h3>Group Chat</h3>
+              {selectedSpecialistKey && (
+                <span className="badge badge--soft">
+                  Speaking with {specialists.find((s) => s.specialistKey === selectedSpecialistKey)?.name ?? 'specialist'}
+                </span>
+              )}
+            </div>
+
+            {specialists.length > 0 && (
+              <div className="chat-controls" aria-label="Specialist chat controls">
+                <label className="chat-controls__field">
+                  <span>Responder</span>
+                  <select
+                    value={selectedSpecialistKey ?? ''}
+                    onChange={(e) => {
+                      setSelectedSpecialistKey(e.target.value || null);
+                      setTargetSpecialistKey(null);
+                    }}
+                    disabled={caseClosed}
+                  >
+                    <option value="">Investigation team</option>
+                    {specialists.map((s) => (
+                      <option key={s.specialistKey} value={s.specialistKey}>
+                        {s.name} — {s.discipline}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="chat-controls__field">
+                  <span>Depth</span>
+                  <select value={selectedDepth} onChange={(e) => setSelectedDepth(e.target.value as KnowledgeDepth)} disabled={caseClosed || !selectedSpecialistKey}>
+                    <option value="plain">Plain</option>
+                    <option value="working">Working</option>
+                    <option value="technical">Technical</option>
+                  </select>
+                </label>
+                <label className="chat-controls__field">
+                  <span>Intent</span>
+                  <select value={selectedIntent} onChange={(e) => setSelectedIntent(e.target.value as KnowledgeIntent)} disabled={caseClosed || !selectedSpecialistKey}>
+                    <option value="explain">Explain</option>
+                    <option value="deeper">Go deeper</option>
+                    <option value="relevance">Relevance</option>
+                    <option value="challenge">Challenge</option>
+                    <option value="alternatives">Alternatives</option>
+                    <option value="discriminate">Discriminate</option>
+                    <option value="sources">Sources</option>
+                    <option value="simpler">Simpler</option>
+                    <option value="critique">Critique</option>
+                  </select>
+                </label>
+                {targetSpecialistKey && (
+                  <div className="chat-controls__target">
+                    <span className="badge badge--warning">
+                      Critiquing {specialists.find((s) => s.specialistKey === targetSpecialistKey)?.name ?? 'target specialist'}
+                    </span>
+                    <button type="button" className="link-button" onClick={() => setTargetSpecialistKey(null)}>Clear</button>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="chat-area" id="chat-area" role="log" aria-live="polite" aria-relevant="additions" aria-label="Conversation">
               {messages.length === 0 && !chatError && (
                 <p className="chat-empty">No messages yet. Ask the team a question to begin.</p>
@@ -658,20 +766,43 @@ export const InvestigationRoomPage = () => {
                   key={`${message.timestamp}-${index}`}
                   className={`chat-message chat-message--${message.role}`}
                 >
-                  <span className="chat-message__role">
-                    {message.role === 'player'
-                      ? 'You'
-                      : (message.responderLabel ?? 'Investigator')}:{' '}
-                  </span>
+                  <div className="chat-message__meta">
+                    <span className="chat-message__role">
+                      {message.role === 'player'
+                        ? 'You'
+                        : (message.specialistName || message.responderLabel || 'Investigator')}
+                      :
+                    </span>
+                    {message.role === 'investigator' && message.specialistKey && (
+                      <span className="chat-message__badges">
+                        <span className="badge badge--soft">Specialist</span>
+                        {message.intent && <span className="badge badge--soft">{labelIntent(message.intent as KnowledgeIntent)}</span>}
+                        {message.depth && <span className="badge badge--soft">{message.depth}</span>}
+                      </span>
+                    )}
+                  </div>
                   <span className="chat-message__content">{displayChatContent(message)}</span>
+                  {message.role === 'investigator' && investigation && (
+                    <div className="chat-message__actions">
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() => void saveExplanationToNotebook(message)}
+                        disabled={notebookBusy}
+                      >
+                        Save to notebook
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
             {chatError && <div className="error">{chatError}</div>}
+            {notebookError && <div className="error">{notebookError}</div>}
             <form className="chat-input" onSubmit={sendMessage}>
               <input
                 type="text"
-                placeholder={caseClosed ? 'This case is closed.' : 'Message the investigative team...'}
+                placeholder={caseClosed ? 'This case is closed.' : selectedSpecialistKey ? 'Ask the selected specialist...' : 'Message the investigative team...'}
                 aria-label="Message the investigative team"
                 value={messageInput}
                 onChange={(event) => setMessageInput(event.target.value)}
@@ -727,6 +858,57 @@ export const InvestigationRoomPage = () => {
 
         {activeTab === 'suspects' && (
           <SuspectBoardPanel suspects={suspects} openQuestions={openQuestions} />
+        )}
+
+        {activeTab === 'experts' && (
+          <div className="experts-tab">
+            <ExpertsPanel
+              specialists={specialists}
+              disagreements={disagreements}
+              selectedSpecialistKey={selectedSpecialistKey}
+              selectedIntent={selectedIntent}
+              selectedDepth={selectedDepth}
+              onSelectSpecialist={(key) => { setSelectedSpecialistKey(key); setTargetSpecialistKey(null); }}
+              onSelectIntent={setSelectedIntent}
+              onSelectDepth={setSelectedDepth}
+              onAskSpecialist={(specialistKey, intent, depth) => {
+                setSelectedSpecialistKey(specialistKey);
+                setSelectedIntent(intent);
+                setSelectedDepth(depth);
+                setTargetSpecialistKey(null);
+                focusChat();
+              }}
+              onAskCritique={askCritique}
+              onFocusChat={focusChat}
+            />
+
+            <section className="artifacts-section" aria-label="Knowledge artifacts">
+              <div className="section-heading">
+                <h3>Knowledge Artifacts</h3>
+                <span className="muted">{artifacts.length} reference{artifacts.length === 1 ? '' : 's'}</span>
+              </div>
+              <p className="muted">
+                Reference materials for this case. Real-world sources show verification status and
+                bibliography; fictional in-world documents are explicitly labeled.
+              </p>
+              {artifacts.length === 0 ? (
+                <p className="empty-state">No knowledge artifacts are available for this case.</p>
+              ) : (
+                <div className="card-list">
+                  {artifacts.map((artifact) => (
+                    <KnowledgeArtifactCard
+                      key={artifact.id}
+                      artifact={artifact}
+                      onView={(a) => setArtifactDrawer(a)}
+                      onSave={(a) => void saveArtifactToNotebook(a)}
+                      onAsk={askSpecialistFromArtifact}
+                      saving={notebookBusy}
+                    />
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
         )}
 
         {activeTab === 'achievements' && (
@@ -818,6 +1000,20 @@ export const InvestigationRoomPage = () => {
               </div>
             )}
           </section>
+        )}
+
+        {activeTab === 'notebook' && (
+          <div className="notebook-tab">
+            {notebookError && <div className="error">{notebookError}</div>}
+            <KnowledgeNotebook
+              entries={notebookEntries}
+              specialists={specialists}
+              onCreateNote={handleNotebookCreate}
+              onUpdate={handleNotebookUpdate}
+              onDelete={handleNotebookDelete}
+              busy={notebookBusy}
+            />
+          </div>
         )}
 
         {activeTab === 'deductions' && (
@@ -1061,9 +1257,172 @@ export const InvestigationRoomPage = () => {
           </section>
         )}
       </div>
+      {artifactDrawer && caseId && (
+        <KnowledgeArtifactDrawer
+          caseId={caseId}
+          artifact={artifactDrawer}
+          onClose={() => setArtifactDrawer(null)}
+          onSave={(a) => void saveArtifactToNotebook(a)}
+          onAsk={askSpecialistFromArtifact}
+          saving={notebookBusy}
+        />
+      )}
       {abandonDialog}
     </div>
   );
+
+  // -------------------------------------------------------------------------
+  // M2 knowledge helpers
+  // -------------------------------------------------------------------------
+
+  function labelIntent(intent: KnowledgeIntent): string {
+    return intent.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  function focusChat() {
+    setActiveTab('chat');
+    // Allow the tab panel to render before focusing the input.
+    window.setTimeout(() => {
+      const input = document.querySelector<HTMLInputElement>('.chat-input input');
+      input?.focus();
+    }, 0);
+  }
+
+  async function refreshNotebook() {
+    if (!investigation) return;
+    try {
+      const entries = await api.getNotebook(investigation.id);
+      setNotebookEntries(Array.isArray(entries) ? entries : []);
+    } catch {
+      // Keep existing notebook view; save actions report their own errors.
+    }
+  }
+
+  async function saveExplanationToNotebook(message: ChatMessage) {
+    if (!investigation || message.role !== 'investigator') return;
+    setNotebookBusy(true);
+    setNotebookError(null);
+    try {
+      const specialist = specialists.find((s) => s.specialistKey === message.specialistKey);
+      await api.createNotebookEntry(investigation.id, {
+        entryType: 'note',
+        title: specialist ? `Explanation — ${specialist.name}` : 'Investigation note',
+        concept: message.intent ? labelIntent(message.intent) : 'Explanation',
+        content: message.content,
+        specialistId: specialist?.id ?? null,
+      });
+      await refreshNotebook();
+      setActiveTab('notebook');
+    } catch (err) {
+      setNotebookError(errorMessage(err));
+    } finally {
+      setNotebookBusy(false);
+    }
+  }
+
+  async function saveArtifactToNotebook(artifact: PublicArtifactSummary | PublicArtifactDetail) {
+    if (!investigation) return;
+    setNotebookBusy(true);
+    setNotebookError(null);
+    try {
+      await api.createNotebookEntry(investigation.id, {
+        entryType: 'fact',
+        title: artifact.title,
+        concept: artifact.relatedConcepts[0] ?? artifact.artifactType ?? 'Knowledge artifact',
+        content: artifact.description || '',
+        artifactId: artifact.id,
+      });
+      await refreshNotebook();
+      setActiveTab('notebook');
+    } catch (err) {
+      setNotebookError(errorMessage(err));
+    } finally {
+      setNotebookBusy(false);
+    }
+  }
+
+  function askSpecialistFromArtifact(artifact: PublicArtifactSummary | PublicArtifactDetail) {
+    const specialistKey = artifact.specialistKey || specialists[0]?.specialistKey || null;
+    setSelectedSpecialistKey(specialistKey);
+    setSelectedIntent('relevance');
+    setTargetSpecialistKey(null);
+    setArtifactDrawer(null);
+    setActiveTab('chat');
+    setMessageInput((current) =>
+      current.trim()
+        ? current
+        : `How is "${artifact.title}" relevant to what I've found so far?`
+    );
+    window.setTimeout(() => {
+      document.querySelector<HTMLInputElement>('.chat-input input')?.focus();
+    }, 0);
+  }
+
+  function askCritique(specialistKey: string, targetKey: string) {
+    setSelectedSpecialistKey(specialistKey);
+    setSelectedIntent('critique');
+    setTargetSpecialistKey(targetKey);
+    setActiveTab('chat');
+    setMessageInput((current) =>
+      current.trim() ? current : 'Please critique the contrasting position and explain what evidence would distinguish them.'
+    );
+    window.setTimeout(() => {
+      document.querySelector<HTMLInputElement>('.chat-input input')?.focus();
+    }, 0);
+  }
+
+  async function handleNotebookCreate(input: { entryType: string; title: string; content: string; concept: string }) {
+    if (!investigation) return;
+    setNotebookBusy(true);
+    setNotebookError(null);
+    try {
+      await api.createNotebookEntry(investigation.id, {
+        entryType: input.entryType,
+        title: input.title || undefined,
+        content: input.content,
+        concept: input.concept || undefined,
+      });
+      await refreshNotebook();
+    } catch (err) {
+      const message = errorMessage(err);
+      setNotebookError(message);
+      throw new Error(message);
+    } finally {
+      setNotebookBusy(false);
+    }
+  }
+
+  async function handleNotebookUpdate(entryId: string, patch: { title?: string; content?: string; concept?: string; entryType?: string }) {
+    if (!investigation) return;
+    setNotebookBusy(true);
+    setNotebookError(null);
+    try {
+      await api.updateNotebookEntry(investigation.id, entryId, patch);
+      await refreshNotebook();
+    } catch (err) {
+      const message = errorMessage(err);
+      setNotebookError(message);
+      throw new Error(message);
+    } finally {
+      setNotebookBusy(false);
+    }
+  }
+
+  async function handleNotebookDelete(entryId: string) {
+    if (!investigation) return;
+    setNotebookBusy(true);
+    setNotebookError(null);
+    try {
+      await api.deleteNotebookEntry(investigation.id, entryId);
+      await refreshNotebook();
+    } catch (err) {
+      const message = errorMessage(err);
+      setNotebookError(message);
+      throw new Error(message);
+    } finally {
+      setNotebookBusy(false);
+    }
+  }
 
   // -------------------------------------------------------------------------
   // Actions
@@ -1118,6 +1477,15 @@ export const InvestigationRoomPage = () => {
     const text = messageInput.trim();
     if (!text || !investigation || sending || caseClosed) return;
 
+    const opts = selectedSpecialistKey
+      ? {
+          specialistKey: selectedSpecialistKey,
+          intent: selectedIntent,
+          depth: selectedDepth,
+          ...(targetSpecialistKey ? { targetSpecialistKey } : {}),
+        }
+      : undefined;
+
     setSending(true);
     setChatError(null);
     setMessageInput('');
@@ -1126,12 +1494,14 @@ export const InvestigationRoomPage = () => {
       role: 'player',
       content: text,
       timestamp: new Date().toISOString(),
+      ...(opts?.specialistKey ? { specialistKey: opts.specialistKey, intent: opts.intent, depth: opts.depth } : {}),
     };
     setMessages((previous) => [...previous, optimistic]);
 
     try {
-      const reply = await api.sendChat(investigation.id, text);
+      const reply = await api.sendChat(investigation.id, text, opts);
       setMessages((previous) => [...previous, reply]);
+      setTargetSpecialistKey(null);
     } catch (err) {
       setMessages((previous) => previous.filter((message) => message !== optimistic));
       setMessageInput(text);

@@ -149,6 +149,132 @@ export interface Investigation {
   accusationCooldownUntil?: string;
 }
 
+// --- M2 Knowledge system (player-safe projections; no canonical data) -------
+
+export type KnowledgeIntent =
+  | 'explain'
+  | 'deeper'
+  | 'relevance'
+  | 'challenge'
+  | 'alternatives'
+  | 'discriminate'
+  | 'sources'
+  | 'simpler'
+  | 'critique';
+
+export type KnowledgeDepth = 'plain' | 'working' | 'technical';
+
+export interface DepthGuidance {
+  plain?: string;
+  working?: string;
+  technical?: string;
+  [key: string]: unknown;
+}
+
+export interface PublicSpecialist {
+  id: string;
+  specialistKey: string;
+  name: string;
+  title: string;
+  specialization: string;
+  discipline: string;
+  knowledgeDomains: string[];
+  personality: string;
+  communicationStyle: string;
+  reasoningApproach: string;
+  expertiseSummary: string;
+  limitations: string[];
+  depthGuidance: DepthGuidance;
+  isFictional: boolean;
+  realDisciplineBasis: string;
+  caseRelevance: string;
+  displayOrder: number;
+}
+
+export interface PublicArtifactSummary {
+  id: string;
+  artifactKey: string;
+  title: string;
+  artifactType: string;
+  description: string;
+  specialistKey: string;
+  knowledgeClass: string;
+  reliability: string;
+  sourceAuthor: string;
+  sourceUrl: string | null;
+  bibliographyRef: string;
+  publicationDate: string;
+  sourceVerified: boolean;
+  isFictional: boolean;
+  relatedConcepts: string[];
+}
+
+export interface PublicArtifactDetail extends PublicArtifactSummary {
+  content: string;
+  usageNote: string;
+}
+
+export interface PublicDisagreement {
+  id: string;
+  disagreementKey: string;
+  topic: string;
+  specialistAKey: string;
+  specialistBKey: string;
+  specialistAName: string;
+  specialistBName: string;
+  positionA: string;
+  positionB: string;
+  disciplinaryBasis: string;
+  uncertaintyNote: string;
+  distinguishingEvidence: string;
+  relatedArtifactKeys: string[];
+}
+
+export type NotebookEntryType =
+  | 'observation'
+  | 'fact'
+  | 'suspicion'
+  | 'theory'
+  | 'question'
+  | 'rejected'
+  | 'contradiction'
+  | 'note';
+
+export interface NotebookSourceSnapshot {
+  id?: string;
+  artifactKey?: string;
+  title?: string;
+  artifactType?: string;
+  description?: string;
+  specialistKey?: string;
+  knowledgeClass?: string;
+  reliability?: string;
+  sourceAuthor?: string;
+  sourceUrl?: string | null;
+  bibliographyRef?: string;
+  publicationDate?: string;
+  sourceVerified?: boolean;
+  isFictional?: boolean;
+  relatedConcepts?: string[];
+  contentExcerpt?: string;
+  usageNote?: string;
+  [key: string]: unknown;
+}
+
+export interface PublicNotebookEntry {
+  id: string;
+  investigationId: string;
+  entryType: NotebookEntryType | string;
+  artifactId: string | null;
+  specialistId: string | null;
+  concept: string;
+  title: string;
+  content: string;
+  sourceSnapshot: NotebookSourceSnapshot;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ChatMessage {
   role: string;
   content: string;
@@ -156,6 +282,11 @@ export interface ChatMessage {
   // PROD-014: the server-selected team voice for investigator replies.
   teamRole?: string;
   responderLabel?: string;
+  // M2: present when the reply came from a specialist persona.
+  specialistKey?: string;
+  specialistName?: string;
+  intent?: KnowledgeIntent;
+  depth?: KnowledgeDepth;
 }
 
 export interface JournalEntry {
@@ -403,6 +534,21 @@ export const api = {
   getEvidence: (caseId: string) =>
     request<Evidence[]>(`/api/cases/${encodeURIComponent(caseId)}/evidence`),
 
+  // M2 knowledge system (case-scoped, player-safe projections)
+  getSpecialists: (caseId: string) =>
+    request<PublicSpecialist[]>(`/api/cases/${encodeURIComponent(caseId)}/specialists`),
+
+  getArtifacts: (caseId: string) =>
+    request<PublicArtifactSummary[]>(`/api/cases/${encodeURIComponent(caseId)}/artifacts`),
+
+  getArtifactDetail: (caseId: string, artifactId: string) =>
+    request<PublicArtifactDetail>(
+      `/api/cases/${encodeURIComponent(caseId)}/artifacts/${encodeURIComponent(artifactId)}`
+    ),
+
+  getDisagreements: (caseId: string) =>
+    request<PublicDisagreement[]>(`/api/cases/${encodeURIComponent(caseId)}/disagreements`),
+
   getNotificationSettings: () =>
     request<NotificationSettings>('/api/me/notification-settings'),
 
@@ -454,8 +600,23 @@ export const api = {
       `/api/investigations/${encodeURIComponent(id)}/conversation`
     ),
 
-  sendChat: (id: string, message: string) =>
-    post<ChatMessage>(`/api/investigations/${encodeURIComponent(id)}/chat`, { message }),
+  sendChat: (
+    id: string,
+    message: string,
+    opts?: {
+      specialistKey?: string;
+      intent?: KnowledgeIntent;
+      depth?: KnowledgeDepth;
+      targetSpecialistKey?: string;
+    }
+  ) =>
+    post<ChatMessage>(`/api/investigations/${encodeURIComponent(id)}/chat`, {
+      message,
+      ...(opts?.specialistKey ? { specialistKey: opts.specialistKey } : {}),
+      ...(opts?.intent ? { intent: opts.intent } : {}),
+      ...(opts?.depth ? { depth: opts.depth } : {}),
+      ...(opts?.targetSpecialistKey ? { targetSpecialistKey: opts.targetSpecialistKey } : {}),
+    }),
 
   getJournal: (id: string) =>
     request<JournalEntry[]>(`/api/investigations/${encodeURIComponent(id)}/journal`),
@@ -499,6 +660,45 @@ export const api = {
   getAchievements: (id: string) =>
     request<Achievement[]>(
       `/api/investigations/${encodeURIComponent(id)}/achievements`
+    ),
+
+  // M2 knowledge notebook (investigation-scoped, owner-checked server-side).
+  getNotebook: (id: string) =>
+    request<PublicNotebookEntry[]>(`/api/investigations/${encodeURIComponent(id)}/notebook`),
+
+  createNotebookEntry: (
+    id: string,
+    entry: {
+      entryType: NotebookEntryType | string;
+      concept?: string;
+      title?: string;
+      content?: string;
+      artifactId?: string | null;
+      specialistId?: string | null;
+    }
+  ) => post<PublicNotebookEntry>(`/api/investigations/${encodeURIComponent(id)}/notebook`, entry),
+
+  updateNotebookEntry: (
+    id: string,
+    entryId: string,
+    patch: {
+      entryType?: NotebookEntryType | string;
+      concept?: string;
+      title?: string;
+      content?: string;
+      artifactId?: string | null;
+      specialistId?: string | null;
+    }
+  ) =>
+    request<PublicNotebookEntry>(
+      `/api/investigations/${encodeURIComponent(id)}/notebook/${encodeURIComponent(entryId)}`,
+      { method: 'PATCH', body: JSON.stringify(patch) }
+    ),
+
+  deleteNotebookEntry: (id: string, entryId: string) =>
+    request<{ success: boolean }>(
+      `/api/investigations/${encodeURIComponent(id)}/notebook/${encodeURIComponent(entryId)}`,
+      { method: 'DELETE' }
     ),
 };
 

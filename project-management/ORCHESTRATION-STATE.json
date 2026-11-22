@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "updated_at": "2026-11-23T04:25:00Z",
+  "updated_at": "2026-11-23T06:00:00Z",
   "status": "idle",
   "objective": "Deliver PRD MVP for THE INVESTIGATION (project-investigation) with autonomous orchestration.",
-  "current_milestone": "MVP + 25 seeded cases + pluggable AI infra complete; production deploy/push infra remain external-infra tasks",
+  "current_milestone": "Milestone 2 complete: Knowledge, Expertise & Perspective System (showcase Midnight Heist)",
   "active_task_id": null,
   "active_agent": null,
-  "last_completed_task_id": "UI-POLISH-2",
-  "next_action": "UI animation/fluidity pass complete; screenshots in project-investigation/frontend/ui-screenshots. Await further direction.",
+  "last_completed_task_id": "M2-KNOWLEDGE",
+  "next_action": "Await next milestone direction. Optional: push branch, add Gemini key, enrich more cases with M2 knowledge.",
   "model_policy": {
     "active_model": "opencode/iceman-free",
     "fallback_models": [
@@ -186,10 +186,34 @@
       "status": "done",
       "result_summary": "Ambient detective-desk background (CSS gradients/grain/orbs), fluid page/tab/card transitions, reduced-motion safeguards. Playwright screenshots 375/1440. Verified: typecheck PASS, smoke-db PASS, frontend build PASS, test:http 57/57 PASS, case:validate PASS.",
       "next_action": null
+    },
+    {
+      "task_id": "M2-KNOWLEDGE",
+      "title": "Milestone 2 knowledge/specialist/notebook system",
+      "agent": "architect+builder+ui-ux-frontend",
+      "status": "done",
+      "result_summary": "M2 complete. Additive migration 006, specialists/artifacts/disagreements/notebook, specialist-aware chat extension, Midnight Heist showcase (4 specialists, 7 artifacts, 2 disagreements), Experts/Notebook UI. All verifications pass.",
+      "next_action": null
+    },
+    {
+      "task_id": "M2-B-BACKEND",
+      "title": "M2 backend knowledge system",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Migration 006, src/knowledge.ts, db/server routes, specialist chat, notebook, seed/validate, CI. Verified: typecheck PASS, db:schema:verify PASS (24/24,241 cols), smoke-db PASS, db:seed:knowledge PASS, knowledge:validate PASS, case:validate PASS, test:http 67/67 PASS, frontend build PASS.",
+      "next_action": "M2-C UI"
+    },
+    {
+      "task_id": "M2-C-UI",
+      "title": "M2 frontend Experts/Notebook integration",
+      "agent": "ui-ux-frontend",
+      "status": "done",
+      "result_summary": "Experts/Notebook tabs, specialist chat controls, artifact drawer/cards, notebook CRUD UI integrated into InvestigationRoomPage; api.ts types/methods added. Frontend build and all backend verifications pass.",
+      "next_action": null
     }
   ],
   "recovery": {
-    "last_checkpoint": "2026-11-23T04:25:00Z",
+    "last_checkpoint": "2026-11-23T06:00:00Z",
     "resume_instructions": "Read ORCHESTRATION-STATE.json, ORCHESTRATION-LOG.md, RECOVERY.md, DEV-STATUS.md, TASKS.md, BUGS.md, MODEL-POLICY.md; validate state against repo; continue from next_action.",
     "open_blockers": [],
     "validation_notes": [
