@@ -1,6 +1,14 @@
 import { MAX_DRAFT_CHARS, MAX_DRAFT_VERSIONS } from '@/domain/draft';
+import { validateSourceProvenance } from '@/domain/legalSources';
 import { createInitialSave } from '@/domain/seed';
-import type { Assignment, DraftState, EvidenceItem, SaveGame } from '@/domain/types';
+import type {
+  Assignment,
+  DraftState,
+  EvidenceItem,
+  LegalSource,
+  SaveGame,
+  SourceVerificationStatus,
+} from '@/domain/types';
 
 export const SAVE_KEY = 'the-bar-save-v2';
 export const LEGACY_KEY = 'the-bar-save-v1';
@@ -39,6 +47,36 @@ function mergeEvidence(base: EvidenceItem[], parsed: unknown): EvidenceItem[] {
       rationale: item.assessment?.rationale ?? '',
     },
   }));
+}
+
+/**
+ * Legal sources are untrusted stored data. Fill new provenance fields from defaults, and
+ * demote any stored `verified` flag that lacks traceable provenance so it cannot be cited.
+ */
+function mergeLegalSources(base: LegalSource[], parsed: unknown): LegalSource[] {
+  if (!Array.isArray(parsed) || parsed.length === 0) return base;
+  const defaults = new Map(base.map((item) => [item.id, item]));
+  return (parsed as LegalSource[])
+    .filter((item) => item && typeof item === 'object' && typeof item.id === 'string')
+    .map((item) => {
+      const fallback = defaults.get(item.id) ?? ({} as LegalSource);
+      const rawStatus = item.verificationStatus as SourceVerificationStatus | undefined;
+      const status: SourceVerificationStatus =
+        rawStatus === 'verified' || rawStatus === 'unverified' || rawStatus === 'placeholder'
+          ? rawStatus
+          : 'unverified';
+      const merged: LegalSource = {
+        ...fallback,
+        ...item,
+        sourceName: item.sourceName?.trim() || fallback.sourceName || item.title || '(unnamed source)',
+        provenance: item.provenance?.trim() || fallback.provenance || item.notes || '',
+        verificationStatus: status,
+      };
+      if (status === 'verified' && !validateSourceProvenance(merged).ok) {
+        merged.verificationStatus = 'unverified';
+      }
+      return merged;
+    });
 }
 
 function mergeAssignments(base: Assignment[], parsed: unknown): Assignment[] {
@@ -85,7 +123,7 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
         evidence: mergeEvidence(base.caseFile.evidence, parsedCase?.evidence),
         canonicalTruth: { ...base.caseFile.canonicalTruth, ...(parsedCase?.canonicalTruth ?? {}) },
       },
-      legalSources: parsed.legalSources?.length ? (parsed.legalSources as SaveGame['legalSources']) : base.legalSources,
+      legalSources: mergeLegalSources(base.legalSources, parsed.legalSources),
       assignments: mergeAssignments(base.assignments, parsed.assignments),
       notebook: parsed.notebook?.length ? (parsed.notebook as SaveGame['notebook']) : base.notebook,
       flags: { ...base.flags, ...(parsed.flags ?? {}) },

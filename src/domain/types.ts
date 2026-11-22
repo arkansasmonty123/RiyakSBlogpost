@@ -129,18 +129,47 @@ export interface CaseFile {
   evidence: EvidenceItem[];
 }
 
+/**
+ * Verification is a human/content-owner act, never something the game infers.
+ * - verified: traceable provenance confirmed by a reviewer; may be cited as authoritative.
+ * - unverified: drafted/ingested but not yet confirmed; never authoritative.
+ * - placeholder: explicitly a stand-in (often a citation-like string); never authoritative.
+ */
 export type SourceVerificationStatus = 'verified' | 'unverified' | 'placeholder';
+export type SourceType = 'statute' | 'judgment' | 'rule' | 'commentary' | 'summary';
+export type SourceJurisdiction = 'India' | 'Fictional';
 
+/**
+ * A provenance record for legal material. Every field describes WHERE a statement came
+ * from and HOW it was checked; none of these fields is itself a legal assertion.
+ * An excerpt/summary is non-authoritative by construction and is labeled as such in the UI.
+ */
 export interface LegalSource {
   id: string;
+  /** Player-facing label for this record. */
   title: string;
+  /** Official name of the source as published (e.g. the Act or judgment name). */
+  sourceName: string;
+  /** Citation or stable identifier. Never invent one; placeholders must be labeled. */
   citation: string;
-  sourceType: 'statute' | 'judgment' | 'rule' | 'commentary' | 'summary';
-  jurisdiction: 'India' | 'Fictional';
+  sourceType: SourceType;
+  jurisdiction: SourceJurisdiction;
   verificationStatus: SourceVerificationStatus;
+  /** Non-authoritative provenance note: where/how this record was obtained. */
   provenance: string;
+  /** Optional stable URL pointing to the official publisher (never a fabricated citation). */
+  sourceUrl?: string;
+  /** ISO date (YYYY-MM-DD) on which a human reviewer verified the source. */
+  verificationDate?: string;
+  /** Identifier of the human/content owner who verified the source. */
+  verifiedBy?: string;
+  /** ISO date (YYYY-MM-DD) on which the provision/rule took effect. */
   effectiveDate?: string;
+  /** Non-authoritative excerpt or summary; must be labeled as such wherever shown. */
+  excerpt?: string;
   notes?: string;
+  /** Set by the in-game Source Intake flow; seed records are content-owner supplied. */
+  intake?: 'seed' | 'player-draft';
 }
 
 export interface NotebookEntry {

@@ -8,7 +8,7 @@
 | **Type** | Immersive, persistent legal-career simulator (educational simulation) |
 | **Primary jurisdiction** | India (fictional firm/district/court environment initially) |
 | **Repository** | `/home/divyanshukumarsinha241/project-courtroom` |
-| **Status** | Phase 0 complete (2026-11-22). P0 prototype in progress: "The First Brief — Office Prototype" (Vite + React + TS + Tailwind, localStorage), Day 1–10 playable slice, 35/35 tests passing, CI workflow added. |
+| **Status** | Phase 0 complete (2026-11-22). P0 prototype in progress: "The First Brief — Office Prototype" (Vite + React + TS + Tailwind, localStorage), Day 1–10 playable slice, provenance/source-intake workflow with no auto-verification, 53/53 tests passing, CI workflow added. |
 | **Primary reference** | [`../THE_BAR_MASTER_CONTEXT.md`](../THE_BAR_MASTER_CONTEXT.md) |
 | **Audit date** | 2026-11-22 |
 
@@ -38,6 +38,14 @@ THE BAR is an educational simulation, not legal advice and not a substitute for 
 
 All legal content must be verified, sourced, versioned, and dated. No fabricated statutory provisions, judgments, citations, or procedural rules.
 
+## Implemented: provenance and source intake (P0)
+
+- `LegalSource` records carry `sourceName`, `citation` (identifier), `sourceType`, `jurisdiction`, `verificationStatus`, a non-authoritative `provenance` note, and optional `sourceUrl`, `verificationDate`, `verifiedBy`, `effectiveDate`, `excerpt` and `notes`.
+- Verification statuses are distinct: `verified` (traceable provenance plus a named human reviewer), `unverified` (drafted but not confirmed) and `placeholder` (explicit stand-in). Only `verified` sources with intact provenance can be cited as authoritative.
+- The Research panel's **Source Intake / Add Source** flow creates only `unverified` or `placeholder` records. Deterministic validation blocks empty required fields, invalid enums/effective dates, self-verification requests, and forces citation-like strings (section numbers, `X v. Y`, reporter citations) into `placeholder` status with a non-authoritative warning.
+- `markSourceVerified` is a separate human/content-owner step (named reviewer and traceable provenance required); it is not a player-facing auto-verify action. `checkDraftCitations` uses `canCiteAsAuthoritative`, so a forged `verified` flag without provenance is ignored. Save loading demotes such records.
+- No real legal corpus has been ingested. The only verified seed record is an internal educational summary explicitly labeled non-statutory; statutory entries remain placeholders. No provision, judgment or citation has been fabricated or presented as verified.
+
 ## Target first playable release (from master context)
 
 - One fictional Indian law firm
@@ -65,8 +73,9 @@ Implemented: **Vite + React + TypeScript + Tailwind**, localStorage persistence 
 project-courtroom/
 ├── src/
 │   ├── app/App.tsx              # UI shell + panels
-│   ├── domain/                  # types, seed, guards, access projection,
-│   │                            # progression, dialogue, evidence, draft
+│   ├── domain/                  # types, seed, guards, legalSources (provenance
+│   │                            # + intake), access projection, progression,
+│   │                            # dialogue, evidence, draft
 │   ├── storage/save.ts          # localStorage load/persist + v1→v2 migration
 │   └── tests/                   # vitest guardrail + smoke tests
 ├── README.md

@@ -1,3 +1,4 @@
+import { canCiteAsAuthoritative } from './legalSources';
 import type { LegalSource } from './types';
 
 export interface CitationCheckResult {
@@ -28,16 +29,18 @@ export function checkDraftCitations(draft: string, sources: LegalSource[]): Cita
   const hasCitationLike = CITATION_PATTERNS.some((p) => p.test(text));
   if (!hasCitationLike) return { ok: true, warnings, blocked };
 
-  const verified = sources.filter((s) => s.verificationStatus === 'verified');
-  const placeholders = sources.filter((s) => s.verificationStatus !== 'verified');
+  // Status alone is not enough: a `verified` flag without traceable provenance, or a
+  // placeholder that was forged into `verified`, must not count as authority.
+  const verified = sources.filter(canCiteAsAuthoritative);
+  const notAuthoritative = sources.filter((s) => !canCiteAsAuthoritative(s));
 
   if (verified.length === 0) {
     blocked.push('Citation-like legal references detected, but no verified sources are registered. Add/verify sources before citing.');
   }
 
-  for (const s of placeholders) {
+  for (const s of notAuthoritative) {
     const token = s.citation.split('(')[0].trim();
-    if (token && text.toLowerCase().includes(token.toLowerCase()) && s.verificationStatus !== 'verified') {
+    if (token && text.toLowerCase().includes(token.toLowerCase())) {
       blocked.push(`Unverified/placeholder source referenced: "${s.title}". Verify before citing.`);
     }
   }

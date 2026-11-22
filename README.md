@@ -20,10 +20,11 @@
 - Repository: `/home/divyanshukumarsinha241/project-courtroom`
 - Git: initialized (local)
 - Application: **P0 prototype** (Vite + React + TypeScript + Tailwind), localStorage save (v1 saves migrate to v2)
-- Gameplay: Days 1–7 progression with unlockable assignments, dialogue consequences (relationships + memories), evidence review/assessment/contradiction notes, notebook, editable draft with version history, deterministic citation guard and senior feedback
-- Tests: `vitest` (22 passing tests across domain, migration, guardrails and a render smoke check)
+- Gameplay: Days 1–10 progression with unlockable assignments, dialogue consequences (relationships + memories), evidence review/assessment/contradiction notes, notebook, editable draft with version history, deterministic citation guard and senior feedback
+- Legal provenance: the Research panel shows each source's name, citation/identifier, type, jurisdiction, verification badge, effective date and clearly labeled non-authoritative provenance/excerpt. **Source Intake** drafts records as `unverified` or `placeholder` with deterministic validation (required fields, no self-verification, citation-like strings forced to placeholder). The game never auto-verifies a source; only traceable, verified sources can be cited as authoritative.
+- Tests: `vitest` (53 passing tests across domain, provenance/intake validation, migration, guardrails and SSR smoke checks)
 - Runtime AI: deterministic stub only (no provider/model bundled)
-- Verified legal corpus/data: minimal fictional seed only; no real legal corpus ingested
+- Verified legal corpus/data: minimal fictional seed only (one internal educational summary is marked verified; statutory entries are explicit placeholders). No real legal corpus ingested; no statutory provision, judgment or citation has been fabricated or presented as verified.
 - Visual assets: placeholder/composed UI (no final art assets)
 
 ## Quick start
@@ -55,4 +56,4 @@ npm run dev
 
 ## Next step
 
-Broaden the first chapter beyond Day 7 (client interview, courtroom exposure), add real verified legal sources with provenance, and add accessibility/visual QA in a real browser when a browser binary is available — while maintaining >2 GB available storage.
+Add real, human-verified legal sources with official provenance (D-005/D-011 — content owner must supply and review exact text; intake alone never verifies), broaden the first chapter (courtroom exposure), and add accessibility/visual QA in a real browser when one is available — while maintaining >2 GB available storage.

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { loadSave, persistSave, resetSave } from '@/storage/save';
 import { checkDraftCitations } from '@/domain/guards';
+import { canCiteAsAuthoritative, intakeSource, MAX_SOURCE_FIELDS, SOURCE_JURISDICTIONS, SOURCE_TYPES } from '@/domain/legalSources';
 import { assertNoCanonicalTruthLeak, toPlayerCaseView } from '@/domain/caseAccess';
 import { advanceClock, currentObjective, isAssignmentUnlocked, makeId, MAX_DAY, reviewAssignment } from '@/domain/progression';
 import { applyDialogueChoice, availableDialogueScenes } from '@/domain/dialogue';
@@ -14,6 +15,8 @@ import type {
   NotebookEntry,
   Reliability,
   SaveGame,
+  SourceJurisdiction,
+  SourceType,
 } from '@/domain/types';
 
 const VIEWPOINTS: Record<string, { label: string; description: string; hotspots: Array<{ id: string; label: string; action: string }> }> = {
@@ -65,9 +68,39 @@ function makeNotebookEntry(entry: Omit<NotebookEntry, 'id' | 'day'>, save: SaveG
   return { id: makeId('n'), day: save.clock.day, ...entry };
 }
 
-export function App() {
+interface SourceFormState {
+  title: string;
+  sourceName: string;
+  citation: string;
+  sourceType: SourceType;
+  jurisdiction: SourceJurisdiction;
+  provenance: string;
+  sourceUrl: string;
+  effectiveDate: string;
+  excerpt: string;
+  notes: string;
+  requestPlaceholder: boolean;
+}
+
+function emptySourceForm(): SourceFormState {
+  return {
+    title: '',
+    sourceName: '',
+    citation: '',
+    sourceType: 'statute',
+    jurisdiction: 'India',
+    provenance: '',
+    sourceUrl: '',
+    effectiveDate: '',
+    excerpt: '',
+    notes: '',
+    requestPlaceholder: false,
+  };
+}
+
+export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const [save, setSave] = useState<SaveGame>(() => loadSave());
-  const [panel, setPanel] = useState<Panel>('case');
+  const [panel, setPanel] = useState<Panel>(initialPanel);
   const [draft, setDraft] = useState<string>(() => save.draft.current);
   const [dialogue, setDialogue] = useState<string>(
     'Adv. Meera Kulkarni: "Welcome. Read the facts carefully. Separate what is known, claimed, disputed, and unknown."',
@@ -81,6 +114,10 @@ export function App() {
   const [challengeText, setChallengeText] = useState('');
   const [reviewSummary, setReviewSummary] = useState('');
   const [finalSummary, setFinalSummary] = useState('');
+  const [showSourceIntake, setShowSourceIntake] = useState(false);
+  const [sourceForm, setSourceForm] = useState<SourceFormState>(emptySourceForm);
+  const [intakeError, setIntakeError] = useState('');
+  const [intakeNotice, setIntakeNotice] = useState('');
 
   const viewpoint = VIEWPOINTS[save.selectedViewpoint] ?? VIEWPOINTS.entrance;
   // The UI only ever reads the sanitized player view, never the canonical case file.
@@ -108,6 +145,29 @@ export function App() {
       s.notebook.unshift(makeNotebookEntry(entry, s));
       return s;
     });
+  }
+
+  function setSourceField<K extends keyof SourceFormState>(key: K, value: SourceFormState[K]) {
+    setSourceForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function doAddSource() {
+    setIntakeError('');
+    setIntakeNotice('');
+    const result = intakeSource(sourceForm, makeId('ls'));
+    if (!result.ok || !result.source) {
+      setIntakeError(result.reason ?? 'Unable to add source.');
+      return;
+    }
+    const added = result.source;
+    update((s) => {
+      s.legalSources.unshift(added);
+      return s;
+    });
+    setSourceForm(emptySourceForm());
+    setShowSourceIntake(false);
+    setIntakeNotice(`Saved "${added.title}" as ${added.verificationStatus}. ${result.warnings.join(' ')}`);
+    setDialogue(`System: Source intake saved as ${added.verificationStatus}. ${result.warnings.join(' ')}`);
   }
 
   function discoverEvidence(id: string) {
@@ -624,17 +684,120 @@ export function App() {
           )}
 
           {panel === 'research' && (
-            <div className="space-y-2 text-sm">
-              <p className="text-xs text-bar-muted">Verified legal sources only. Unverified/placeholder entries cannot be cited as authoritative.</p>
-              {save.legalSources.map((s) => (
-                <div key={s.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
-                  <div className="flex justify-between gap-2"><span className="text-bar-gold">{s.title}</span><span className={`text-xs ${s.verificationStatus==='verified'?'text-green-300':'text-yellow-300'}`}>{s.verificationStatus}</span></div>
-                  <div className="text-xs text-bar-muted">{s.citation}</div>
-                  <div className="text-xs text-bar-muted">{s.provenance}</div>
-                  {s.notes && <div className="text-xs mt-1">{s.notes}</div>}
-                  <button className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => addNotebook({ kind:'research', title:`Source: ${s.title}`, content:`${s.citation}\n${s.provenance}`, sourceId:s.id, source:s.citation, verified:s.verificationStatus==='verified' })}>Add to notebook</button>
-                </div>
-              ))}
+            <div className="space-y-3 text-sm">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <p className="text-xs text-bar-muted flex-1 min-w-48">Verified legal sources only. Unverified/placeholder entries cannot be cited as authoritative. Source Intake creates drafts only — the game never auto-verifies a citation.</p>
+                <button
+                  type="button"
+                  className="px-2 py-1 border border-bar-gold/40 rounded text-xs"
+                  aria-expanded={showSourceIntake}
+                  aria-controls="source-intake-form"
+                  onClick={() => { setShowSourceIntake((v) => !v); setIntakeError(''); }}
+                >
+                  {showSourceIntake ? 'Close intake' : 'Add Source / Source Intake'}
+                </button>
+              </div>
+
+              {showSourceIntake && (
+                <form
+                  id="source-intake-form"
+                  className="bg-bar-panel2 p-3 rounded border border-bar-gold/30 grid gap-2"
+                  onSubmit={(e) => { e.preventDefault(); doAddSource(); }}
+                >
+                  <p className="text-xs text-yellow-200">New records enter as unverified or placeholder. Nothing here is a verified legal authority, and no citation is created for you.</p>
+                  <label className="text-xs flex flex-col gap-1">Source title (required)
+                    <input className="bg-bar-bg border border-white/10 rounded p-2" value={sourceForm.title} maxLength={MAX_SOURCE_FIELDS.title} onChange={(e) => setSourceField('title', e.target.value)} />
+                  </label>
+                  <label className="text-xs flex flex-col gap-1">Official source name (required)
+                    <input className="bg-bar-bg border border-white/10 rounded p-2" value={sourceForm.sourceName} maxLength={MAX_SOURCE_FIELDS.sourceName} onChange={(e) => setSourceField('sourceName', e.target.value)} placeholder="Name as published — leave uncertain parts unspecified" />
+                  </label>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <label className="text-xs flex flex-col gap-1">Citation / identifier (required)
+                      <input className="bg-bar-bg border border-white/10 rounded p-2" value={sourceForm.citation} maxLength={MAX_SOURCE_FIELDS.citation} onChange={(e) => setSourceField('citation', e.target.value)} placeholder="Leave blank if unknown — never guess a provision" />
+                    </label>
+                    <label className="text-xs flex flex-col gap-1">Source type (required)
+                      <select className="bg-bar-bg border border-white/10 rounded p-2" value={sourceForm.sourceType} onChange={(e) => setSourceField('sourceType', e.target.value as SourceType)}>
+                        {SOURCE_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <label className="text-xs flex flex-col gap-1">Jurisdiction (required)
+                      <select className="bg-bar-bg border border-white/10 rounded p-2" value={sourceForm.jurisdiction} onChange={(e) => setSourceField('jurisdiction', e.target.value as SourceJurisdiction)}>
+                        {SOURCE_JURISDICTIONS.map((j) => <option key={j} value={j}>{j}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-xs flex flex-col gap-1">Effective date (optional, YYYY-MM-DD)
+                      <input className="bg-bar-bg border border-white/10 rounded p-2" value={sourceForm.effectiveDate} maxLength={10} onChange={(e) => setSourceField('effectiveDate', e.target.value)} placeholder="YYYY-MM-DD" />
+                    </label>
+                  </div>
+                  <label className="text-xs flex flex-col gap-1">Provenance note — where did this come from? (required)
+                    <textarea className="bg-bar-bg border border-white/10 rounded p-2 min-h-16" value={sourceForm.provenance} maxLength={MAX_SOURCE_FIELDS.provenance} onChange={(e) => setSourceField('provenance', e.target.value)} placeholder="e.g. Notebook reference from the library shelf; exact text not yet checked" />
+                  </label>
+                  <label className="text-xs flex flex-col gap-1">Official source URL (optional)
+                    <input className="bg-bar-bg border border-white/10 rounded p-2" value={sourceForm.sourceUrl} maxLength={MAX_SOURCE_FIELDS.sourceUrl} onChange={(e) => setSourceField('sourceUrl', e.target.value)} placeholder="Link to the publisher, if known" />
+                  </label>
+                  <label className="text-xs flex flex-col gap-1">Excerpt / summary — NON-AUTHORITATIVE (optional)
+                    <textarea className="bg-bar-bg border border-white/10 rounded p-2 min-h-16" value={sourceForm.excerpt} maxLength={MAX_SOURCE_FIELDS.excerpt} onChange={(e) => setSourceField('excerpt', e.target.value)} placeholder="Your own note or summary; never treated as the text of the law" />
+                  </label>
+                  <label className="text-xs flex items-center gap-2">
+                    <input type="checkbox" checked={sourceForm.requestPlaceholder} onChange={(e) => setSourceField('requestPlaceholder', e.target.checked)} />
+                    Mark explicitly as a placeholder (stand-in; never authoritative)
+                  </label>
+                  {intakeError && <p role="alert" className="text-xs text-red-200 border border-red-400/30 rounded p-2">{intakeError}</p>}
+                  {intakeNotice && <p role="status" className="text-xs text-green-200 border border-green-400/30 rounded p-2">{intakeNotice}</p>}
+                  <div className="flex gap-2 flex-wrap">
+                    <button type="submit" className="px-3 py-1 border border-bar-gold/40 rounded text-xs">Save draft source</button>
+                    <button type="button" className="px-3 py-1 border border-white/10 rounded text-xs text-bar-muted" onClick={() => { setShowSourceIntake(false); setIntakeError(''); }}>Cancel</button>
+                  </div>
+                </form>
+              )}
+
+              {save.legalSources.map((s) => {
+                const authoritative = canCiteAsAuthoritative(s);
+                const badgeClass = authoritative
+                  ? 'text-green-300 border-green-400/30'
+                  : s.verificationStatus === 'placeholder'
+                    ? 'text-red-200 border-red-400/40'
+                    : 'text-yellow-300 border-yellow-400/40';
+                const badgeText = authoritative
+                  ? 'VERIFIED'
+                  : s.verificationStatus === 'placeholder'
+                    ? 'PLACEHOLDER — NOT AUTHORITATIVE'
+                    : 'UNVERIFIED — NOT AUTHORITATIVE';
+                return (
+                  <article key={s.id} className="bg-bar-panel2 p-3 rounded border border-white/5 space-y-1">
+                    <div className="flex justify-between gap-2 flex-wrap items-start">
+                      <span className="text-bar-gold font-medium">{s.title}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded border ${badgeClass}`}>{badgeText}</span>
+                    </div>
+                    <div className="text-xs text-bar-muted">Source name: {s.sourceName}</div>
+                    <div className="text-xs text-bar-muted">Citation / identifier: {s.citation}</div>
+                    <div className="text-xs text-bar-muted">Type: {s.sourceType} · Jurisdiction: {s.jurisdiction}{s.intake === 'player-draft' ? ' · Player draft' : ''}</div>
+                    {s.effectiveDate && <div className="text-xs text-bar-muted">Effective date: {s.effectiveDate}</div>}
+                    {s.verificationDate && <div className="text-xs text-bar-muted">Verified on {s.verificationDate}{s.verifiedBy ? ` by ${s.verifiedBy}` : ''}</div>}
+                    <div className="text-xs text-bar-muted">Provenance (non-authoritative note): {s.provenance}</div>
+                    {s.sourceUrl && <div className="text-xs text-bar-muted break-words">Official source URL: {s.sourceUrl}</div>}
+                    {s.excerpt && <div className="text-xs text-yellow-200 border-l-2 border-yellow-400/40 pl-2">NON-AUTHORITATIVE EXCERPT/SUMMARY — not the text of the law: {s.excerpt}</div>}
+                    {!authoritative && <p role="note" className="text-xs text-red-200">Warning: not verified. Do not cite this source as law.</p>}
+                    {s.notes && <div className="text-xs">{s.notes}</div>}
+                    <button
+                      type="button"
+                      className="mt-1 px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                      onClick={() => addNotebook({
+                        kind: 'research',
+                        title: `${authoritative ? 'Source' : 'UNVERIFIED SOURCE — do not cite'}: ${s.title}`,
+                        content: `${authoritative ? '' : 'NOT AUTHORITATIVE — do not cite as law.\n'}${s.citation}\nProvenance: ${s.provenance}${s.excerpt ? `\nNON-AUTHORITATIVE EXCERPT: ${s.excerpt}` : ''}`,
+                        sourceId: s.id,
+                        source: s.citation,
+                        verified: authoritative,
+                      })}
+                    >
+                      Add to notebook{authoritative ? '' : ' (unverified reference)'}
+                    </button>
+                  </article>
+                );
+              })}
             </div>
           )}
 

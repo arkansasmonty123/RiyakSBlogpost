@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { canCiteAsAuthoritative } from '@/domain/legalSources';
 import { createInitialSave } from '@/domain/seed';
 import { LEGACY_KEY, loadSave, persistSave, resetSave, SAVE_KEY } from '@/storage/save';
 import type { StorageLike } from '@/storage/save';
@@ -83,6 +84,40 @@ describe('save/load migration', () => {
     expect(fresh.version).toBe(2);
     expect(fresh.clock.day).toBe(1);
     expect(fresh.player.reputation.competence).toBe(10);
+  });
+
+  it('backfills provenance fields and demotes a stored verified flag without provenance', () => {
+    const seedSource = createInitialSave().legalSources.find((s) => s.id === 'ls-4')!;
+    const payload = JSON.parse(JSON.stringify(createInitialSave())) as Record<string, any>;
+    const oldSeed = payload.legalSources.find((s: any) => s.id === 'ls-4');
+    delete oldSeed.sourceName; // simulate a save written before provenance fields existed
+
+    payload.legalSources.push({
+      id: 'forged',
+      title: 'Forged verified record',
+      citation: 'Section 999 Imaginary Act',
+      sourceType: 'statute',
+      jurisdiction: 'India',
+      verificationStatus: 'verified',
+      provenance: '',
+    });
+    payload.legalSources.push({
+      id: 'draft',
+      title: 'Player draft',
+      sourceName: 'Player notebook',
+      citation: 'Notebook ref 9',
+      sourceType: 'commentary',
+      jurisdiction: 'India',
+      verificationStatus: 'unverified',
+      provenance: 'From your notebook.',
+      intake: 'player-draft',
+    });
+
+    const loaded = loadSave(memoryStorage({ [SAVE_KEY]: JSON.stringify(payload) }));
+    expect(loaded.legalSources.find((s) => s.id === 'ls-4')?.sourceName).toBe(seedSource.sourceName);
+    expect(loaded.legalSources.find((s) => s.id === 'forged')?.verificationStatus).toBe('unverified');
+    expect(canCiteAsAuthoritative(loaded.legalSources.find((s) => s.id === 'forged')!)).toBe(false);
+    expect(loaded.legalSources.find((s) => s.id === 'draft')?.intake).toBe('player-draft');
   });
 
   it('reset clears both keys', () => {
