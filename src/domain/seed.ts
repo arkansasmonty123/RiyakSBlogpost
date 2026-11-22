@@ -299,6 +299,7 @@ export function createInitialSave(): SaveGame {
     selectedViewpoint: 'entrance',
     flags: {
       introSeen: false,
+      helpSeen: false,
       caseAccepted: false,
       assignment1Submitted: false,
       assignment2Submitted: false,

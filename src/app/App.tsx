@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { loadSave, persistSave, resetSave } from '@/storage/save';
 import { checkDraftCitations } from '@/domain/guards';
+import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/completion';
+import { markHelpSeen, shouldShowHelp } from '@/domain/onboarding';
 import { canCiteAsAuthoritative, intakeSource, MAX_SOURCE_FIELDS, SOURCE_JURISDICTIONS, SOURCE_TYPES } from '@/domain/legalSources';
 import { assertNoCanonicalTruthLeak, toPlayerCaseView } from '@/domain/caseAccess';
 import { advanceClock, currentObjective, isAssignmentUnlocked, makeId, MAX_DAY, reviewAssignment } from '@/domain/progression';
@@ -71,7 +73,9 @@ const VIEWPOINTS: Record<string, { label: string; description: string; hotspots:
 };
 
 const PANELS = ['case', 'assignments', 'evidence', 'casework', 'theory', 'research', 'draft', 'notebook', 'dialogue'] as const;
-type Panel = (typeof PANELS)[number];
+type WorkPanel = (typeof PANELS)[number];
+/** `completion` is reached only after the final brief closes the chapter. */
+type Panel = WorkPanel | 'completion';
 
 function makeNotebookEntry(entry: Omit<NotebookEntry, 'id' | 'day'>, save: SaveGame): NotebookEntry {
   return { id: makeId('n'), day: save.clock.day, ...entry };
@@ -131,6 +135,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const [theoryStatus, setTheoryStatus] = useState<TheoryStatus>('known');
   const [theoryEvidenceIds, setTheoryEvidenceIds] = useState<string[]>([]);
   const [notebookFilter, setNotebookFilter] = useState<'all' | NotebookEntry['kind']>('all');
+  const [showHelp, setShowHelp] = useState(() => shouldShowHelp(save));
 
   const viewpoint = VIEWPOINTS[save.selectedViewpoint] ?? VIEWPOINTS.entrance;
   // The UI only ever reads the sanitized player view, never the canonical case file.
@@ -148,14 +153,16 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     () => [...new Set(save.notebook.map((n) => n.kind))],
     [save.notebook],
   );
+  const chapterComplete = isChapterComplete(save);
+  const completion = useMemo(() => buildChapterCompletionSummary(save), [save]);
   const caseTargetId = caseTarget || reviewedEvidence[0]?.id || '';
   const a7 = save.assignments.find((a) => a.id === 'a7');
   const a8 = save.assignments.find((a) => a.id === 'a8');
   const reviewedAssignmentCount = save.assignments.filter((a) => a.status === 'reviewed').length;
   const chapterProgress = Math.round((reviewedAssignmentCount / save.assignments.length) * 100);
   const nextStep = useMemo(() => {
-    if (save.flags.chapterOneComplete) {
-      return { panel: 'notebook' as Panel, text: 'Chapter complete. Review the final consequence in your notebook and case record.' };
+    if (chapterComplete) {
+      return { panel: 'completion' as Panel, text: 'Chapter complete. Open the chapter summary to review what you achieved.' };
     }
     if (!objective) {
       return { panel: 'case' as Panel, text: 'Review your case file and notebook for what remains.' };
@@ -185,9 +192,12 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     if (notesNeeded) return { panel: 'evidence' as Panel, text: 'Record the required contradiction/corroboration note tied to reviewed evidence.' };
     if (flagsNeeded) return { panel: objective.assignmentId === 'a4' ? 'dialogue' as Panel : 'casework' as Panel, text: 'Complete the required casework milestone, then return to Assignments.' };
     return { panel: 'assignments' as Panel, text: 'Requirements met. Open Assignments and submit for senior evaluation.' };
-  }, [objective, save.flags.chapterOneComplete]);
+  }, [objective, chapterComplete]);
   // Dev-time guard: fail loudly if any future UI change starts projecting canonical truth.
-  if (import.meta.env.DEV) assertNoCanonicalTruthLeak(playerCase);
+  if (import.meta.env.DEV) {
+    assertNoCanonicalTruthLeak(playerCase);
+    assertNoCanonicalTruthLeak(completion);
+  }
 
   function update(mutator: (s: SaveGame) => SaveGame) {
     setSave((prev) => {
@@ -202,6 +212,12 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
       s.notebook.unshift(makeNotebookEntry(entry, s));
       return s;
     });
+  }
+
+  /** Dismiss first-day guidance and remember the choice across saves. */
+  function dismissHelp() {
+    setShowHelp(false);
+    update(markHelpSeen);
   }
 
   function setSourceField<K extends keyof SourceFormState>(key: K, value: SourceFormState[K]) {
@@ -339,7 +355,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
       return;
     }
     setDialogue(`Adv. Meera Kulkarni: "${result.consequence}"`);
-    setPanel('notebook');
+    setPanel('completion');
   }
 
   function doAdvanceTime() {
@@ -482,11 +498,72 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
             <span className="px-2 py-1 rounded border border-white/10 bg-bar-panel2/70 capitalize">{save.clock.slot}</span>
             <span className="px-2 py-1 rounded border border-white/10 bg-bar-panel2/70 capitalize">{save.player.careerStage.replace('_', ' ')}</span>
             <button type="button" className="px-2 py-1 border border-bar-gold/30 rounded hover:bg-white/5" onClick={doAdvanceTime}>Advance time</button>
+            <button
+              type="button"
+              className="px-2 py-1 border border-bar-gold/30 rounded hover:bg-white/5"
+              aria-expanded={showHelp}
+              aria-controls="how-to-play"
+              onClick={() => setShowHelp((v) => !v)}
+            >
+              How to play
+            </button>
+            {chapterComplete && (
+              <button
+                type="button"
+                className="px-2 py-1 border border-green-400/40 rounded text-green-200 hover:bg-green-400/10"
+                onClick={() => setPanel('completion')}
+                aria-current={panel === 'completion' ? 'page' : undefined}
+              >
+                Chapter summary
+              </button>
+            )}
             <button type="button" className="px-2 py-1 border border-bar-gold/30 rounded hover:bg-white/5" onClick={() => { persistSave(save); setDialogue('Saved locally.'); setPanel('dialogue'); }}>Save</button>
             <button type="button" className="px-2 py-1 border border-red-400/30 rounded text-red-200 hover:bg-red-400/10" onClick={() => { if (confirm('Reset local save?')) { setSave(resetSave()); setDraft(''); } }}>Reset</button>
           </div>
         </div>
       </header>
+
+      {showHelp && (
+        <section id="how-to-play" role="region" aria-labelledby="help-heading" className="px-4 pt-4">
+          <div className="bg-bar-panel2/60 border border-bar-gold/30 rounded-lg p-4 shadow-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.18em] text-bar-muted">First-day guidance</p>
+                <h2 id="help-heading" className="text-base text-bar-gold">How to play</h2>
+              </div>
+              <button
+                type="button"
+                className="px-2 py-1 border border-white/10 rounded text-xs text-bar-muted self-start hover:bg-white/5"
+                onClick={dismissHelp}
+              >
+                Got it — dismiss
+              </button>
+            </div>
+            <div className="mt-3 grid gap-4 md:grid-cols-2">
+              <div>
+                <h3 className="text-xs uppercase tracking-wide text-bar-muted">Core loop</h3>
+                <ol className="list-decimal ml-5 mt-1 space-y-1 text-xs sm:text-sm text-bar-muted">
+                  <li>Read the case file. Separate known facts from claims and unknowns.</li>
+                  <li>Discover and review evidence, then record your own provisional assessment.</li>
+                  <li>Add only verified sources to your notebook; unverified material is never authoritative.</li>
+                  <li>Complete each assignment, then advance time from the window or header to unlock the next day.</li>
+                  <li>Submit the brief for senior review, revise if asked, then submit the final brief on Day 10.</li>
+                </ol>
+              </div>
+              <div>
+                <h3 className="text-xs uppercase tracking-wide text-bar-muted">Guardrails</h3>
+                <ul className="list-disc ml-5 mt-1 space-y-1 text-xs sm:text-sm text-bar-muted">
+                  <li>Never fabricate a statute, judgment, citation or procedural rule.</li>
+                  <li>Only verified sources may be cited as law; Source Intake creates drafts, never verified authority.</li>
+                  <li>The true sequence of events, responsibility and authenticity are never revealed — record what you can support, not guesses.</li>
+                  <li>Your notebook, memories and standing change with careful work; the case closes on Day 10.</li>
+                </ul>
+              </div>
+            </div>
+            <p className="text-[11px] text-bar-muted mt-3">You can reopen this guide any time with “How to play” in the header.</p>
+          </div>
+        </section>
+      )}
 
       <div className="px-4 pt-4">
         <div className="bg-bar-panel border border-bar-gold/20 rounded-lg p-4 shadow-sm" role="status" aria-live="polite">
@@ -625,6 +702,78 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
               );
             })}
           </nav>
+
+          {panel === 'completion' && (
+            <div className="space-y-4 text-sm">
+              {!chapterComplete ? (
+                <div className="bg-bar-panel2 p-4 rounded border border-yellow-400/30">
+                  <p className="text-sm">The chapter is not complete yet. Submit the final brief on Day 10 to unlock this summary.</p>
+                  <button type="button" className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => setPanel('case')}>Back to case file</button>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-bar-panel2 p-4 rounded border border-green-400/30">
+                    <p className="text-[11px] uppercase tracking-wide text-green-200/80">End of chapter · Day {completion.day} / {completion.finalDay}</p>
+                    <h3 className="text-lg text-bar-gold mt-1">{completion.title}</h3>
+                    <p className="text-sm mt-2">{completion.outcome}</p>
+                    <p className="text-xs text-bar-muted mt-2">Case {completion.caseStatus}. {completion.closingNote}</p>
+                  </div>
+
+                  <section aria-labelledby="completion-achievements-heading" className="bg-bar-panel2 p-3 rounded border border-white/5">
+                    <h3 id="completion-achievements-heading" className="text-xs uppercase tracking-wide text-bar-gold">What you achieved</h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2 text-xs">
+                      <div className="bg-bar-bg/40 p-2 rounded">Competence <span className="text-bar-text font-medium">{completion.reputation.competence}</span></div>
+                      <div className="bg-bar-bg/40 p-2 rounded">Integrity <span className="text-bar-text font-medium">{completion.reputation.integrity}</span></div>
+                      <div className="bg-bar-bg/40 p-2 rounded">Reliability <span className="text-bar-text font-medium">{completion.reputation.reliability}</span></div>
+                    </div>
+                    <p className="text-xs text-bar-muted mt-2">
+                      Career stage: <span className="capitalize">{completion.careerStage.replace('_', ' ')}</span> · Assignments reviewed: {completion.assignmentsCompletedCount}/{completion.assignmentsTotal}
+                    </p>
+                    <ul className="list-disc ml-5 mt-1 text-xs text-bar-muted">
+                      {completion.assignmentsCompleted.map((a) => <li key={a.id}>{a.title}</li>)}
+                    </ul>
+                  </section>
+
+                  <section aria-labelledby="completion-relationships-heading" className="bg-bar-panel2 p-3 rounded border border-white/5">
+                    <h3 id="completion-relationships-heading" className="text-xs uppercase tracking-wide text-bar-gold">Relationship highlights</h3>
+                    <ul className="grid gap-1 mt-2 text-xs text-bar-muted sm:grid-cols-2">
+                      {completion.relationships.map((r) => (
+                        <li key={r.characterId}>{r.name} ({r.role}): trust {r.trust} · respect {r.respect} · loyalty {r.loyalty}</li>
+                      ))}
+                    </ul>
+                  </section>
+
+                  <section aria-labelledby="completion-evidence-heading" className="bg-bar-panel2 p-3 rounded border border-white/5">
+                    <h3 id="completion-evidence-heading" className="text-xs uppercase tracking-wide text-bar-gold">Key evidence discovered ({completion.evidenceDiscovered.length})</h3>
+                    {completion.evidenceDiscovered.length === 0 ? (
+                      <p className="text-xs text-bar-muted mt-1">No evidence was discovered.</p>
+                    ) : (
+                      <ul className="list-disc ml-5 mt-1 text-xs text-bar-muted">
+                        {completion.evidenceDiscovered.map((e) => <li key={e.id}>{e.title} · {e.type}{e.reviewed ? ' · reviewed' : ''}</li>)}
+                      </ul>
+                    )}
+                  </section>
+
+                  <section aria-labelledby="completion-memory-heading" className="bg-bar-panel2 p-3 rounded border border-white/5">
+                    <h3 id="completion-memory-heading" className="text-xs uppercase tracking-wide text-bar-gold">Memory highlights</h3>
+                    <ul className="list-disc ml-5 mt-1 text-xs text-bar-muted">
+                      {completion.memoryHighlights.map((m, i) => <li key={i}>{m}</li>)}
+                    </ul>
+                  </section>
+
+                  <section aria-labelledby="completion-questions-heading" className="bg-bar-panel2 p-3 rounded border border-white/5">
+                    <h3 id="completion-questions-heading" className="text-xs uppercase tracking-wide text-bar-gold">Unresolved ambiguities</h3>
+                    <p className="text-xs text-bar-muted mt-1">The file records open questions; the case is closed on your work, not on certainty.</p>
+                    <ul className="list-disc ml-5 mt-1 text-xs text-bar-muted">
+                      {completion.openQuestions.map((q, i) => <li key={i}>{q}</li>)}
+                    </ul>
+                  </section>
+
+                  <button type="button" className="px-3 py-1 border border-bar-gold/40 rounded text-xs" onClick={() => setPanel('notebook')}>Review the full notebook →</button>
+                </>
+              )}
+            </div>
+          )}
 
           {panel === 'dialogue' && (
             <div className="space-y-3 text-sm">
