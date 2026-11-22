@@ -71,3 +71,9 @@ _bmad/
 _bmad-output/
 .github-copilot/
 .opencode/bin/
+
+# Local screenshots/tool state
+project-investigation/frontend/ui-screenshots/
+.playwright-mcp/
+.gitconfig
+.npmrc

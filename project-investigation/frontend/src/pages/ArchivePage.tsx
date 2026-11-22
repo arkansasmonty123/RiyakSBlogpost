@@ -53,7 +53,7 @@ export const ArchivePage = () => {
   }, []);
 
   return (
-    <div className="archive-page">
+    <div className="archive-page page-enter">
       <div className="page-heading">
         <div>
           <h2>Case Archive</h2>

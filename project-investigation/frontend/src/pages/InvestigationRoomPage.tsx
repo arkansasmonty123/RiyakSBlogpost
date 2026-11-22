@@ -466,7 +466,7 @@ export const InvestigationRoomPage = () => {
 
   if (loadError) {
     return (
-      <div className="investigation-room">
+      <div className="investigation-room page-enter">
         <div className="error">Unable to open the investigation: {loadError}</div>
         <Link className="text-link" to="/">Back to case library</Link>
       </div>
@@ -475,7 +475,7 @@ export const InvestigationRoomPage = () => {
 
   if (conflict) {
     return (
-      <div className="investigation-room">
+      <div className="investigation-room page-enter">
         <div className="conflict-panel">
           <h2>Another case is already active</h2>
           <p>
@@ -511,7 +511,7 @@ export const InvestigationRoomPage = () => {
   }
 
   return (
-    <div className="investigation-room">
+    <div className="investigation-room page-enter">
       <div className="page-heading">
         <div>
           <h2>{caseInfo?.title ?? 'Investigation Room'}</h2>
@@ -645,7 +645,7 @@ export const InvestigationRoomPage = () => {
         ))}
       </nav>
 
-      <div className="tab-panel">
+      <div className="tab-panel" key={activeTab}>
         {activeTab === 'chat' && (
           <section>
             <h3>Group Chat</h3>
