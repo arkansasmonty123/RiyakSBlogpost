@@ -68,6 +68,103 @@ export function addTheoryClaim(
   return { ok: true, claim, notebookEntry };
 }
 
+/** Evidence the player may legitimately rely on in a theory claim. */
+export function reviewedTheoryEvidence(save: SaveGame) {
+  return save.caseFile.evidence.filter((e) => e.discovered && e.reviewed);
+}
+
+export interface TheorySupport {
+  claimId: string;
+  linkedEvidenceIds: string[];
+  /** Linked items the player actually discovered and reviewed. */
+  reviewedEvidenceIds: string[];
+  /** Stale links (e.g. from an older save) that cannot be relied upon yet. */
+  unavailableEvidenceIds: string[];
+  hasReviewedEvidence: boolean;
+}
+
+/**
+ * Describe, deterministically, which claims are backed by reviewed evidence in the
+ * player's own file. This is a link count, never a finding on truth or authenticity.
+ */
+export function getTheorySupport(save: SaveGame): TheorySupport[] {
+  const reviewed = new Set(reviewedTheoryEvidence(save).map((e) => e.id));
+  return save.caseTheory.claims.map((claim) => {
+    const linkedEvidenceIds = [...new Set(claim.evidenceIds)];
+    const reviewedEvidenceIds = linkedEvidenceIds.filter((id) => reviewed.has(id));
+    const unavailableEvidenceIds = linkedEvidenceIds.filter((id) => !reviewed.has(id));
+    return {
+      claimId: claim.id,
+      linkedEvidenceIds,
+      reviewedEvidenceIds,
+      unavailableEvidenceIds,
+      hasReviewedEvidence: reviewedEvidenceIds.length > 0,
+    };
+  });
+}
+
+export interface TheoryLinkResult {
+  ok: boolean;
+  reason?: string;
+  claim?: TheoryClaim;
+}
+
+function claimById(save: SaveGame, claimId: string): TheoryClaim | undefined {
+  return save.caseTheory.claims.find((c) => c.id === claimId);
+}
+
+/**
+ * Replace the evidence links on an existing claim. Only discovered + reviewed items may
+ * be linked; the operation is a deterministic edit of the player's own working theory.
+ */
+export function setClaimEvidenceLinks(
+  save: SaveGame,
+  claimId: string,
+  evidenceIds: string[],
+): TheoryLinkResult {
+  const claim = claimById(save, claimId);
+  if (!claim) return { ok: false, reason: 'Claim not found.' };
+  const reviewed = new Set(reviewedTheoryEvidence(save).map((e) => e.id));
+  const links = [...new Set(evidenceIds)];
+  if (links.some((id) => !reviewed.has(id))) {
+    return { ok: false, reason: 'Link only evidence you have discovered and reviewed.' };
+  }
+  claim.evidenceIds = links;
+  return { ok: true, claim };
+}
+
+/** Add reviewed evidence links to an existing claim without dropping existing links. */
+export function linkReviewedEvidence(
+  save: SaveGame,
+  claimId: string,
+  evidenceIds: string[],
+): TheoryLinkResult {
+  const claim = claimById(save, claimId);
+  if (!claim) return { ok: false, reason: 'Claim not found.' };
+  const reviewed = new Set(reviewedTheoryEvidence(save).map((e) => e.id));
+  const additions = [...new Set(evidenceIds)];
+  if (additions.some((id) => !reviewed.has(id))) {
+    return { ok: false, reason: 'Link only evidence you have discovered and reviewed.' };
+  }
+  claim.evidenceIds = [...new Set([...claim.evidenceIds, ...additions])];
+  return { ok: true, claim };
+}
+
+/** Remove one evidence link from an existing claim. */
+export function unlinkReviewedEvidence(
+  save: SaveGame,
+  claimId: string,
+  evidenceId: string,
+): TheoryLinkResult {
+  const claim = claimById(save, claimId);
+  if (!claim) return { ok: false, reason: 'Claim not found.' };
+  if (!claim.evidenceIds.includes(evidenceId)) {
+    return { ok: false, reason: 'This item is not linked to that claim.' };
+  }
+  claim.evidenceIds = claim.evidenceIds.filter((id) => id !== evidenceId);
+  return { ok: true, claim };
+}
+
 /** Group claims by status for an accessible, organised theory view. */
 export function groupTheoryClaims(save: SaveGame): Record<TheoryStatus, TheoryClaim[]> {
   return {

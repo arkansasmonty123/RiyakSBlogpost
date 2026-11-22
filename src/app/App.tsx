@@ -5,6 +5,8 @@ import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/compl
 import { markHelpSeen, shouldShowHelp } from '@/domain/onboarding';
 import { canCiteAsAuthoritative, intakeSource, MAX_SOURCE_FIELDS, SOURCE_JURISDICTIONS, SOURCE_TYPES } from '@/domain/legalSources';
 import { assertNoCanonicalTruthLeak, toPlayerCaseView } from '@/domain/caseAccess';
+import { buildCaseJournal, groupJournalByDay, JOURNAL_KINDS } from '@/domain/journal';
+import type { JournalKind } from '@/domain/journal';
 import { advanceClock, currentObjective, isAssignmentUnlocked, makeId, MAX_DAY, reviewAssignment } from '@/domain/progression';
 import { applyDialogueChoice, availableDialogueScenes } from '@/domain/dialogue';
 import { addEvidenceNote, discoverEvidenceItem, reviewEvidence, setEvidenceAssessment } from '@/domain/evidence';
@@ -17,7 +19,13 @@ import {
   submitSeniorReview,
 } from '@/domain/casework';
 import { loadDraftVersion, MAX_DRAFT_CHARS, saveDraftVersion, setCurrentDraft } from '@/domain/draft';
-import { addTheoryClaim, groupTheoryClaims, THEORY_STATUSES } from '@/domain/theory';
+import {
+  addTheoryClaim,
+  getTheorySupport,
+  groupTheoryClaims,
+  setClaimEvidenceLinks,
+  THEORY_STATUSES,
+} from '@/domain/theory';
 import type {
   Admissibility,
   Assignment,
@@ -59,6 +67,7 @@ const VIEWPOINTS: Record<string, { label: string; description: string; hotspots:
       { id: 'notebook', label: 'Notebook', action: 'panel:notebook' },
       { id: 'evidence', label: 'Evidence', action: 'panel:evidence' },
       { id: 'casework', label: 'Casework', action: 'panel:casework' },
+      { id: 'journal', label: 'Timeline / Journal', action: 'panel:journal' },
       { id: 'back', label: 'Back to Entrance', action: 'view:entrance' },
     ],
   },
@@ -72,7 +81,7 @@ const VIEWPOINTS: Record<string, { label: string; description: string; hotspots:
   },
 };
 
-const PANELS = ['case', 'assignments', 'evidence', 'casework', 'theory', 'research', 'draft', 'notebook', 'dialogue'] as const;
+const PANELS = ['case', 'assignments', 'evidence', 'casework', 'theory', 'research', 'draft', 'notebook', 'journal', 'dialogue'] as const;
 type WorkPanel = (typeof PANELS)[number];
 /** `completion` is reached only after the final brief closes the chapter. */
 type Panel = WorkPanel | 'completion';
@@ -135,6 +144,9 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const [theoryStatus, setTheoryStatus] = useState<TheoryStatus>('known');
   const [theoryEvidenceIds, setTheoryEvidenceIds] = useState<string[]>([]);
   const [notebookFilter, setNotebookFilter] = useState<'all' | NotebookEntry['kind']>('all');
+  const [journalFilter, setJournalFilter] = useState<'all' | JournalKind>('all');
+  const [editingClaimId, setEditingClaimId] = useState<string | null>(null);
+  const [editingLinks, setEditingLinks] = useState<string[]>([]);
   const [showHelp, setShowHelp] = useState(() => shouldShowHelp(save));
 
   const viewpoint = VIEWPOINTS[save.selectedViewpoint] ?? VIEWPOINTS.entrance;
@@ -153,6 +165,18 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     () => [...new Set(save.notebook.map((n) => n.kind))],
     [save.notebook],
   );
+  const journal = useMemo(() => buildCaseJournal(save), [save]);
+  const journalCounts = useMemo(() => {
+    const counts: Record<JournalKind, number> = { event: 0, evidence: 0, note: 0, casework: 0, theory: 0 };
+    for (const entry of journal) counts[entry.kind] += 1;
+    return counts;
+  }, [journal]);
+  const theorySupport = useMemo(() => getTheorySupport(save), [save]);
+  const supportByClaimId = useMemo(
+    () => new Map(theorySupport.map((s) => [s.claimId, s])),
+    [theorySupport],
+  );
+  const unsupportedClaimCount = theorySupport.filter((s) => !s.hasReviewedEvidence).length;
   const chapterComplete = isChapterComplete(save);
   const completion = useMemo(() => buildChapterCompletionSummary(save), [save]);
   const caseTargetId = caseTarget || reviewedEvidence[0]?.id || '';
@@ -197,6 +221,8 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   if (import.meta.env.DEV) {
     assertNoCanonicalTruthLeak(playerCase);
     assertNoCanonicalTruthLeak(completion);
+    assertNoCanonicalTruthLeak(journal);
+    assertNoCanonicalTruthLeak(theorySupport);
   }
 
   function update(mutator: (s: SaveGame) => SaveGame) {
@@ -253,7 +279,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
       s.memories.unshift({ id: makeId('m'), day: s.clock.day, summary: `Discovered evidence: ${ev.title}`, participants: ['player'] });
       s.notebook.unshift(makeNotebookEntry({
         kind: 'fact', title: `Evidence: ${ev.title}`, content: ev.description,
-        source: ev.provenance, verified: false,
+        source: ev.provenance, verified: false, evidenceId: ev.id,
       }, s));
       return s;
     });
@@ -320,6 +346,35 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
 
   function toggleTheoryEvidence(id: string) {
     setTheoryEvidenceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  /** Carry a reviewed item straight from the Evidence panel into a new theory claim. */
+  function useEvidenceInTheory(id: string) {
+    setTheoryEvidenceIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setPanel('theory');
+  }
+
+  function openLinkEditor(claimId: string) {
+    const claim = save.caseTheory.claims.find((c) => c.id === claimId);
+    if (!claim) return;
+    const available = new Set(reviewedEvidence.map((e) => e.id));
+    setEditingLinks(claim.evidenceIds.filter((id) => available.has(id)));
+    setEditingClaimId(claimId);
+  }
+
+  function toggleEditingLink(id: string) {
+    setEditingLinks((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function doSaveClaimLinks(claimId: string) {
+    const outcome: { result?: ReturnType<typeof setClaimEvidenceLinks> } = {};
+    update((s) => { outcome.result = setClaimEvidenceLinks(s, claimId, editingLinks); return s; });
+    if (outcome.result?.ok) {
+      setEditingClaimId(null);
+      setDialogue('System: Evidence links updated. This records what you relied on, not a finding on authenticity or responsibility.');
+    } else {
+      setDialogue(`System: ${outcome.result?.reason ?? 'Unable to update evidence links.'}`);
+    }
   }
 
   function doAddTheory() {
@@ -902,6 +957,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                           <div className="flex gap-2 flex-wrap">
                             <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => { setNoteTarget(ev.id); setNoteRelation('contradiction'); setNoteText(''); }}>Note contradiction</button>
                             <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => { setNoteTarget(ev.id); setNoteRelation('corroboration'); setNoteText(''); }}>Note corroboration</button>
+                            <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => useEvidenceInTheory(ev.id)}>Use in theory →</button>
                           </div>
                         </div>
                       ) : null}
@@ -1047,6 +1103,21 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                 <p className="text-xs text-bar-muted">Record what you know, what is merely claimed, and what remains disputed. Every claim is your own working note; link only evidence you have discovered and reviewed. This panel never determines authenticity or responsibility.</p>
               </div>
 
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-1">Evidence link summary</div>
+                <p className="text-xs text-bar-muted">
+                  {save.caseTheory.claims.length === 0
+                    ? 'No claims recorded yet.'
+                    : `${theorySupport.filter((s) => s.hasReviewedEvidence).length} of ${save.caseTheory.claims.length} claims are linked to reviewed evidence.`}
+                </p>
+                {unsupportedClaimCount > 0 && (
+                  <p className="text-xs text-yellow-200 mt-1">
+                    {unsupportedClaimCount} claim(s) have no reviewed evidence linked. Edit a claim below to link the items you relied on.
+                  </p>
+                )}
+                <p role="note" className="text-xs text-bar-muted mt-2">A link only records which reviewed items you relied on. It is not a finding that the claim is true or that any item is authentic.</p>
+              </div>
+
               <div className="bg-bar-panel2 p-3 rounded border border-bar-gold/30 grid gap-2">
                 <label className="text-xs flex flex-col gap-1">Your claim
                   <textarea aria-label="Case theory claim" className="bg-bar-bg border border-white/10 rounded p-2 min-h-20" maxLength={1000} value={theoryText} onChange={(e) => setTheoryText(e.target.value)} placeholder="e.g. The medical report notes a minor injury, but its timing is not established." />
@@ -1081,12 +1152,55 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                     <p className="text-xs text-bar-muted">No {status} claims yet.</p>
                   ) : (
                     <ul className="grid gap-2">
-                      {groupedTheory[status].map((c) => (
-                        <li key={c.id} className="text-xs border-l-2 border-bar-gold/30 pl-2">
-                          <div>{c.text}</div>
-                          <div className="text-bar-muted mt-1">Day {c.day}{c.evidenceIds.length ? ` · Linked: ${c.evidenceIds.map((id) => evidenceTitleById.get(id) ?? id).join(', ')}` : ''}</div>
-                        </li>
-                      ))}
+                      {groupedTheory[status].map((c) => {
+                        const support = supportByClaimId.get(c.id);
+                        const linkedIds = support?.reviewedEvidenceIds ?? [];
+                        return (
+                          <li key={c.id} className="text-xs border-l-2 border-bar-gold/30 pl-2">
+                            <div>{c.text}</div>
+                            <div className="text-bar-muted mt-1">Day {c.day}{linkedIds.length ? ` · Linked: ${linkedIds.map((id) => evidenceTitleById.get(id) ?? id).join(', ')}` : ''}</div>
+                            <div className={`mt-1 ${support?.hasReviewedEvidence ? 'text-green-200' : 'text-yellow-200'}`}>
+                              {support?.hasReviewedEvidence
+                                ? `Supported by reviewed evidence: ${linkedIds.length} item(s).`
+                                : 'Unsupported — no reviewed evidence linked.'}
+                            </div>
+                            {!!support?.unavailableEvidenceIds.length && (
+                              <div className="text-yellow-200 mt-1">
+                                Unavailable links (not reviewed): {support.unavailableEvidenceIds.map((id) => evidenceTitleById.get(id) ?? id).join(', ')}
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                              aria-expanded={editingClaimId === c.id}
+                              onClick={() => (editingClaimId === c.id ? setEditingClaimId(null) : openLinkEditor(c.id))}
+                            >
+                              {editingClaimId === c.id ? 'Close evidence links' : 'Edit evidence links'}
+                            </button>
+                            {editingClaimId === c.id && (
+                              <fieldset className="mt-2 text-xs">
+                                <legend className="text-bar-gold mb-1">Link reviewed evidence to this claim</legend>
+                                {reviewedEvidence.length === 0 ? (
+                                  <p className="text-bar-muted">Review an evidence item in the Evidence panel first.</p>
+                                ) : (
+                                  <div className="grid gap-1">
+                                    {reviewedEvidence.map((e) => (
+                                      <label key={e.id} className="flex items-center gap-2">
+                                        <input type="checkbox" checked={editingLinks.includes(e.id)} onChange={() => toggleEditingLink(e.id)} />
+                                        {e.title}
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="flex gap-2 mt-2">
+                                  <button type="button" className="px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => doSaveClaimLinks(c.id)}>Save links</button>
+                                  <button type="button" className="px-2 py-1 border border-white/10 rounded text-xs text-bar-muted" onClick={() => setEditingClaimId(null)}>Cancel</button>
+                                </div>
+                              </fieldset>
+                            )}
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </section>
@@ -1241,6 +1355,78 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                 )}
               </div>
               <p className="text-xs text-bar-muted">Deterministic feedback only in P0. Any legal references must be verified; no fabricated citations.</p>
+            </div>
+          )}
+
+          {panel === 'journal' && (
+            <div className="space-y-3 text-sm">
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-1">Case timeline / journal</div>
+                <p className="text-xs text-bar-muted">A chronological record of what you have legitimately learned and written. It contains only player-visible information: the true sequence of events, responsibility and authenticity are never recorded here.</p>
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-1">Current case-file knowledge (undated notes)</div>
+                {playerCase.playerKnowledge.length === 0 ? (
+                  <p className="text-xs text-bar-muted">No case-file notes recorded.</p>
+                ) : (
+                  <ul className="list-disc ml-5 text-xs text-bar-muted">
+                    {playerCase.playerKnowledge.map((k, i) => <li key={i}>{k}</li>)}
+                  </ul>
+                )}
+              </div>
+
+              <div role="group" aria-label="Filter journal by kind" className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  aria-pressed={journalFilter === 'all'}
+                  onClick={() => setJournalFilter('all')}
+                  className={`px-2 py-1 rounded border text-xs ${journalFilter === 'all' ? 'border-bar-gold text-bar-gold' : 'border-white/10 text-bar-muted'}`}
+                >
+                  All ({journal.length})
+                </button>
+                {JOURNAL_KINDS.map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    aria-pressed={journalFilter === kind}
+                    onClick={() => setJournalFilter(kind)}
+                    className={`px-2 py-1 rounded border text-xs ${journalFilter === kind ? 'border-bar-gold text-bar-gold' : 'border-white/10 text-bar-muted'}`}
+                  >
+                    {kind} ({journalCounts[kind]})
+                  </button>
+                ))}
+              </div>
+
+              {(() => {
+                const visible = journalFilter === 'all' ? journal : journal.filter((e) => e.kind === journalFilter);
+                const days = groupJournalByDay(visible);
+                if (days.length === 0) {
+                  return <p className="text-xs text-bar-muted bg-bar-panel2 p-3 rounded border border-white/5">No journal entries for this filter yet.</p>;
+                }
+                return (
+                  <ol aria-label="Case timeline" className="space-y-3">
+                    {days.map((group) => (
+                      <li key={group.day} className="bg-bar-panel2 p-3 rounded border border-white/5">
+                        <h3 className="text-bar-gold text-xs uppercase tracking-wide mb-2">Day {group.day}</h3>
+                        <ol className="grid gap-2">
+                          {group.entries.map((entry) => (
+                            <li key={entry.id} className="border-l-2 border-bar-gold/30 pl-2">
+                              <div className="flex justify-between gap-2 flex-wrap">
+                                <span className="text-bar-gold">{entry.title}</span>
+                                <span className="text-[11px] uppercase tracking-wide text-bar-muted">{entry.kind}</span>
+                              </div>
+                              <p className="text-xs mt-1 whitespace-pre-wrap">{entry.detail}</p>
+                              {entry.source && <p className="text-xs text-bar-muted mt-1">Provenance: {entry.source}</p>}
+                              {entry.evidenceId && <p className="text-xs text-bar-muted mt-1">Evidence: {evidenceTitleById.get(entry.evidenceId) ?? entry.evidenceId}</p>}
+                            </li>
+                          ))}
+                        </ol>
+                      </li>
+                    ))}
+                  </ol>
+                );
+              })()}
             </div>
           )}
 

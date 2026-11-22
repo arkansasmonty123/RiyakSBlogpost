@@ -12,6 +12,7 @@ describe('App render smoke test', () => {
   const researchHtml = renderToString(<App initialPanel="research" />).replace(/<!-- -->/g, '');
   const theoryHtml = renderToString(<App initialPanel="theory" />).replace(/<!-- -->/g, '');
   const caseworkHtml = renderToString(<App initialPanel="casework" />).replace(/<!-- -->/g, '');
+  const journalHtml = renderToString(<App initialPanel="journal" />).replace(/<!-- -->/g, '');
 
   it('renders the prototype shell, day clock and current objective', () => {
     expect(html).toContain('THE BAR');
@@ -45,10 +46,28 @@ describe('App render smoke test', () => {
     expect(theoryHtml).toContain('Case theory — organise your working file');
     expect(theoryHtml).toContain('aria-label="Case theory claim"');
     expect(theoryHtml).toContain('Link reviewed evidence');
+    expect(theoryHtml).toContain('Evidence link summary');
+    expect(theoryHtml).toContain('No claims recorded yet.');
+    expect(theoryHtml).toContain('A link only records which reviewed items you relied on');
     expect(theoryHtml).toContain('known (0)');
     expect(theoryHtml).toContain('claimed (0)');
     expect(theoryHtml).toContain('disputed (0)');
     const lower = theoryHtml.toLowerCase();
+    for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
+      expect(lower).not.toContain(forbidden);
+    }
+  });
+
+  it('renders a chronological journal of player-visible information only', () => {
+    expect(journalHtml).toContain('Case timeline / journal');
+    expect(journalHtml).toContain('Current case-file knowledge (undated notes)');
+    expect(journalHtml).toContain('An altercation was reported outside a canteen.');
+    expect(journalHtml).toContain('aria-label="Case timeline"');
+    expect(journalHtml).toContain('Day 1');
+    expect(journalHtml).toContain('First day');
+    expect(journalHtml).toContain('Noted event');
+    expect(journalHtml).toContain('aria-label="Filter journal by kind"');
+    const lower = journalHtml.toLowerCase();
     for (const forbidden of ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidenceauthenticity', 'prior dispute', '18:12']) {
       expect(lower).not.toContain(forbidden);
     }
