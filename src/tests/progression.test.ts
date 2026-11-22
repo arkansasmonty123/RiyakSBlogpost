@@ -107,6 +107,7 @@ describe('day-based assignment progression', () => {
     discoverAndReview(save, 'ev-3');
     addEvidenceNote(save, 'ev-3', 'contradiction', 'The eyewitness account conflicts with the gap in the clip.');
     expect(reviewAssignment(save, 'a3').ok).toBe(true);
-    expect(currentObjective(save)).toBeNull();
+    // The extended chapter continues with the Day 6 client-interview record.
+    expect(currentObjective(save)?.assignmentId).toBe('a4');
   });
 });

@@ -61,6 +61,10 @@ export interface DialogueChoice {
   effects: RelationshipEffect[];
   /** A specific, player-legible event that the character remembers. Never canonical truth. */
   memory: string;
+  /** Player-knowledge facts legitimately learned from this exchange (never canonical truth). */
+  reveals?: string[];
+  /** Optional milestone flag set when this choice is resolved. */
+  setsFlag?: string;
 }
 
 export interface DialogueScene {
@@ -153,6 +157,38 @@ export interface NotebookEntry {
   relation?: 'contradiction' | 'corroboration';
 }
 
+/** Grounds a player may legitimately question about an item's use in a case. */
+export type ChallengeGround = 'relevance' | 'reliability' | 'custody' | 'provenance';
+
+/** A player-authored observation about how an item was handled. Never canonical truth. */
+export interface CustodyObservation {
+  id: string;
+  day: number;
+  evidenceId: string;
+  observation: string;
+}
+
+/** A player-authored challenge to how an item may be relied upon. */
+export interface AdmissibilityChallenge {
+  id: string;
+  day: number;
+  evidenceId: string;
+  ground: ChallengeGround;
+  rationale: string;
+}
+
+/** One deterministic senior-review submission, enabling a submit → revise → resubmit loop. */
+export interface ReviewRound {
+  id: string;
+  day: number;
+  assignmentId: string;
+  round: number;
+  status: 'needs_revision' | 'accepted';
+  feedback: string;
+  strengths: string[];
+  gaps: string[];
+}
+
 export type AssignmentStatus = 'locked' | 'pending' | 'active' | 'submitted' | 'reviewed';
 
 export interface Assignment {
@@ -168,6 +204,10 @@ export interface Assignment {
   requiredSourceIds: string[];
   /** Notebook kinds the player must produce before this assignment can be reviewed. */
   requiredNotebookKinds?: NotebookEntry['kind'][];
+  /** Milestone flags the player must have earned before this assignment can be reviewed. */
+  requiredFlags?: string[];
+  /** Senior review cannot accept the first submission; the player must revise and resubmit. */
+  requiresRevisionLoop?: boolean;
   feedback?: string;
 }
 
@@ -201,4 +241,8 @@ export interface SaveGame {
   /** Static dialogue scenes the player has already resolved (by scene id). */
   usedDialogueSceneIds: string[];
   draft: DraftState;
+  /** Player-authored casework. All fields are player-legible; none touch canonical truth. */
+  custodyLog: CustodyObservation[];
+  challenges: AdmissibilityChallenge[];
+  reviewRounds: ReviewRound[];
 }

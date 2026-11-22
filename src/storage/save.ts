@@ -93,6 +93,10 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
         ? parsed.usedDialogueSceneIds.filter((id): id is string => typeof id === 'string')
         : base.usedDialogueSceneIds,
       draft: mergeDraft(base.draft, parsed.draft),
+      // Extended Day 1–10 casework: absent in older saves, so fall back to defaults.
+      custodyLog: Array.isArray(parsed.custodyLog) ? parsed.custodyLog : base.custodyLog,
+      challenges: Array.isArray(parsed.challenges) ? parsed.challenges : base.challenges,
+      reviewRounds: Array.isArray(parsed.reviewRounds) ? parsed.reviewRounds : base.reviewRounds,
     };
   } catch {
     return createInitialSave();

@@ -2,13 +2,15 @@ import { useMemo, useState } from 'react';
 import { loadSave, persistSave, resetSave } from '@/storage/save';
 import { checkDraftCitations } from '@/domain/guards';
 import { assertNoCanonicalTruthLeak, toPlayerCaseView } from '@/domain/caseAccess';
-import { advanceClock, currentObjective, isAssignmentUnlocked, makeId, reviewAssignment } from '@/domain/progression';
+import { advanceClock, currentObjective, isAssignmentUnlocked, makeId, MAX_DAY, reviewAssignment } from '@/domain/progression';
 import { applyDialogueChoice, availableDialogueScenes } from '@/domain/dialogue';
 import { addEvidenceNote, discoverEvidenceItem, reviewEvidence, setEvidenceAssessment } from '@/domain/evidence';
+import { challengeEvidenceAdmissibility, recordCustodyObservation, submitFinalBrief, submitSeniorReview } from '@/domain/casework';
 import { loadDraftVersion, MAX_DRAFT_CHARS, saveDraftVersion, setCurrentDraft } from '@/domain/draft';
 import type {
   Admissibility,
   Assignment,
+  ChallengeGround,
   NotebookEntry,
   Reliability,
   SaveGame,
@@ -42,6 +44,7 @@ const VIEWPOINTS: Record<string, { label: string; description: string; hotspots:
       { id: 'research', label: 'Legal Research', action: 'panel:research' },
       { id: 'notebook', label: 'Notebook', action: 'panel:notebook' },
       { id: 'evidence', label: 'Evidence', action: 'panel:evidence' },
+      { id: 'casework', label: 'Casework', action: 'panel:casework' },
       { id: 'back', label: 'Back to Entrance', action: 'view:entrance' },
     ],
   },
@@ -55,7 +58,7 @@ const VIEWPOINTS: Record<string, { label: string; description: string; hotspots:
   },
 };
 
-const PANELS = ['case', 'assignments', 'evidence', 'research', 'draft', 'notebook', 'dialogue'] as const;
+const PANELS = ['case', 'assignments', 'evidence', 'casework', 'research', 'draft', 'notebook', 'dialogue'] as const;
 type Panel = (typeof PANELS)[number];
 
 function makeNotebookEntry(entry: Omit<NotebookEntry, 'id' | 'day'>, save: SaveGame): NotebookEntry {
@@ -72,6 +75,12 @@ export function App() {
   const [noteTarget, setNoteTarget] = useState<string | null>(null);
   const [noteRelation, setNoteRelation] = useState<'contradiction' | 'corroboration'>('contradiction');
   const [noteText, setNoteText] = useState('');
+  const [caseTarget, setCaseTarget] = useState('');
+  const [custodyText, setCustodyText] = useState('');
+  const [challengeGround, setChallengeGround] = useState<ChallengeGround>('relevance');
+  const [challengeText, setChallengeText] = useState('');
+  const [reviewSummary, setReviewSummary] = useState('');
+  const [finalSummary, setFinalSummary] = useState('');
 
   const viewpoint = VIEWPOINTS[save.selectedViewpoint] ?? VIEWPOINTS.entrance;
   // The UI only ever reads the sanitized player view, never the canonical case file.
@@ -79,6 +88,10 @@ export function App() {
   const objective = useMemo(() => currentObjective(save), [save]);
   const dialogueScenes = useMemo(() => availableDialogueScenes(save), [save]);
   const discoveredCount = playerCase.evidence.filter((e) => e.discovered).length;
+  const reviewedEvidence = playerCase.evidence.filter((e) => e.reviewed);
+  const caseTargetId = caseTarget || reviewedEvidence[0]?.id || '';
+  const a7 = save.assignments.find((a) => a.id === 'a7');
+  const a8 = save.assignments.find((a) => a.id === 'a8');
   // Dev-time guard: fail loudly if any future UI change starts projecting canonical truth.
   if (import.meta.env.DEV) assertNoCanonicalTruthLeak(playerCase);
 
@@ -148,6 +161,52 @@ export function App() {
       setDialogue('System: Note recorded in your notebook, tied to the reviewed evidence item.');
       setPanel('notebook');
     }
+  }
+
+  function doRecordCustody() {
+    const outcome: { result?: ReturnType<typeof recordCustodyObservation> } = {};
+    update((s) => { outcome.result = recordCustodyObservation(s, caseTargetId, custodyText); return s; });
+    if (outcome.result?.ok) {
+      setCustodyText('');
+      setDialogue('System: Chain-of-custody observation logged in your notebook. Authenticity is still undetermined.');
+    } else {
+      setDialogue(`System: ${outcome.result?.reason ?? 'Unable to log custody.'}`);
+    }
+  }
+
+  function doChallenge() {
+    const outcome: { result?: ReturnType<typeof challengeEvidenceAdmissibility> } = {};
+    update((s) => { outcome.result = challengeEvidenceAdmissibility(s, caseTargetId, challengeGround, challengeText); return s; });
+    if (outcome.result?.ok) {
+      setChallengeText('');
+      setDialogue(`${outcome.result.feedback}\n\nRemembered: Challenge recorded on ${challengeGround} grounds.`);
+    } else {
+      setDialogue(`System: ${outcome.result?.reason ?? 'Unable to record challenge.'}`);
+    }
+  }
+
+  function doSeniorReview() {
+    const outcome: { result?: ReturnType<typeof submitSeniorReview> } = {};
+    update((s) => { outcome.result = submitSeniorReview(s, 'a7', reviewSummary); return s; });
+    const result = outcome.result;
+    if (!result?.ok) {
+      setDialogue(`System: ${result?.reason ?? 'Unable to submit for review.'}`);
+      return;
+    }
+    setDialogue(`Adv. Meera Kulkarni: "${result.feedback}"`);
+    if (result.status === 'accepted') setPanel('notebook');
+  }
+
+  function doFinalBrief() {
+    const outcome: { result?: ReturnType<typeof submitFinalBrief> } = {};
+    update((s) => { outcome.result = submitFinalBrief(s, finalSummary); return s; });
+    const result = outcome.result;
+    if (!result?.ok) {
+      setDialogue(`System: ${result?.reason ?? 'Unable to submit final brief.'}`);
+      return;
+    }
+    setDialogue(`Adv. Meera Kulkarni: "${result.consequence}"`);
+    setPanel('notebook');
   }
 
   function doAdvanceTime() {
@@ -280,7 +339,7 @@ export function App() {
           <p className="text-xs text-bar-muted">Educational simulation — not legal advice. No fabricated citations.</p>
         </div>
         <div className="text-sm text-bar-muted flex gap-3 flex-wrap items-center">
-          <span>Day {save.clock.day}</span><span>{save.clock.slot}</span><span>{save.player.careerStage}</span>
+          <span>Day {save.clock.day} / {MAX_DAY}</span><span>{save.clock.slot}</span><span>{save.player.careerStage}</span>
           <button className="px-2 py-1 border border-bar-gold/30 rounded" onClick={doAdvanceTime}>Advance time</button>
           <button className="px-2 py-1 border border-bar-gold/30 rounded" onClick={() => { persistSave(save); setDialogue('Saved locally.'); setPanel('dialogue'); }}>Save</button>
           <button className="px-2 py-1 border border-red-400/30 rounded text-red-200" onClick={() => { if (confirm('Reset local save?')) { setSave(resetSave()); setDraft(''); } }}>Reset</button>
@@ -295,11 +354,11 @@ export function App() {
               <div className="text-sm text-bar-gold">{objective.title} <span className="text-bar-muted">— Day {objective.unlockDay} · {objective.status}</span></div>
               <div className="text-xs text-bar-muted mt-1">{objective.description}</div>
               <div className="flex flex-wrap gap-3 text-xs mt-1">
-                <span>Progress: evidence {objective.evidenceProgress} · sources {objective.sourceProgress}{objective.noteProgress !== '0/0' ? ` · notes ${objective.noteProgress}` : ''}</span>
+                <span>Progress: evidence {objective.evidenceProgress} · sources {objective.sourceProgress}{objective.noteProgress !== '0/0' ? ` · notes ${objective.noteProgress}` : ''}{objective.flagProgress !== '0/0' ? ` · casework ${objective.flagProgress}` : ''}</span>
                 {objective.status === 'locked' && <span>Locked until Day {objective.unlockDay} and prior work reviewed.</span>}
               </div>
             </>
-          ) : <div className="text-sm text-bar-muted">All assignments reviewed. The first chapter is complete.</div>}
+          ) : <div className="text-sm text-bar-muted">{save.flags.chapterOneComplete ? 'Chapter one complete — final brief submitted.' : 'All assignments reviewed.'}</div>}
         </div>
       </div>
 
@@ -393,7 +452,13 @@ export function App() {
                     <div className="text-xs text-bar-muted mt-1">Required evidence: {a.requiredEvidenceIds.join(', ') || 'none'} • Sources: {a.requiredSourceIds.join(', ') || 'none'}{a.requiredNotebookKinds?.length ? ` • Notes: ${a.requiredNotebookKinds.join(', ')}` : ''}</div>
                     {!unlocked && a.status === 'locked' && <div className="text-xs text-yellow-300 mt-1">Locks until Day {a.day} and prior work is reviewed.</div>}
                     {a.feedback && <div className="text-xs mt-1 text-bar-text">Feedback: {a.feedback}</div>}
-                    {(a.status === 'active' || a.status === 'pending') && unlocked && (
+                    {(a.status === 'active' || a.status === 'submitted' || a.status === 'pending') && unlocked && a.id === 'a7' && (
+                      <button className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => setPanel('casework')}>Senior review & revision →</button>
+                    )}
+                    {(a.status === 'active' || a.status === 'pending') && unlocked && a.id === 'a8' && (
+                      <button className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => setPanel('casework')}>Final brief submission →</button>
+                    )}
+                    {(a.status === 'active' || a.status === 'pending') && unlocked && a.id !== 'a7' && a.id !== 'a8' && (
                       <button className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => submitAssignment(a.id)}>Submit / Evaluate</button>
                     )}
                   </div>
@@ -455,6 +520,106 @@ export function App() {
                 </div>
               )}
               <div className="text-xs text-bar-muted">Discovered: {discoveredCount}/{playerCase.evidence.length}</div>
+            </div>
+          )}
+
+          {panel === 'casework' && (
+            <div className="space-y-3 text-sm">
+              <p className="text-xs text-bar-muted">Everything here is your own recorded observation and reasoning. Authenticity, hidden motives and canonical outcomes are never determined in this panel.</p>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-2">Chain of custody — log an observation</div>
+                {reviewedEvidence.length === 0 ? (
+                  <p className="text-xs text-bar-muted">Review an evidence item in the Evidence panel first.</p>
+                ) : (
+                  <div className="grid gap-2">
+                    <label className="text-xs flex flex-col gap-1">Reviewed item
+                      <select className="bg-bar-bg border border-white/10 rounded p-1" value={caseTargetId} onChange={(e) => setCaseTarget(e.target.value)}>
+                        {reviewedEvidence.map((e) => <option key={e.id} value={e.id}>{e.title}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-xs flex flex-col gap-1">What did you observe about who handled it, and what is documented?
+                      <textarea className="bg-bar-bg border border-white/10 rounded p-2 min-h-16" maxLength={1000} value={custodyText} onChange={(e) => setCustodyText(e.target.value)} placeholder="e.g. The export has no sealing record; note the gap rather than guessing." />
+                    </label>
+                    <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit" onClick={doRecordCustody}>Log custody observation</button>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-2">Admissibility — question how an item may be relied upon</div>
+                {reviewedEvidence.length === 0 ? (
+                  <p className="text-xs text-bar-muted">Review an evidence item in the Evidence panel first.</p>
+                ) : (
+                  <div className="grid gap-2">
+                    <label className="text-xs flex flex-col gap-1">Reviewed item
+                      <select className="bg-bar-bg border border-white/10 rounded p-1" value={caseTargetId} onChange={(e) => setCaseTarget(e.target.value)}>
+                        {reviewedEvidence.map((e) => <option key={e.id} value={e.id}>{e.title}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-xs flex flex-col gap-1">Ground
+                      <select className="bg-bar-bg border border-white/10 rounded p-1" value={challengeGround} onChange={(e) => setChallengeGround(e.target.value as ChallengeGround)}>
+                        {(['relevance', 'reliability', 'custody', 'provenance'] as ChallengeGround[]).map((g) => <option key={g} value={g}>{g}</option>)}
+                      </select>
+                    </label>
+                    <label className="text-xs flex flex-col gap-1">Rationale
+                      <textarea className="bg-bar-bg border border-white/10 rounded p-2 min-h-16" maxLength={1000} value={challengeText} onChange={(e) => setChallengeText(e.target.value)} placeholder="State why this ground matters, tied to what you reviewed." />
+                    </label>
+                    <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit" onClick={doChallenge}>Record challenge</button>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-2">Recorded casework</div>
+                {save.custodyLog.length === 0 && save.challenges.length === 0 ? (
+                  <p className="text-xs text-bar-muted">No custody observations or challenges recorded yet.</p>
+                ) : (
+                  <div className="grid gap-2">
+                    {save.custodyLog.map((c) => (
+                      <div key={c.id} className="text-xs"><span className="text-bar-gold">Custody (Day {c.day}, {c.evidenceId}):</span> {c.observation}</div>
+                    ))}
+                    {save.challenges.map((c) => (
+                      <div key={c.id} className="text-xs"><span className="text-bar-gold">Challenge (Day {c.day}, {c.ground}, {c.evidenceId}):</span> {c.rationale}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-2">Senior review & revision (Day 9)</div>
+                {a7?.status === 'reviewed' ? (
+                  <p className="text-xs">{a7.feedback}</p>
+                ) : a7 && isAssignmentUnlocked(a7, save) ? (
+                  <div className="grid gap-2">
+                    <textarea aria-label="Work summary for senior review" className="bg-bar-bg border border-white/10 rounded p-2 min-h-20 text-sm" value={reviewSummary} onChange={(e) => setReviewSummary(e.target.value)} placeholder="Summarise the issue, evidence reviewed, sources used and your conclusion (at least 40 characters)." />
+                    <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit" onClick={doSeniorReview}>
+                      {save.reviewRounds.some((r) => r.assignmentId === 'a7' && r.status === 'needs_revision') ? 'Revise & resubmit' : 'Submit to senior'}
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-bar-muted">Unlocks on Day 9 after prior work is reviewed.</p>
+                )}
+                {save.reviewRounds.filter((r) => r.assignmentId === 'a7').map((r) => (
+                  <div key={r.id} className="text-xs mt-2 border-t border-white/5 pt-2">
+                    <span className="text-bar-gold">Round {r.round} — {r.status}:</span> {r.feedback}
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-2">Final brief submission (Day 10)</div>
+                {a8?.status === 'reviewed' ? (
+                  <p className="text-xs">{a8.feedback}</p>
+                ) : a8 && isAssignmentUnlocked(a8, save) ? (
+                  <div className="grid gap-2">
+                    <textarea aria-label="Final brief summary" className="bg-bar-bg border border-white/10 rounded p-2 min-h-20 text-sm" value={finalSummary} onChange={(e) => setFinalSummary(e.target.value)} placeholder="State your issue, evidence and conclusion without claiming unverified truth (at least 40 characters)." />
+                    <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit" onClick={doFinalBrief}>Submit final brief</button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-bar-muted">Unlocks on Day 10 after the senior accepts your revision.</p>
+                )}
+              </div>
             </div>
           )}
 

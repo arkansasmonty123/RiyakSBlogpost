@@ -1,6 +1,6 @@
 import { DIALOGUE_SCENES } from './seed';
 import { makeId } from './progression';
-import type { DialogueScene, SaveGame } from './types';
+import type { DialogueScene, NotebookEntry, SaveGame } from './types';
 
 export function availableDialogueScenes(save: SaveGame): DialogueScene[] {
   return DIALOGUE_SCENES.filter(
@@ -15,6 +15,8 @@ export interface DialogueResult {
   memory?: string;
   characterId?: string;
   characterName?: string;
+  /** Player-knowledge facts learned from this exchange, if any. */
+  reveals?: string[];
 }
 
 function clamp(value: number): number {
@@ -49,6 +51,22 @@ export function applyDialogueChoice(save: SaveGame, sceneId: string, choiceId: s
     summary: choice.memory,
     participants: ['player', scene.characterId],
   });
+  // Interviews (and other scenes) may legitimately add player-knowledge facts. These are
+  // authored, player-legible statements — never canonical truth — and are surfaced in the notebook.
+  for (const fact of choice.reveals ?? []) {
+    save.caseFile.playerKnowledge.push(fact);
+    const entry: NotebookEntry = {
+      id: makeId('n'),
+      day: save.clock.day,
+      kind: 'fact',
+      title: 'Client interview — fact stated',
+      content: fact,
+      verified: false,
+    };
+    save.notebook.unshift(entry);
+  }
+  if (choice.setsFlag) save.flags[choice.setsFlag] = true;
+
   if (scene.once) save.usedDialogueSceneIds.push(scene.id);
 
   return {
@@ -57,5 +75,6 @@ export function applyDialogueChoice(save: SaveGame, sceneId: string, choiceId: s
     memory: choice.memory,
     characterId: scene.characterId,
     characterName: save.characters.find((c) => c.id === scene.characterId)?.name,
+    reveals: choice.reveals ? [...choice.reveals] : undefined,
   };
 }

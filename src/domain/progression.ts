@@ -4,6 +4,9 @@ export function makeId(prefix: string): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+/** The First Brief chapter spans in-game Days 1–10. */
+export const MAX_DAY = 10;
+
 function nextSlot(slot: GameClock['slot']): GameClock['slot'] {
   if (slot === 'morning') return 'afternoon';
   if (slot === 'afternoon') return 'evening';
@@ -38,6 +41,7 @@ export interface Objective {
   evidenceProgress: string;
   sourceProgress: string;
   noteProgress: string;
+  flagProgress: string;
   status: Assignment['status'];
 }
 
@@ -58,6 +62,8 @@ export function currentObjective(save: SaveGame): Objective | null {
   const notesDone = requiredKinds.filter((kind) =>
     save.notebook.some((n: NotebookEntry) => n.kind === kind),
   ).length;
+  const requiredFlags = assignment.requiredFlags ?? [];
+  const flagsDone = requiredFlags.filter((flag) => save.flags[flag]).length;
 
   return {
     assignmentId: assignment.id,
@@ -67,6 +73,7 @@ export function currentObjective(save: SaveGame): Objective | null {
     evidenceProgress: `${evidenceDone}/${assignment.requiredEvidenceIds.length}`,
     sourceProgress: `${sourcesDone}/${assignment.requiredSourceIds.length}`,
     noteProgress: `${notesDone}/${requiredKinds.length}`,
+    flagProgress: `${flagsDone}/${requiredFlags.length}`,
     status: assignment.status,
   };
 }
@@ -79,8 +86,10 @@ export function currentObjective(save: SaveGame): Objective | null {
 export function advanceClock(save: SaveGame): { dayChanged: boolean } {
   const rolledOver = save.clock.slot === 'evening';
   save.clock.slot = nextSlot(save.clock.slot);
-  if (rolledOver) {
+  let dayChanged = false;
+  if (rolledOver && save.clock.day < MAX_DAY) {
     save.clock.day += 1;
+    dayChanged = true;
     save.memories.unshift({
       id: makeId('m'),
       day: save.clock.day,
@@ -89,7 +98,7 @@ export function advanceClock(save: SaveGame): { dayChanged: boolean } {
     });
   }
   refreshAssignmentUnlocks(save);
-  return { dayChanged: rolledOver };
+  return { dayChanged };
 }
 
 export interface AssignmentReviewResult {
@@ -102,6 +111,11 @@ const REVIEW_FEEDBACK: Record<string, string> = {
   a1: 'Good start. Facts, allegations, and unknowns separated. Continue with an evidence-grounded brief.',
   a2: 'Structure and sources acceptable. Keep every claim tied to reviewed evidence.',
   a3: 'Contradiction note tied to reviewed evidence recorded. Sound, careful analysis.',
+  a4: 'Client interview recorded with the client’s knowledge limits respected. Only what the client could know went into the file.',
+  a5: 'Chain-of-custody observations logged. Note where handling is unverified rather than guessing at authenticity.',
+  a6: 'Admissibility challenge framed on a legitimate ground and tied to reviewed evidence. The item’s authenticity remains undetermined.',
+  a7: 'Senior review complete after revision. The brief now separates known, claimed and disputed points and cites only verified sources.',
+  a8: 'Final brief submitted. Consequence recorded: a careful, evidence-grounded file earns professional standing.',
 };
 
 /** Deterministic senior review. Mutates the given save on success. */
@@ -124,11 +138,12 @@ export function reviewAssignment(save: SaveGame, assignmentId: string): Assignme
   const notesOk = (assignment.requiredNotebookKinds ?? []).every((kind) =>
     save.notebook.some((n) => n.kind === kind),
   );
+  const flagsOk = (assignment.requiredFlags ?? []).every((flag) => save.flags[flag]);
 
-  if (!evidenceOk || !sourcesOk || !notesOk) {
+  if (!evidenceOk || !sourcesOk || !notesOk || !flagsOk) {
     return {
       ok: false,
-      reason: 'Incomplete: discover and review required evidence, add required sources, and record required notes.',
+      reason: 'Incomplete: discover and review required evidence, add required sources, record required notes, and complete the required casework milestone (interview, custody log, admissibility challenge or review).',
       feedback: '',
     };
   }
