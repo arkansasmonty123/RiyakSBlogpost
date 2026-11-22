@@ -1,0 +1,194 @@
+{
+  "version": 1,
+  "updated_at": "2026-11-23T03:45:00Z",
+  "status": "idle",
+  "objective": "Deliver PRD MVP for THE INVESTIGATION (project-investigation) with autonomous orchestration.",
+  "current_milestone": "MVP + 25 seeded cases + pluggable AI infra complete; production deploy/push infra remain external-infra tasks",
+  "active_task_id": null,
+  "active_agent": null,
+  "last_completed_task_id": "UI-POLISH",
+  "next_action": "UI polish complete; screenshots at /tmp/opencode/ui-audit for human review. Await further direction.",
+  "model_policy": {
+    "active_model": "opencode/iceman-free",
+    "fallback_models": [
+      "opencode/hy4-flash-free"
+    ],
+    "last_model_error": null,
+    "waiting_for_model_capacity": false,
+    "wait_reason": null,
+    "policy_file": "project-management/MODEL-POLICY.md"
+  },
+  "task_assignments": [
+    {
+      "task_id": "SETUP-001..011",
+      "title": "Setup/autonomous environment",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Environment, agents, config, memory, recovery, routing configured and validated.",
+      "next_action": null
+    },
+    {
+      "task_id": "PROD-BLOCKER-001",
+      "title": "Restore server.ts",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Restored DB-backed server; typecheck/smoke-db/smoke-http pass.",
+      "next_action": null
+    },
+    {
+      "task_id": "PROD-BLOCKER-002",
+      "title": "Recreate/seed investigation DB",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "DB created/seeded; smoke-db pass.",
+      "next_action": null
+    },
+    {
+      "task_id": "PROD-001..003",
+      "title": "Auth/canonical truth/HTTP smoke",
+      "agent": "builder+qa",
+      "status": "done",
+      "result_summary": "Auth/ownership, canonical verdict, smoke-http baseline verified.",
+      "next_action": null
+    },
+    {
+      "task_id": "PROD-005",
+      "title": "MVP frontend/gameplay slices",
+      "agent": "builder+ui-ux-frontend",
+      "status": "done",
+      "result_summary": "Slices 1/FIX-1/2 delivered; case library, investigation room, chat, verdict/archive, progression UI.",
+      "next_action": null
+    },
+    {
+      "task_id": "PROD-006..014",
+      "title": "P0/P1 gap fixes",
+      "agent": "builder+bug-fixer",
+      "status": "done",
+      "result_summary": "GAP-04/05/01/02/03/07/06/10/08/09 addressed; scrutinizer approved.",
+      "next_action": null
+    },
+    {
+      "task_id": "QA-001",
+      "title": "Security/regression hardening",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Rate limits, validation, role restriction, test:http, CI.",
+      "next_action": null
+    },
+    {
+      "task_id": "PROD-004",
+      "title": "Schema alignment",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Raw SQL canonical, baseline, db:schema:verify, Drizzle deprecated.",
+      "next_action": null
+    },
+    {
+      "task_id": "P2-VALIDATION",
+      "title": "Case validation script",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Read-only case:validate script wired into CI/docs.",
+      "next_action": null
+    },
+    {
+      "task_id": "P2-ACHIEVEMENTS-UI",
+      "title": "Achievements UI",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Read-only achievements panel/tab/resolution display; smoke test added.",
+      "next_action": null
+    },
+    {
+      "task_id": "P2-PROGRESS",
+      "title": "Progress semantics fix",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Centralized computeEvidenceProgress using actual case evidence count.",
+      "next_action": null
+    },
+    {
+      "task_id": "P2-CLEANUP",
+      "title": "Dead-code/doc cleanup",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Stale artifacts/legacy root src moved to /tmp/opencode/legacy-src-backup; IMPLEMENTATION_STATUS refreshed.",
+      "next_action": null
+    },
+    {
+      "task_id": "P2-SESSIONS",
+      "title": "DB-backed session persistence",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Additive sessions migration, hashed token storage, DB auth/logout/sweeper. 53/53 pass at completion.",
+      "next_action": null
+    },
+    {
+      "task_id": "DB-CLEANUP",
+      "title": "Smoke DB cleanup",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "User-approved cleanup removed 567 smoke users/468 investigations/dependent rows; case seed preserved.",
+      "next_action": null
+    },
+    {
+      "task_id": "P2-NOTIFICATIONS",
+      "title": "In-app notifications/developments polish",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Unread badge/mark-seen, notification settings endpoint/UI using existing notification_settings column; 56/56 test:http pass.",
+      "next_action": "P2-RATE-LIMITS"
+    },
+    {
+      "task_id": "P2-RATE-LIMITS",
+      "title": "DB-backed rate-limit persistence",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "DB-backed rate limits via migration 005, atomic hashed-key counters, sweeper; schema/docs/CI updated; 56/56 pass.",
+      "next_action": "P2-POLISH"
+    },
+    {
+      "task_id": "P2-POLISH",
+      "title": "Achievements/stats/final polish",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Added safe investigation stats endpoint/UI, smoke coverage, final QA. Verified: typecheck PASS, db:schema:verify PASS (19/19,171/171), smoke-db PASS, frontend build PASS, test:http 57/57 PASS, case:validate PASS, npm test PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "PROD-CONTENT-25",
+      "title": "Seed 25 playable cases",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Seeded 24 additional cases via scripts/seed-extra-cases.ts (idempotent), total 25 published cases. case:validate PASS (25 cases, 202 evidence). CI bootstrap updated. smoke-http fixture made case-robust.",
+      "next_action": null
+    },
+    {
+      "task_id": "PROD-AI-INFRA",
+      "title": "Pluggable AI provider infrastructure",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Pluggable LLM config: USE_LLM, LLM_PROVIDER(auto/local/openai/gemini), LLM_URL, LLM_MODEL, LLM_API_KEY/GEMINI_API_KEY/GOOGLE_API_KEY; Gemini OpenAI-compatible default; deterministic fallback preserved. .env.example documented.",
+      "next_action": null
+    },
+    {
+      "task_id": "UI-POLISH",
+      "title": "Human visual appeal UI/UX polish",
+      "agent": "ui-ux-frontend",
+      "status": "done",
+      "result_summary": "Detective-themed visual system applied (Newsreader+IBM Plex Sans, warm parchment/ink-teal tokens, responsive layout, focus/reduced-motion). Playwright screenshots captured at 375x812 and 1440x900. Verified: typecheck PASS, smoke-db PASS, frontend build PASS, test:http 57/57 PASS, case:validate PASS.",
+      "next_action": null
+    }
+  ],
+  "recovery": {
+    "last_checkpoint": "2026-11-23T03:45:00Z",
+    "resume_instructions": "Read ORCHESTRATION-STATE.json, ORCHESTRATION-LOG.md, RECOVERY.md, DEV-STATUS.md, TASKS.md, BUGS.md, MODEL-POLICY.md; validate state against repo; continue from next_action.",
+    "open_blockers": [],
+    "validation_notes": [
+      "2026-11-23: 25 published cases seeded; case:validate PASS (25 cases, 202 evidence, 25 canonical truth rows).",
+      "2026-11-23: smoke-http fixture fixed to select The Midnight Heist by title; test:http 57/57 PASS after seeding.",
+      "2026-11-23: AI infra pluggable (Gemini/OpenAI-compatible/local + deterministic fallback); no keys hardcoded.",
+      "Remaining external/infra: production deployment, real push infra, higher-quality AI model keys/runtime - require user infra/credentials."
+    ]
+  }
+}
