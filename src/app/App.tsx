@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { SceneArt } from '@/app/SceneArt';
 import { loadSave, persistSave, resetSave } from '@/storage/save';
 import { checkDraftCitations } from '@/domain/guards';
 import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/completion';
@@ -41,6 +42,21 @@ import type {
 
 const PANELS = ['case', 'assignments', 'evidence', 'casework', 'theory', 'research', 'draft', 'notebook', 'journal', 'dialogue'] as const;
 
+/** Plain-language names so guidance reads like an action, not an internal panel id. */
+const PANEL_LABELS: Record<Panel, string> = {
+  case: 'case file',
+  assignments: 'assignments',
+  evidence: 'evidence board',
+  casework: 'casework',
+  theory: 'case theory',
+  research: 'research',
+  draft: 'draft editor',
+  notebook: 'notebook',
+  journal: 'timeline',
+  dialogue: 'conversations',
+  completion: 'chapter summary',
+};
+
 /** Static greetings shown when a character hotspot opens the dialogue panel. No canonical truth. */
 const DIALOGUE_GREETINGS: Record<string, string> = {
   receptionist: 'Deepa: "I keep the diary and the visitor log. I can tell you who signed in and when — not what was said in private."',
@@ -57,6 +73,25 @@ type Panel = WorkPanel | 'completion';
 
 function makeNotebookEntry(entry: Omit<NotebookEntry, 'id' | 'day'>, save: SaveGame): NotebookEntry {
   return { id: makeId('n'), day: save.clock.day, ...entry };
+}
+
+/** A labelled block of the case-file board; counts make the record easy to scan. */
+function FileSection({ title, items, empty }: { title: string; items: string[]; empty: string }) {
+  return (
+    <section className="bg-bar-panel2 p-3 rounded border border-white/5">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-xs uppercase tracking-wide text-bar-gold">{title}</h3>
+        <span className="text-[11px] text-bar-muted" aria-hidden="true">{items.length}</span>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-xs text-bar-muted mt-2">{empty}</p>
+      ) : (
+        <ul className="list-disc ml-5 mt-2 space-y-1 text-xs text-bar-text/90">
+          {items.map((item, i) => <li key={i}>{item}</li>)}
+        </ul>
+      )}
+    </section>
+  );
 }
 
 interface SourceFormState {
@@ -137,6 +172,15 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     [save.notebook],
   );
   const journal = useMemo(() => buildCaseJournal(save), [save]);
+  /** Evidence ids already written into the journal, used to link the two boards. */
+  const journalEvidenceIds = useMemo(
+    () => new Set(journal.filter((e) => e.evidenceId).map((e) => e.evidenceId as string)),
+    [journal],
+  );
+  const chapterPhase = save.clock.day <= 5 ? 'Foundations · Days 1–5' : 'First case · Days 6–10';
+  const objectiveIndex = objective
+    ? save.assignments.findIndex((a) => a.id === objective.assignmentId) + 1
+    : save.assignments.length;
   const journalCounts = useMemo(() => {
     const counts: Record<JournalKind, number> = { event: 0, evidence: 0, note: 0, casework: 0, theory: 0 };
     for (const entry of journal) counts[entry.kind] += 1;
@@ -525,6 +569,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
           </div>
           <div className="text-sm text-bar-muted flex gap-2 flex-wrap items-center" aria-label="Session status">
             <span className="px-2 py-1 rounded border border-bar-gold/20 bg-bar-panel2/70 text-bar-text">Day {save.clock.day} / {MAX_DAY}</span>
+            <span className="px-2 py-1 rounded border border-white/10 bg-bar-panel2/70">{chapterPhase}</span>
             <span className="px-2 py-1 rounded border border-white/10 bg-bar-panel2/70 capitalize">{save.clock.slot}</span>
             <span className="px-2 py-1 rounded border border-white/10 bg-bar-panel2/70 capitalize">{save.player.careerStage.replace('_', ' ')}</span>
             <button type="button" className="px-2 py-1 border border-bar-gold/30 rounded hover:bg-white/5" onClick={doAdvanceTime}>Advance time</button>
@@ -619,15 +664,20 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                 <div className="text-sm text-bar-muted">{save.flags.chapterOneComplete ? 'Chapter one complete — final brief submitted.' : 'All assignments reviewed.'}</div>
               )}
             </div>
-            <div className="lg:w-80 shrink-0 bg-bar-panel2/70 border border-white/5 rounded-md p-3">
-              <div className="text-xs uppercase tracking-wide text-bar-muted">Next step</div>
+            <div className="lg:w-80 shrink-0 bg-bar-panel2/70 border border-bar-gold/20 rounded-md p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs uppercase tracking-wide text-bar-muted">Next step</div>
+                <span className="text-[11px] text-bar-muted">
+                  {chapterComplete ? 'Complete' : `Milestone ${objectiveIndex}/${save.assignments.length}`}
+                </span>
+              </div>
               <p className="text-sm mt-1">{nextStep.text}</p>
               <button
                 type="button"
-                className="mt-2 px-2 py-1 text-xs border border-bar-gold/30 rounded hover:bg-white/5"
+                className="mt-2 px-2 py-1 text-xs border border-bar-gold/40 rounded text-bar-gold hover:bg-bar-gold/10"
                 onClick={() => setPanel(nextStep.panel)}
               >
-                Go to {nextStep.panel}
+                Open {PANEL_LABELS[nextStep.panel]} <span aria-hidden="true">→</span>
               </button>
             </div>
           </div>
@@ -649,8 +699,15 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                     ? 'border-bar-gold/40 text-bar-gold bg-bar-gold/5'
                     : 'border-white/10 text-bar-muted bg-bar-panel2/40';
                 return (
-                  <li key={a.id} className={`rounded border p-2 text-[11px] leading-tight ${statusClass} ${active ? 'ring-1 ring-bar-gold/50' : ''}`}>
-                    <div className="font-medium">Day {a.day}</div>
+                  <li
+                    key={a.id}
+                    aria-current={active ? 'step' : undefined}
+                    className={`rounded border p-2 text-[11px] leading-tight ${statusClass} ${active ? 'ring-1 ring-bar-gold/60' : ''}`}
+                  >
+                    <div className="font-medium flex items-center justify-between gap-1">
+                      <span>Day {a.day}</span>
+                      {active && <span className="text-[9px] uppercase tracking-wide text-bar-gold">Current</span>}
+                    </div>
                     <div className="mt-0.5 line-clamp-2">{a.title}</div>
                     <div className="mt-1 uppercase tracking-wide opacity-80">{a.status}</div>
                   </li>
@@ -697,18 +754,26 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
               ))}
             </div>
           </div>
-          <div className="relative overflow-hidden rounded-md border border-bar-gold/15 bg-gradient-to-br from-[#1b202b] via-[#151922] to-[#10131a] p-4 sm:p-5 min-h-56">
-            <div className="absolute inset-0 pointer-events-none opacity-40" aria-hidden="true" style={{ backgroundImage: 'radial-gradient(circle at 20% 20%, rgba(200,167,90,0.18), transparent 35%), radial-gradient(circle at 80% 0%, rgba(232,226,213,0.08), transparent 30%), linear-gradient(to top, rgba(0,0,0,0.25), transparent 45%)' }} />
-            <div className="relative">
-              <p className="text-xs text-bar-muted mb-2 max-w-2xl">{location.description}</p>
-              <p className="text-sm text-bar-muted mb-4 max-w-2xl">{viewpoint.description}</p>
+          <div className="scene-frame">
+            <div className="scene-art-wrap">
+              <SceneArt viewpointId={save.selectedViewpoint} />
+              <div className="scene-vignette" aria-hidden="true" />
+              <span className="scene-tag" aria-hidden="true">{viewpoint.label}</span>
+            </div>
+            <div className="p-3 sm:p-4 bg-bar-panel/95">
+              <p className="text-xs text-bar-muted">{location.description}</p>
+              <p className="text-sm text-bar-muted mt-1">{viewpoint.description}</p>
+              <div className="scene-rule my-3" aria-hidden="true" />
+              <p className="text-[11px] uppercase tracking-wide text-bar-muted mb-2">
+                Interact here <span className="normal-case tracking-normal">— the illustration is decorative; every action is a labelled control below.</span>
+              </p>
               <div className="grid sm:grid-cols-2 gap-2" role="group" aria-label={`${viewpoint.label} hotspots`}>
                 {viewpoint.hotspots.map((h) => (
                   <button
                     key={h.id}
                     type="button"
                     onClick={() => onHotspot(h.action)}
-                    className="text-left p-3 rounded border border-bar-gold/20 bg-bar-panel/50 hover:bg-white/5 hover:border-bar-gold/40 transition-colors"
+                    className="text-left p-3 rounded border border-bar-gold/20 bg-bar-panel2/40 hover:bg-white/5 hover:border-bar-gold/40 transition-colors"
                   >
                     <div className="text-bar-gold text-sm font-medium">{h.label}</div>
                     <div className="text-xs text-bar-muted mt-0.5">{describeHotspotAction(h.action)}</div>
@@ -855,13 +920,54 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
           )}
 
           {panel === 'case' && (
-            <div className="space-y-2 text-sm">
-              <div className="text-bar-gold font-medium">{playerCase.title}</div>
-              <div className="text-bar-muted">Status: {playerCase.status} • Player knowledge only (canonical truth hidden)</div>
-              <div><div className="text-bar-gold text-xs">Known/Player knowledge</div><ul className="list-disc ml-5">{playerCase.playerKnowledge.map((k,i)=><li key={i}>{k}</li>)}</ul></div>
-              <div><div className="text-bar-gold text-xs">Allegations</div><ul className="list-disc ml-5">{playerCase.allegations.map((k,i)=><li key={i}>{k}</li>)}</ul></div>
-              <div><div className="text-bar-gold text-xs">Unresolved ambiguity</div><ul className="list-disc ml-5">{playerCase.unresolvedAmbiguity.map((k,i)=><li key={i}>{k}</li>)}</ul></div>
-              <div><div className="text-bar-gold text-xs">Admissible material</div><div>{playerCase.admissibleMaterial.length ? playerCase.admissibleMaterial.join(' · ') : 'Not yet determined.'}</div></div>
+            <div className="space-y-3 text-sm">
+              <section className="bg-bar-panel2 p-3 rounded border border-bar-gold/25">
+                <p className="text-[11px] uppercase tracking-wide text-bar-muted">Case file · working record</p>
+                <h3 className="text-base text-bar-gold mt-0.5">{playerCase.title}</h3>
+                <div className="flex flex-wrap gap-2 mt-2 text-[11px]">
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">Status: {playerCase.status}</span>
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">{playerCase.playerKnowledge.length} known notes</span>
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">{playerCase.allegations.length} allegations</span>
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">{playerCase.unresolvedAmbiguity.length} open questions</span>
+                </div>
+                <p className="text-xs text-bar-muted mt-2">
+                  This file holds only what you have legitimately learned. It is not a finding about what happened, who was responsible, or whether any item is authentic.
+                </p>
+              </section>
+
+              <FileSection
+                title="Known / player knowledge"
+                items={playerCase.playerKnowledge}
+                empty="No notes recorded yet. Review evidence and speak with people to add to this record."
+              />
+              <FileSection
+                title="Allegations"
+                items={playerCase.allegations}
+                empty="No allegations have been recorded."
+              />
+              <FileSection
+                title="Unresolved ambiguity"
+                items={playerCase.unresolvedAmbiguity}
+                empty="No open questions recorded."
+              />
+
+              <section className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <h3 className="text-xs uppercase tracking-wide text-bar-gold">Admissible material</h3>
+                <p className="text-xs text-bar-muted mt-2">
+                  {playerCase.admissibleMaterial.length ? playerCase.admissibleMaterial.join(' · ') : 'Not yet determined.'}
+                </p>
+                <button
+                  type="button"
+                  className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                  onClick={() => { setJournalFilter('all'); setPanel('journal'); }}
+                >
+                  See how the record developed in the timeline →
+                </button>
+              </section>
+
+              <p role="note" className="text-xs text-bar-muted border-l-2 border-bar-gold/30 pl-2">
+                Keep known facts, claims and open questions separate. Careful work adds to this file; nothing here is resolved for you.
+              </p>
             </div>
           )}
 
@@ -914,10 +1020,23 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
 
           {panel === 'evidence' && (
             <div className="space-y-2 text-sm">
-              <div className="bg-bar-panel2 p-2 rounded border border-white/5">
-                <div className="text-xs text-bar-gold">How to read this list</div>
-                <p className="text-xs text-bar-muted mt-1">Inspect an item to discover it, then mark it reviewed before recording your own assessment. The baseline labels below are non-authoritative practice values, not findings; authenticity is never determined in this panel.</p>
+              <div className="bg-bar-panel2 p-3 rounded border border-bar-gold/20">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs text-bar-gold">Evidence board</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-bar-muted">{discoveredCount}/{playerCase.evidence.length} discovered · {reviewedEvidence.length} reviewed</span>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                      onClick={() => { setJournalFilter('evidence'); setPanel('journal'); }}
+                    >
+                      Open timeline →
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-bar-muted mt-2">Inspect an item to discover it, then mark it reviewed before recording your own assessment. The baseline labels below are non-authoritative practice values, not findings; authenticity is never determined in this panel.</p>
                 <p className="text-xs text-bar-muted mt-1">Admissibility: unknown · admissible · questionable · inadmissible. Reliability: unknown · high · medium · low.</p>
+                <p className="text-xs text-bar-muted mt-1">Reviewed items also appear in your timeline. Use “View in journal” on an item to see when you recorded it.</p>
               </div>
               {playerCase.evidence.map((ev) => (
                 <div key={ev.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
@@ -949,6 +1068,15 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                             <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => { setNoteTarget(ev.id); setNoteRelation('contradiction'); setNoteText(''); }}>Note contradiction</button>
                             <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => { setNoteTarget(ev.id); setNoteRelation('corroboration'); setNoteText(''); }}>Note corroboration</button>
                             <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={() => useEvidenceInTheory(ev.id)}>Use in theory →</button>
+                            {journalEvidenceIds.has(ev.id) && (
+                              <button
+                                type="button"
+                                className="px-2 py-1 border border-white/10 rounded text-xs text-bar-muted hover:bg-white/5"
+                                onClick={() => { setJournalFilter('evidence'); setPanel('journal'); }}
+                              >
+                                View in journal →
+                              </button>
+                            )}
                           </div>
                         </div>
                       ) : null}
@@ -1354,6 +1482,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
               <div className="bg-bar-panel2 p-3 rounded border border-white/5">
                 <div className="text-bar-gold text-xs mb-1">Case timeline / journal</div>
                 <p className="text-xs text-bar-muted">A chronological record of what you have legitimately learned and written. It contains only player-visible information: the true sequence of events, responsibility and authenticity are never recorded here.</p>
+                <p className="text-xs text-bar-muted mt-1">Entries linked to an evidence item can be opened in the evidence board using “In evidence board” below.</p>
               </div>
 
               <div className="bg-bar-panel2 p-3 rounded border border-white/5">
@@ -1409,7 +1538,15 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                               </div>
                               <p className="text-xs mt-1 whitespace-pre-wrap">{entry.detail}</p>
                               {entry.source && <p className="text-xs text-bar-muted mt-1">Provenance: {entry.source}</p>}
-                              {entry.evidenceId && <p className="text-xs text-bar-muted mt-1">Evidence: {evidenceTitleById.get(entry.evidenceId) ?? entry.evidenceId}</p>}
+                              {entry.evidenceId && (
+                                <button
+                                  type="button"
+                                  className="mt-1 px-2 py-1 border border-white/10 rounded text-xs text-bar-gold hover:bg-white/5"
+                                  onClick={() => setPanel('evidence')}
+                                >
+                                  In evidence board: {evidenceTitleById.get(entry.evidenceId) ?? entry.evidenceId} →
+                                </button>
+                              )}
                             </li>
                           ))}
                         </ol>

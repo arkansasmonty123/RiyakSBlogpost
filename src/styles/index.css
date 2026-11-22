@@ -38,6 +38,62 @@ textarea:focus-visible,
   left: 0.5rem;
 }
 
+/* ---------------------------------------------------------------------------
+   Static scene illustrations. A decorative SVG stage set fills a 16:9 frame;
+   interactive hotspots are rendered as real buttons below it in the DOM.
+   --------------------------------------------------------------------------- */
+.scene-frame {
+  position: relative;
+  border-radius: 0.375rem;
+  overflow: hidden;
+  border: 1px solid rgba(200, 167, 90, 0.18);
+}
+
+.scene-art-wrap {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 180px;
+  background: #12161e;
+  overflow: hidden;
+}
+
+.scene-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Soft corner falloff keeps the brass hotspots legible without animating art. */
+.scene-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 42%, transparent 45%, rgba(8, 10, 14, 0.55) 100%),
+    linear-gradient(to bottom, transparent 62%, rgba(8, 10, 14, 0.35) 100%);
+}
+
+.scene-tag {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.65rem;
+  z-index: 1;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.25rem;
+  border: 1px solid rgba(200, 167, 90, 0.35);
+  background: rgba(15, 17, 21, 0.78);
+  color: #e8e2d5;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* Thin brass rule used to separate scene caption from its hotspot grid. */
+.scene-rule {
+  height: 1px;
+  background: linear-gradient(to right, rgba(200, 167, 90, 0.45), rgba(200, 167, 90, 0));
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
