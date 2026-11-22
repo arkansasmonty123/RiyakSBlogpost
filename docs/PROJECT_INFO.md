@@ -8,7 +8,7 @@
 | **Type** | Immersive, persistent legal-career simulator (educational simulation) |
 | **Primary jurisdiction** | India (fictional firm/district/court environment initially) |
 | **Repository** | `/home/divyanshukumarsinha241/project-courtroom` |
-| **Status** | Phase 0 complete (2026-11-22). P0 prototype in progress: "The First Brief — Office Prototype" (Vite + React + TS + Tailwind, localStorage), Day 1–10 playable slice, provenance/source-intake workflow with no auto-verification, 53/53 tests passing, CI workflow added. |
+| **Status** | Phase 0 complete (2026-11-22). P0 prototype: "The First Brief — Office Prototype" (Vite + React + TS + Tailwind, localStorage), Day 1–10 playable slice, provenance/source-intake + deterministic corpus-validation workflow with no auto-verification, 166/166 tests passing, CI workflow added. Real corpus still blocked on the legal content owner (D-005/D-011). |
 | **Primary reference** | [`../THE_BAR_MASTER_CONTEXT.md`](../THE_BAR_MASTER_CONTEXT.md) |
 | **Audit date** | 2026-11-22 |
 
@@ -46,6 +46,14 @@ All legal content must be verified, sourced, versioned, and dated. No fabricated
 - `markSourceVerified` is a separate human/content-owner step (named reviewer and traceable provenance required); it is not a player-facing auto-verify action. `checkDraftCitations` uses `canCiteAsAuthoritative`, so a forged `verified` flag without provenance is ignored. Save loading demotes such records.
 - No real legal corpus has been ingested. The only verified seed record is an internal educational summary explicitly labeled non-statutory; statutory entries remain placeholders. No provision, judgment or citation has been fabricated or presented as verified.
 
+## Implemented: source verification workflow / tooling (D-005/D-011)
+
+- **Workflow complete, corpus blocked.** The content-owner checklist, sign-off log, required-field contract and acceptable-source rules are documented in [`LEGAL_SOURCE_VERIFICATION.md`](./LEGAL_SOURCE_VERIFICATION.md). No official text has been supplied or ingested; the reviewed-identifier allowlist is empty.
+- `src/domain/sourceValidation.ts` provides deterministic `validateSourceRecord` / `validateSourceRecords`: required provenance fields, valid enums/dates/URLs, and a strict verified gate (named reviewer, review date, provenance, identifier, official URL for real-world authority). Specific-looking citations (`Section …`, `AIR …`, `<year> SCC`, `X v. Y`) are rejected as verified unless their identifier is in the human-reviewed allowlist. Placeholders can never be verified.
+- `npm run validate:sources -- <corpus.json>` (or `-- --seed`) runs the same validator as an offline CLI with clear error codes and non-zero exit on failure. A safe shape template is at [`docs/examples/legal-sources.example.json`](./examples/legal-sources.example.json).
+- `markSourceVerified` now applies this same strict gate as a separate human/content-owner step; the game and AI stubs never verify or fabricate sources.
+- **Blocked follow-up:** assign the legal content owner (D-011), obtain official text and rights, and sign off real records before any verified real citation exists.
+
 ## Target first playable release (from master context)
 
 - One fictional Indian law firm
@@ -74,10 +82,14 @@ project-courtroom/
 ├── src/
 │   ├── app/App.tsx              # UI shell + panels
 │   ├── domain/                  # types, seed, guards, legalSources (provenance
-│   │                            # + intake), access projection, progression,
-│   │                            # dialogue, evidence, draft
+│   │                            # + intake), sourceValidation (corpus gate),
+│   │                            # access projection, progression, dialogue,
+│   │                            # evidence, draft
 │   ├── storage/save.ts          # localStorage load/persist + v1→v2 migration
 │   └── tests/                   # vitest guardrail + smoke tests
+├── scripts/
+│   ├── validate-sources.ts      # offline corpus validator CLI
+│   └── node-shims.d.ts          # minimal Node ambient types (no @types/node)
 ├── README.md
 ├── THE_BAR_MASTER_CONTEXT.md
 └── docs/
@@ -85,9 +97,12 @@ project-courtroom/
     │   ├── ADR-000-project-constraints.md
     │   ├── ADR-001-stack-and-size-conscious-foundation.md
     │   └── ADR-002-p0-vertical-slice.md
+    ├── examples/
+    │   └── legal-sources.example.json  # fictional shape template (not real law)
     ├── AUDIT.md
     ├── DECISIONS.md
     ├── IMPLEMENTATION_PLAN.md
+    ├── LEGAL_SOURCE_VERIFICATION.md # D-005/D-011 checklist + sign-off log
     └── PROJECT_INFO.md
 ```
 

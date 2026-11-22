@@ -14,6 +14,7 @@
 - [`docs/AUDIT.md`](./docs/AUDIT.md) — repository audit comparing current state against master context.
 - [`docs/IMPLEMENTATION_PLAN.md`](./docs/IMPLEMENTATION_PLAN.md) — phased implementation plan, dependencies, risks, and proposed P0 vertical slice.
 - [`docs/DECISIONS.md`](./docs/DECISIONS.md) — open questions, decision log, and assumptions to avoid.
+- [`docs/LEGAL_SOURCE_VERIFICATION.md`](./docs/LEGAL_SOURCE_VERIFICATION.md) — D-005/D-011 content-owner checklist: required fields, acceptable official sources, validator usage, sign-off log, and the no-fabrication rule.
 
 ## Current repository state (2026-11-22)
 
@@ -22,9 +23,10 @@
 - Application: **P0 prototype** (Vite + React + TypeScript + Tailwind), localStorage save (v1 saves migrate to v2)
 - Gameplay: Days 1–10 progression with unlockable assignments, dialogue consequences (relationships + bounded reputation changes + memories), a twelve-character cast (including a junior advocate colleague, a visiting medical consultant, a professional rival and a canteen supervisor, each with day-gated, boundary-respecting conversations) and six evidence items for the fictional canteen matter, witness/specialist/peer interactions that add player knowledge only, evidence review/assessment/contradiction notes, evidence-linked case theory, notebook with kind filters, editable draft with version history, deterministic citation guard and senior feedback
 - Legal provenance: the Research panel shows each source's name, citation/identifier, type, jurisdiction, verification badge, effective date and clearly labeled non-authoritative provenance/excerpt. **Source Intake** drafts records as `unverified` or `placeholder` with deterministic validation (required fields, no self-verification, citation-like strings forced to placeholder). The game never auto-verifies a source; only traceable, verified sources can be cited as authoritative.
-- Tests: `vitest` (110 passing tests across domain, provenance/intake validation, case depth/knowledge boundaries, cast/scenes, save migration, guardrails, chapter completion/onboarding and SSR smoke checks)
+- Tests: `vitest` (166 passing tests across domain, provenance/intake and corpus validation, case depth/knowledge boundaries, cast/scenes, save migration, guardrails, chapter completion/onboarding and SSR smoke checks)
 - Runtime AI: deterministic stub only (no provider/model bundled)
 - Verified legal corpus/data: minimal fictional seed only (one internal educational summary is marked verified; statutory entries are explicit placeholders). No real legal corpus ingested; no statutory provision, judgment or citation has been fabricated or presented as verified.
+- Legal source verification workflow: **complete, but corpus-blocked.** `docs/LEGAL_SOURCE_VERIFICATION.md` defines the content-owner checklist and sign-off process; `src/domain/sourceValidation.ts` + `npm run validate:sources` deterministically gate records (required provenance, named reviewer/date, official URL and reviewed allowlist for specific citations). No real corpus exists yet; the allowlist is empty and D-005/D-011 remain blocked on a legal content owner.
 - Visual assets: placeholder/composed UI (no final art assets)
 
 ## Quick start
@@ -35,6 +37,10 @@ npm run typecheck
 npm test
 npm run build
 npm run dev
+
+# Validate source records against the D-005/D-011 provenance gate (offline, no ingestion):
+npm run validate:sources -- --seed
+npm run validate:sources -- docs/examples/legal-sources.example.json
 ```
 
 ## Continuous integration
@@ -56,4 +62,4 @@ npm run dev
 
 ## Next step
 
-Add real, human-verified legal sources with official provenance (D-005/D-011 — content owner must supply and review exact text; intake alone never verifies), broaden the first chapter (courtroom exposure), and add accessibility/visual QA in a real browser when one is available — while maintaining >2 GB available storage.
+Assign the legal content owner and add real, human-verified legal sources with official provenance (D-005/D-011 — the workflow/tooling and checklist are ready, but the owner must supply and sign off exact text; intake and the validator never verify on their own), broaden the first chapter (courtroom exposure), and add accessibility/visual QA in a real browser when one is available — while maintaining >2 GB available storage.

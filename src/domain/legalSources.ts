@@ -1,3 +1,4 @@
+import { validateSourceRecord } from './sourceValidation';
 import type {
   LegalSource,
   SourceJurisdiction,
@@ -208,5 +209,12 @@ export function markSourceVerified(
   };
   const provenance = validateSourceProvenance(candidate);
   if (!provenance.ok) return { ok: false, reason: provenance.reason };
+  // The content-owner gate is stricter: a named reviewer, a dated review, traceable
+  // provenance and (for real authority/specific citations) an official URL plus a
+  // reviewed identifier are all required. No specific-looking citation is auto-verified.
+  const strict = validateSourceRecord(candidate);
+  if (!strict.ok) {
+    return { ok: false, reason: strict.errors.map((error) => error.message).join(' ') };
+  }
   return { ok: true, source: candidate };
 }
