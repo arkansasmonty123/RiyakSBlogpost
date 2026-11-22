@@ -12,10 +12,11 @@ THE BAR is a greenfield project in `/home/divyanshukumarsinha241/project-courtro
 ## Decision
 
 1. **Phase 0 bootstrap begins** with documentation/source-of-truth, git hygiene, and decision records. No application scaffold added in this pass.
-2. **Storage availability budget: >2 GB available** in home/project environment (corrected by user 2026-11-22).
-   - Available storage should remain greater than 2 GB. Check with `df -h /home`.
-   - Avoid unnecessary bloat; clean reinstallable caches/artifacts when availability is at risk.
-   - Large model weights/raw media/DB dumps should not be committed by default; prefer external/hosted/download-on-demand where practical.
+2. **Storage availability budget: >2 GB available on Cloud Shell `$HOME`** (corrected 2026-11-22; Cloud Shell layout verified 2026-11-22).
+   - **Cloud Shell facts (verified via `df -h`/`mount` + Google Cloud docs):** `$HOME` is a 5 GB persistent disk (`/dev/disk/by-id/google-home-part1` mounted at `/home`). The VM root/overlay filesystem outside `/home` is ephemeral (larger, but discarded when the Cloud Shell session/VM ends). `/tmp` lives on ephemeral overlay.
+   - Keep **>2 GB available on `/home`** (`df -h /home`). Store only persistent source/config/docs in `$HOME`.
+   - **Move re-downloadable/heavy artifacts outside `$HOME`** to ephemeral storage (e.g. `/tmp/opencode/...`) and symlink/configure: `node_modules`, npm cache (`npm config set cache /tmp/opencode/npm-cache`), Playwright/browser binaries (`PLAYWRIGHT_BROWSERS_PATH`), pip caches, build caches, model weights.
+   - After restart, ephemeral artifacts may be missing; reinstall/rebuild is expected.
 3. **Master context remains source of truth** (`THE_BAR_MASTER_CONTEXT.md`).
 4. **No fabrication / no truth leakage / deterministic-vs-AI separation** remain non-negotiable per master context.
 

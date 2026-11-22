@@ -89,13 +89,13 @@ Use this for future entries:
 - **Consequences / follow-up:** All product capabilities are missing; start with Phase 0 decisions and foundation.
 - **Verification:** Evidence captured in `docs/AUDIT.md`.
 
-### D-019 — Storage availability > 2 GB (corrected)
-- **Date:** 2026-11-22
-- **Status:** Accepted (user direction; scope clarification needed)
-- **Owner:** Product owner
-- **Context:** User initially gave a size constraint that was misrecorded as total <1.5 GB; corrected 2026-11-22: "The available storage should be greater than 2 gb".
-- **Decision:** Maintain >2 GB available storage in the home/project environment. Avoid unnecessary bloat, but do not over-constrain development by deleting needed deps/caches unless space is tight.
-- **Rationale:** Ensures room for dependencies, builds, assets, and tooling without hitting disk limits.
-- **Alternatives considered:** Strict total cap <1.5 GB — rejected after user correction.
-- **Consequences / follow-up:** Check `df -h /home` at checkpoints. Clean reinstallable caches only when availability drops near/under 2 GB. Still prefer size-conscious choices (no bundled large model weights in repo).
-- **Verification:** `du -sh` at checkpoints; CI/artifact size checks in Phase 1; ADR-000.
+### D-019 — Storage availability > 2 GB (Cloud Shell aware)
+- **Date:** 2026-11-22 (corrected; Cloud Shell strategy added 2026-11-22)
+- **Status:** Accepted (user direction)
+- **Owner:** Product owner / Orchestrator
+- **Context:** User corrected constraint to "available storage should be greater than 2 gb". Environment is Google Cloud Shell: `$HOME` is a 5 GB persistent disk; VM filesystem outside `/home` (including `/tmp`) is ephemeral overlay and discarded on session end (verified via `df -h`/`mount` and Google Cloud docs).
+- **Decision:** Maintain >2 GB available on `/home`. Keep persistent source/config/docs in `$HOME`; place re-downloadable/heavy artifacts outside `$HOME` on ephemeral storage (e.g. `/tmp/opencode/...`) with symlinks/config: `node_modules`, npm cache, Playwright browsers, pip/build caches, model weights.
+- **Rationale:** Preserves persistent 5 GB home disk while allowing large re-downloadable tooling.
+- **Alternatives considered:** Keep everything in `$HOME` — rejected (hits 5GB limit). Strict total <1.5 GB — rejected after correction.
+- **Consequences / follow-up:** After session restart, re-install/re-symlink ephemeral artifacts. Monitor `df -h /home`. Configure `npm config set cache /tmp/opencode/npm-cache`; set `PLAYWRIGHT_BROWSERS_PATH` when needed.
+- **Verification:** `df -h /home /`; `mount`; ADR-000.
