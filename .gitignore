@@ -85,6 +85,9 @@ docs/art-pipeline/intake/**
 # Playwright MCP artifacts
 .playwright-mcp/
 
+# Playwright test runner artifacts
+test-results/
+
 # Local DB / infra data (ADR-001)
 data/
 *.sqlite

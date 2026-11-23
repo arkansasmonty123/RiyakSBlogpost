@@ -52,7 +52,6 @@ import {
 } from '@/domain/casework';
 import { loadDraftVersion, MAX_DRAFT_CHARS, saveDraftVersion, setCurrentDraft } from '@/domain/draft';
 import { submitDraftForFeedback } from '@/domain/draftSubmission';
-import type { DraftSubmissionResult } from '@/domain/draftSubmission';
 import { MAX_AI_PROMPT_CHARS } from '@/domain/ai/guards';
 import { createAiGateway } from '@/domain/ai/gateway';
 import { retrieveApprovedInternalSummaries } from '@/domain/ai/retrieval';
@@ -200,6 +199,28 @@ function SessionLoading() {
 }
 
 /**
+ * Commit a domain mutation of a save and hand its result straight back to the caller.
+ *
+ * The mutator runs exactly once and synchronously on a clone, so ID-generating mutators
+ * (e.g. addEvidenceNote) are never run twice and the result is available before the caller
+ * schedules any UI side-effects. The same mutated clone is the one handed to `commit`, so
+ * state and persistence always agree. Exported at module scope so this contract is testable
+ * without a DOM.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- pure helper exported for the regression test; App.tsx already exports other non-components.
+export function commitSaveMutation<T>(
+  current: SaveGame,
+  mutator: (working: SaveGame) => T,
+  commit: (next: SaveGame) => void,
+): T {
+  const working = structuredClone(current);
+  const result = mutator(working);
+  capNotebook(working.notebook);
+  commit(working);
+  return result;
+}
+
+/**
  * Boots the configured repository. Local mode renders the full tree on the first pass (no
  * flicker); sqlite-api mode shows a small loading state until the async load resolves.
  */
@@ -274,13 +295,18 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
 export function SaveStatusMessage({ status }: { status: SaveStatus }) {
   // A conflict is announced by SaveConflictNotice with its own actions, so stay silent here.
   if (status === 'idle' || status === 'conflict') return null;
+  const isError = status === 'error';
   return (
     <p
       role="status"
       aria-live="polite"
-      className={`w-full text-xs ${status === 'error' ? 'text-yellow-200' : 'text-bar-muted'}`}
+      className={`inline-flex w-full sm:w-auto items-center rounded border px-2 py-1 text-xs ${
+        isError
+          ? 'border-yellow-400/30 bg-yellow-400/10 text-yellow-200'
+          : 'border-green-400/20 bg-green-400/5 text-green-200/90'
+      }`}
     >
-      {status === 'error' ? 'Progress is in memory but could not be saved locally.' : 'Progress saved locally.'}
+      {isError ? 'Progress is in memory but could not be saved locally.' : 'Progress saved locally.'}
     </p>
   );
 }
@@ -345,7 +371,11 @@ export function DraftStatusMessage({ dirty }: { dirty: boolean }) {
 export function SaveNoticeMessage({ notice }: { notice: string }) {
   if (!notice) return null;
   return (
-    <span role="status" aria-live="polite" className="text-xs text-green-200">
+    <span
+      role="status"
+      aria-live="polite"
+      className="inline-flex w-full sm:w-auto items-center rounded border border-green-400/25 bg-green-400/10 px-2 py-1 text-xs text-green-200"
+    >
       {notice}
     </span>
   );
@@ -488,7 +518,13 @@ function GameApp({
   useEffect(() => {
     if (!focusEvidenceId || panel !== 'evidence') return;
     const el = document.getElementById(`evidence-${focusEvidenceId}`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (el) {
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'center' });
+    }
     const t = window.setTimeout(() => setFocusEvidenceId(null), 2500);
     return () => window.clearTimeout(t);
   }, [focusEvidenceId, panel]);
@@ -506,6 +542,8 @@ function GameApp({
   const dialogueScenes = useMemo(() => availableDialogueScenes(save), [save]);
   const discoveredCount = playerCase.evidence.filter((e) => e.discovered).length;
   const reviewedEvidence = playerCase.evidence.filter((e) => e.reviewed);
+  // Safe default target for the notebook's "add note" shortcut: a discovered, reviewed item.
+  const firstReviewedEvidence = reviewedEvidence.find((e) => e.discovered) ?? null;
   const groupedTheory = useMemo(() => groupTheoryClaims(save), [save]);
   const evidenceTitleById = useMemo(
     () => new Map(playerCase.evidence.map((e) => [e.id, e.title])),
@@ -661,6 +699,21 @@ function GameApp({
       // A failed write is reported politely instead of throwing; progress stays in memory.
       persist(next);
       return next;
+    });
+  }
+
+  /**
+   * Commit a mutation that a handler needs the result of (notes, custody, challenges, review
+   * outcomes, clock, draft versions…). React queues functional updaters until render, so a
+   * result assigned inside the `update()` updater is still undefined on the very next line and
+   * every dependent UI side-effect is silently skipped. This runs the mutator now, on a clone
+   * of the current save, commits that exact clone once, and returns the result synchronously.
+   * Only use this for single-mutation handlers; `update()` still composes multi-step ones.
+   */
+  function mutateWithResult<T>(mutator: (working: SaveGame) => T): T {
+    return commitSaveMutation(save, mutator, (working) => {
+      persist(working);
+      setSave(working);
     });
   }
 
@@ -913,12 +966,9 @@ function GameApp({
   function doSaveNote() {
     if (!noteTarget || !noteText.trim()) return;
     const target = noteTarget;
-    const outcome: { entry?: NotebookEntry | null } = {};
-    update((s) => {
-      outcome.entry = addEvidenceNote(s, target, noteRelation, noteText);
-      return s;
-    });
-    if (outcome.entry) {
+    // addEvidenceNote generates its own id: run it once on the clone that gets committed.
+    const entry = mutateWithResult((s) => addEvidenceNote(s, target, noteRelation, noteText));
+    if (entry) {
       setNoteTarget(null);
       setNoteText('');
       setDialogue('System: Note recorded in your notebook, tied to the reviewed evidence item.');
@@ -930,7 +980,8 @@ function GameApp({
     if (!kcTarget || !kcConcept.trim() || !kcDescription.trim()) return;
     const ev = save.caseFile.evidence.find((e) => e.id === kcTarget);
     if (!ev || !ev.discovered || !ev.reviewed) return;
-    update((s) => {
+    const id = makeId('kn');
+    mutateWithResult((s) => {
       addKnowledgeConnectionEntry(
         s,
         {
@@ -940,9 +991,8 @@ function GameApp({
           relatedConcept: kcConcept,
           description: kcDescription,
         },
-        makeId('kn'),
+        id,
       );
-      return s;
     });
     setKcTarget(null);
     setKcConcept('');
@@ -952,30 +1002,24 @@ function GameApp({
   }
 
   function doRecordCustody() {
-    const outcome: { result?: ReturnType<typeof recordCustodyObservation> } = {};
-    update((s) => {
-      outcome.result = recordCustodyObservation(s, caseTargetId, custodyText);
-      return s;
-    });
-    if (outcome.result?.ok) {
+    const result = mutateWithResult((s) => recordCustodyObservation(s, caseTargetId, custodyText));
+    if (result.ok) {
       setCustodyText('');
       setDialogue('System: Chain-of-custody observation logged in your notebook. Authenticity is still undetermined.');
     } else {
-      setDialogue(`System: ${outcome.result?.reason ?? 'Unable to log custody.'}`);
+      setDialogue(`System: ${result.reason ?? 'Unable to log custody.'}`);
     }
   }
 
   function doChallenge() {
-    const outcome: { result?: ReturnType<typeof challengeEvidenceAdmissibility> } = {};
-    update((s) => {
-      outcome.result = challengeEvidenceAdmissibility(s, caseTargetId, challengeGround, challengeText);
-      return s;
-    });
-    if (outcome.result?.ok) {
+    const result = mutateWithResult((s) =>
+      challengeEvidenceAdmissibility(s, caseTargetId, challengeGround, challengeText),
+    );
+    if (result.ok) {
       setChallengeText('');
-      setDialogue(`${outcome.result.feedback}\n\nRemembered: Challenge recorded on ${challengeGround} grounds.`);
+      setDialogue(`${result.feedback}\n\nRemembered: Challenge recorded on ${challengeGround} grounds.`);
     } else {
-      setDialogue(`System: ${outcome.result?.reason ?? 'Unable to record challenge.'}`);
+      setDialogue(`System: ${result.reason ?? 'Unable to record challenge.'}`);
     }
   }
 
@@ -1002,47 +1046,34 @@ function GameApp({
   }
 
   function doSaveClaimLinks(claimId: string) {
-    const outcome: { result?: ReturnType<typeof setClaimEvidenceLinks> } = {};
-    update((s) => {
-      outcome.result = setClaimEvidenceLinks(s, claimId, editingLinks);
-      return s;
-    });
-    if (outcome.result?.ok) {
+    const result = mutateWithResult((s) => setClaimEvidenceLinks(s, claimId, editingLinks));
+    if (result.ok) {
       setEditingClaimId(null);
       setDialogue(
         'System: Evidence links updated. This records what you relied on, not a finding on authenticity or responsibility.',
       );
     } else {
-      setDialogue(`System: ${outcome.result?.reason ?? 'Unable to update evidence links.'}`);
+      setDialogue(`System: ${result.reason ?? 'Unable to update evidence links.'}`);
     }
   }
 
   function doAddTheory() {
-    const outcome: { result?: ReturnType<typeof addTheoryClaim> } = {};
-    update((s) => {
-      outcome.result = addTheoryClaim(s, theoryText, theoryStatus, theoryEvidenceIds);
-      return s;
-    });
-    if (outcome.result?.ok) {
+    const result = mutateWithResult((s) => addTheoryClaim(s, theoryText, theoryStatus, theoryEvidenceIds));
+    if (result.ok) {
       setTheoryText('');
       setTheoryEvidenceIds([]);
       setDialogue(
         'System: Case-theory claim added to your file and notebook. It is your working theory, not a finding on authenticity or responsibility.',
       );
     } else {
-      setDialogue(`System: ${outcome.result?.reason ?? 'Unable to record theory claim.'}`);
+      setDialogue(`System: ${result.reason ?? 'Unable to record theory claim.'}`);
     }
   }
 
   function doSeniorReview() {
-    const outcome: { result?: ReturnType<typeof submitSeniorReview> } = {};
-    update((s) => {
-      outcome.result = submitSeniorReview(s, 'a7', reviewSummary);
-      return s;
-    });
-    const result = outcome.result;
-    if (!result?.ok) {
-      setDialogue(`System: ${result?.reason ?? 'Unable to submit for review.'}`);
+    const result = mutateWithResult((s) => submitSeniorReview(s, 'a7', reviewSummary));
+    if (!result.ok) {
+      setDialogue(`System: ${result.reason ?? 'Unable to submit for review.'}`);
       return;
     }
     setDialogue(`Adv. Meera Kulkarni: "${result.feedback}"`);
@@ -1095,14 +1126,9 @@ function GameApp({
   }
 
   function doFinalBrief() {
-    const outcome: { result?: ReturnType<typeof submitFinalBrief> } = {};
-    update((s) => {
-      outcome.result = submitFinalBrief(s, finalSummary);
-      return s;
-    });
-    const result = outcome.result;
-    if (!result?.ok) {
-      setDialogue(`System: ${result?.reason ?? 'Unable to submit final brief.'}`);
+    const result = mutateWithResult((s) => submitFinalBrief(s, finalSummary));
+    if (!result.ok) {
+      setDialogue(`System: ${result.reason ?? 'Unable to submit final brief.'}`);
       return;
     }
     setDialogue(`Adv. Meera Kulkarni: "${result.consequence}"`);
@@ -1110,16 +1136,11 @@ function GameApp({
   }
 
   function doAdvanceTime() {
-    const outcome: { day?: number; slot?: string } = {};
-    update((s) => {
+    const time = mutateWithResult((s) => {
       advanceClock(s);
-      outcome.day = s.clock.day;
-      outcome.slot = s.clock.slot;
-      return s;
+      return { day: s.clock.day, slot: s.clock.slot };
     });
-    if (outcome.day !== undefined) {
-      setDialogue(`System: Time advanced to Day ${outcome.day} (${outcome.slot}). Check your current objective.`);
-    }
+    setDialogue(`System: Time advanced to Day ${time.day} (${time.slot}). Check your current objective.`);
   }
 
   function onHotspot(action: string) {
@@ -1172,42 +1193,35 @@ function GameApp({
   }
 
   function submitAssignment(id: string) {
-    const outcome: { result?: ReturnType<typeof reviewAssignment> } = {};
-    update((s) => {
-      outcome.result = reviewAssignment(s, id);
-      if (outcome.result.ok) {
+    const result = mutateWithResult((s) => {
+      const review = reviewAssignment(s, id);
+      if (review.ok) {
         addNotebookEntry(
           s,
           makeNotebookEntry(
             {
               kind: 'feedback',
               title: `Assignment reviewed: ${s.assignments.find((a) => a.id === id)?.title ?? id}`,
-              content: outcome.result.feedback,
+              content: review.feedback,
               verified: true,
             },
             s,
           ),
         );
       }
-      return s;
+      return review;
     });
-    if (outcome.result && !outcome.result.ok) {
-      setDialogue(`System: ${outcome.result.reason}`);
+    if (!result.ok) {
+      setDialogue(`System: ${result.reason}`);
       setPanel('dialogue');
-    } else if (outcome.result?.ok) {
+    } else {
       setDialogue('Adv. Meera Kulkarni: "Good. Keep the work grounded in reviewed evidence and verified sources."');
       setPanel('notebook');
     }
   }
 
   function submitDraft() {
-    const outcome: { result?: DraftSubmissionResult } = {};
-    update((s) => {
-      outcome.result = submitDraftForFeedback(s, draft);
-      return s;
-    });
-    const result = outcome.result;
-    if (!result) return;
+    const result = mutateWithResult((s) => submitDraftForFeedback(s, draft));
     if (!result.ok) {
       setDialogue(
         'Adv. Meera Kulkarni: "Stop. I see an unverified or fabricated citation. Verify the source first, or remove it."',
@@ -1220,23 +1234,14 @@ function GameApp({
   }
 
   function doSaveDraftVersion() {
-    const outcome: { version?: ReturnType<typeof saveDraftVersion> } = {};
-    update((s) => {
-      outcome.version = saveDraftVersion(s, draft);
-      return s;
-    });
-    if (outcome.version)
-      setDialogue(`System: Draft version saved (Day ${outcome.version.day}, ${outcome.version.slot}).`);
+    const version = mutateWithResult((s) => saveDraftVersion(s, draft));
+    if (version) setDialogue(`System: Draft version saved (Day ${version.day}, ${version.slot}).`);
   }
 
   function doLoadDraftVersion(versionId: string) {
-    const outcome: { text?: string | null } = {};
-    update((s) => {
-      outcome.text = loadDraftVersion(s, versionId);
-      return s;
-    });
-    if (outcome.text !== undefined && outcome.text !== null) {
-      setDraft(outcome.text);
+    const text = mutateWithResult((s) => loadDraftVersion(s, versionId));
+    if (text !== undefined && text !== null) {
+      setDraft(text);
       setDialogue('System: Prior draft version loaded into the editor.');
     }
   }
@@ -1246,12 +1251,14 @@ function GameApp({
       <a href="#main-content" className="skip-link">
         Skip to main content
       </a>
-      <header className="border-b border-bar-gold/20 px-4 py-3 bg-gradient-to-b from-bar-panel/80 to-transparent">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <header className="border-b border-bar-gold/20 px-4 py-4 bg-gradient-to-b from-bar-panel/90 via-bar-panel/40 to-transparent">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.2em] text-bar-muted">The First Brief · Office Prototype</p>
-            <h1 className="text-xl sm:text-2xl font-semibold text-bar-gold tracking-wide">{config.appName}</h1>
-            <p className="text-xs text-bar-muted">
+            <p className="text-[11px] uppercase tracking-[0.24em] text-bar-muted">The First Brief · Office Prototype</p>
+            <h1 className="text-3xl sm:text-4xl font-semibold text-bar-gold tracking-[0.04em] leading-none mt-1">
+              {config.appName}
+            </h1>
+            <p className="text-sm text-bar-muted mt-2 max-w-xl">
               Educational simulation — not legal advice. No fabricated citations.
             </p>
           </div>
@@ -1287,7 +1294,7 @@ function GameApp({
                 type="button"
                 className="px-2 py-1 border border-green-400/40 rounded text-green-200 hover:bg-green-400/10"
                 onClick={() => setPanel('completion')}
-                aria-current={panel === 'completion' ? 'page' : undefined}
+                aria-current={panel === 'completion' ? 'true' : undefined}
               >
                 Chapter summary
               </button>
@@ -1493,13 +1500,16 @@ function GameApp({
         </div>
       </div>
 
-      <main id="main-content" className="grid lg:grid-cols-[1.35fr_1fr] gap-4 p-4">
-        <section className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4" aria-labelledby="chamber-heading">
+      <main id="main-content" className="grid lg:grid-cols-[1.35fr_1fr] gap-4 p-4 min-w-0 scroll-mt-4">
+        <section
+          className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4 min-w-0"
+          aria-labelledby="chamber-heading"
+        >
           <div className="flex flex-col gap-2 mb-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <p className="text-[11px] uppercase tracking-[0.18em] text-bar-muted">Static scene · viewpoint</p>
-                <h2 id="chamber-heading" className="text-lg text-bar-gold">
+                <h2 id="chamber-heading" className="text-lg text-bar-gold scroll-mt-24">
                   {location.label} — {viewpoint.label}
                 </h2>
               </div>
@@ -1562,7 +1572,7 @@ function GameApp({
                     data-hotspot-kind={h.kind}
                     data-character-id={h.characterId}
                     onClick={() => onHotspot(h.action)}
-                    className="text-left p-3 rounded border border-bar-gold/20 bg-bar-panel2/40 hover:bg-white/5 hover:border-bar-gold/40 transition-colors"
+                    className="scene-hotspot text-left p-3 rounded border border-bar-gold/20 bg-bar-panel2/40"
                   >
                     <div className="text-bar-gold text-sm font-medium">{h.label}</div>
                     <div className="text-xs text-bar-muted mt-0.5">{describeHotspotAction(h.action)}</div>
@@ -1587,10 +1597,18 @@ function GameApp({
           </div>
         </section>
 
-        <section className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4" aria-labelledby="workspace-heading">
+        <section
+          className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4 min-w-0"
+          aria-labelledby="workspace-heading"
+        >
           <div className="flex flex-col gap-2 mb-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <h2 id="workspace-heading" ref={workspaceHeadingRef} tabIndex={-1} className="text-lg text-bar-gold">
+              <h2
+                id="workspace-heading"
+                ref={workspaceHeadingRef}
+                tabIndex={-1}
+                className="text-lg text-bar-gold scroll-mt-24"
+              >
                 Workspace
               </h2>
               <span className="text-xs text-bar-muted">
@@ -1602,7 +1620,7 @@ function GameApp({
               highlighted.
             </p>
           </div>
-          <nav aria-label="Work panels" className="flex gap-2 flex-wrap mb-4 text-sm">
+          <nav aria-label="Work panels" className="flex gap-2 flex-wrap mb-5 text-sm">
             {PANELS.filter((p) => localAiEnabled || p !== 'ai').map((p) => {
               const recommended = nextStep.panel === p && panel !== p;
               return (
@@ -1610,11 +1628,11 @@ function GameApp({
                   key={p}
                   type="button"
                   onClick={() => setPanel(p)}
-                  aria-current={panel === p ? 'page' : undefined}
-                  className={`px-2.5 py-1.5 rounded border capitalize transition-colors ${panel === p ? 'border-bar-gold text-bar-gold bg-bar-gold/10' : 'border-white/10 text-bar-muted hover:bg-white/5'} ${recommended ? 'ring-1 ring-bar-gold/30' : ''}`}
+                  aria-current={panel === p ? 'true' : undefined}
+                  className={`px-3 py-2 rounded-md border capitalize transition-colors ${panel === p ? 'border-bar-gold/60 text-bar-gold bg-bar-gold/10 shadow-[inset_0_1px_0_rgba(200,167,90,0.15)]' : 'border-white/10 text-bar-muted hover:bg-white/5 hover:text-bar-text'} ${recommended ? 'ring-1 ring-bar-gold/30' : ''}`}
                 >
                   {p}
-                  {recommended ? ' •' : ''}
+                  {recommended ? <span className="ml-1 text-bar-gold/80">•</span> : null}
                 </button>
               );
             })}
@@ -2180,7 +2198,7 @@ function GameApp({
                       ) : null}
                       {a.requiredFlags?.length ? <span>Milestones: {a.requiredFlags.join(', ')}</span> : null}
                     </div>
-                    {!unlocked && a.status === 'locked' && (
+                    {!unlocked && (
                       <p className="text-xs text-yellow-200 mt-2">
                         {lockReason === 'day'
                           ? `Unlocks on Day ${a.day}. Advance time when ready.`
@@ -2193,6 +2211,20 @@ function GameApp({
                       </div>
                     )}
                     <div className="mt-3 flex gap-2 flex-wrap">
+                      {!unlocked && (
+                        <button
+                          type="button"
+                          disabled
+                          className="px-2 py-1 border border-white/10 rounded text-xs text-bar-muted opacity-60 cursor-not-allowed"
+                          title={
+                            lockReason === 'day'
+                              ? `Unlocks on Day ${a.day}. Advance time when ready.`
+                              : 'Complete and submit/review the prior assignment first.'
+                          }
+                        >
+                          {lockReason === 'day' ? `Locked · Day ${a.day}` : 'Locked · prior work required'}
+                        </button>
+                      )}
                       {(a.status === 'active' || a.status === 'submitted' || a.status === 'pending') &&
                         unlocked &&
                         a.id === 'a7' && (
@@ -2536,10 +2568,17 @@ function GameApp({
 
           {panel === 'casework' && (
             <div className="space-y-3 text-sm">
-              <p className="text-xs text-bar-muted">
-                Everything here is your own recorded observation and reasoning. Authenticity, hidden motives and
-                canonical outcomes are never determined in this panel.
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-bar-muted">
+                  Everything here is your own recorded observation and reasoning. Authenticity, hidden motives and
+                  canonical outcomes are never determined in this panel.
+                </p>
+                {reviewedEvidence.length > 0 && (
+                  <span className="text-[11px] px-2 py-0.5 rounded border border-bar-gold/30 text-bar-gold/90 whitespace-nowrap">
+                    {pluralize(reviewedEvidence.length, 'item')} reviewed — actions available
+                  </span>
+                )}
+              </div>
 
               <div className="bg-bar-panel2 p-3 rounded border border-white/5">
                 <div className="text-bar-gold text-xs mb-2">Working order (each step unlocks the next)</div>
@@ -2559,7 +2598,16 @@ function GameApp({
               <div className="bg-bar-panel2 p-3 rounded border border-white/5">
                 <div className="text-bar-gold text-xs mb-2">Chain of custody — log an observation</div>
                 {reviewedEvidence.length === 0 ? (
-                  <p className="text-xs text-bar-muted">Review an evidence item in the Evidence panel first.</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-bar-muted">Review an evidence item in the Evidence panel first.</p>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                      onClick={() => setPanel('evidence')}
+                    >
+                      Go to Evidence →
+                    </button>
+                  </div>
                 ) : (
                   <div className="grid gap-2">
                     <label className="text-xs flex flex-col gap-1">
@@ -2611,7 +2659,16 @@ function GameApp({
                   {GROUND_FEEDBACK[challengeGround]} Authenticity remains undetermined.
                 </p>
                 {reviewedEvidence.length === 0 ? (
-                  <p className="text-xs text-bar-muted">Review an evidence item in the Evidence panel first.</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-bar-muted">Review an evidence item in the Evidence panel first.</p>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                      onClick={() => setPanel('evidence')}
+                    >
+                      Go to Evidence →
+                    </button>
+                  </div>
                 ) : (
                   <div className="grid gap-2">
                     <label className="text-xs flex flex-col gap-1">
@@ -3215,30 +3272,44 @@ function GameApp({
                     ? 'PLACEHOLDER — NOT AUTHORITATIVE'
                     : 'UNVERIFIED — NOT AUTHORITATIVE';
                 return (
-                  <article key={s.id} className="bg-bar-panel2 p-3 rounded border border-white/5 space-y-1">
+                  <article key={s.id} className="bg-bar-panel2 p-3 rounded border border-white/5 space-y-1 min-w-0">
                     <div className="flex justify-between gap-2 flex-wrap items-start">
-                      <span className="text-bar-gold font-medium">{s.title}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded border ${badgeClass}`}>{badgeText}</span>
+                      <span className="text-bar-gold font-medium min-w-0 break-words [overflow-wrap:anywhere]">
+                        {s.title}
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded border shrink-0 ${badgeClass}`}>{badgeText}</span>
                     </div>
-                    <div className="text-xs text-bar-muted">Source name: {s.sourceName}</div>
-                    <div className="text-xs text-bar-muted">Citation / identifier: {s.citation}</div>
-                    <div className="text-xs text-bar-muted">
+                    <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
+                      Source name: {s.sourceName}
+                    </div>
+                    <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
+                      Citation / identifier: {s.citation}
+                    </div>
+                    <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
                       Type: {s.sourceType} · Jurisdiction: {s.jurisdiction}
                       {s.intake === 'player-draft' ? ' · Player draft' : ''}
                     </div>
-                    {s.effectiveDate && <div className="text-xs text-bar-muted">Effective date: {s.effectiveDate}</div>}
+                    {s.effectiveDate && (
+                      <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
+                        Effective date: {s.effectiveDate}
+                      </div>
+                    )}
                     {s.verificationDate && (
-                      <div className="text-xs text-bar-muted">
+                      <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
                         Verified on {s.verificationDate}
                         {s.verifiedBy ? ` by ${s.verifiedBy}` : ''}
                       </div>
                     )}
-                    <div className="text-xs text-bar-muted">Provenance (non-authoritative note): {s.provenance}</div>
+                    <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
+                      Provenance (non-authoritative note): {s.provenance}
+                    </div>
                     {s.sourceUrl && (
-                      <div className="text-xs text-bar-muted break-words">Official source URL: {s.sourceUrl}</div>
+                      <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
+                        Official source URL: {s.sourceUrl}
+                      </div>
                     )}
                     {s.excerpt && (
-                      <div className="text-xs text-yellow-200 border-l-2 border-yellow-400/40 pl-2">
+                      <div className="text-xs text-yellow-200 border-l-2 border-yellow-400/40 pl-2 break-words [overflow-wrap:anywhere]">
                         NON-AUTHORITATIVE EXCERPT/SUMMARY — not the text of the law: {s.excerpt}
                       </div>
                     )}
@@ -3247,7 +3318,7 @@ function GameApp({
                         Warning: not verified. Do not cite this source as law.
                       </p>
                     )}
-                    {s.notes && <div className="text-xs">{s.notes}</div>}
+                    {s.notes && <div className="text-xs break-words [overflow-wrap:anywhere]">{s.notes}</div>}
                     <button
                       type="button"
                       className="mt-1 px-2 py-1 border border-bar-gold/30 rounded text-xs"
@@ -3462,6 +3533,36 @@ function GameApp({
 
           {panel === 'notebook' && (
             <div className="space-y-2 text-sm">
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5 space-y-2">
+                <p className="text-xs text-bar-muted">
+                  Notes are tied to evidence you have reviewed. Add one from the Evidence board.
+                </p>
+                {firstReviewedEvidence ? (
+                  <button
+                    type="button"
+                    className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                    onClick={() => {
+                      setNoteTarget(firstReviewedEvidence.id);
+                      setNoteRelation('contradiction');
+                      setNoteText('');
+                      setPanel('evidence');
+                    }}
+                  >
+                    Add a note tied to reviewed evidence →
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-yellow-200">Review an evidence item first.</p>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                      onClick={() => setPanel('evidence')}
+                    >
+                      Go to Evidence →
+                    </button>
+                  </div>
+                )}
+              </div>
               <div role="group" aria-label="Filter notebook by kind" className="flex flex-wrap gap-2">
                 <button
                   type="button"

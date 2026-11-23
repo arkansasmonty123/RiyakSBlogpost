@@ -13,3 +13,6 @@ package-lock.json
 
 # Playwright MCP artifacts
 .playwright-mcp/
+
+# Playwright test runner artifacts
+test-results/
