@@ -1,6 +1,6 @@
 # ADR-003 — Persistence Architecture and Migration Plan (ADR-001 DB work)
 
-- **Status:** Proposed (implementation partially landed; App not yet wired)
+- **Status:** Accepted — P1 landed at `1990e73` (App wired to `getGameRepository()`); `sqlite-api` remains opt-in and conflict handling is deferred
 - **Date:** 2026-11-23
 - **Owners:** Architect / Builder (implementation), Product owner (rollout approval)
 - **Related decisions:** ADR-001 (stack; deferred server DB), ADR-002 (P0 slice), D-009, D-019
@@ -17,19 +17,19 @@ Give the game one persistence seam with two interchangeable backends:
 
 Success means: same `GameRepository` contract, identical player-visible behavior, canonical truth never leaves the server in a payload, and a safe, explicit path for existing localStorage saves into SQLite.
 
-## 2. Current components (as implemented at `2593687`)
+## 2. Current components (as implemented at `1990e73`)
 
 ### Client
 
-| File                                        | Role                                                                                                                                                                                              | Status                                        |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
-| `src/storage/gameRepository.ts`             | `GameRepository` interface (`loadGame`, `saveGame`, `resetGame`), `DEFAULT_GAME_SLOT = 'default'`. Slot IDs are opaque keys.                                                                      | Implemented                                   |
-| `src/storage/save.ts`                       | `SAVE_KEY`/`LEGACY_KEY`, `hydrateSave` (v1→v2 merge + sanitize), `toPersistedSave` (player-safe projection), `persistSave`, `resetSave`, `loadSave`.                                              | Implemented                                   |
-| `src/storage/localStorageGameRepository.ts` | localStorage adapter; sync methods + async wrappers; `hasPersistedSave(slotId)` for migration detection; named slots stored under `the-bar-save-v2:slot:<id>`.                                    | Implemented                                   |
-| `src/storage/sqliteApiGameRepository.ts`    | HTTP adapter: `GET/PUT/DELETE /api/saves/:slot`; hydrates responses; sends `toPersistedSave` payload; on `404` imports from an injected `MigrationSource`; fails closed to `createInitialSave()`. | Implemented (unit-tested with mocked `fetch`) |
-| `src/storage/getGameRepository.ts`          | `getGameRepository()` factory selected by `VITE_STORAGE_MODE`; module-level cache; `resetGameRepositoryCache()` test seam.                                                                        | Implemented                                   |
-| `src/config/env.ts`                         | `getStorageMode()` → `'local'` (default) \| `'sqlite-api'`.                                                                                                                                       | Implemented                                   |
-| `src/app/App.tsx`                           | **Still imports `localStorageGameRepository` directly** and calls `loadGameSync` / `saveGameSync` / `resetGameSync`.                                                                              | **Not wired to the factory/async API**        |
+| File                                        | Role                                                                                                                                                                                                                                                                                                                                                                                                              | Status                                        |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `src/storage/gameRepository.ts`             | `GameRepository` interface (`loadGame`, `saveGame`, `resetGame`), `DEFAULT_GAME_SLOT = 'default'`. Slot IDs are opaque keys.                                                                                                                                                                                                                                                                                      | Implemented                                   |
+| `src/storage/save.ts`                       | `SAVE_KEY`/`LEGACY_KEY`, `hydrateSave` (v1→v2 merge + sanitize), `toPersistedSave` (player-safe projection), `persistSave`, `resetSave`, `loadSave`.                                                                                                                                                                                                                                                              | Implemented                                   |
+| `src/storage/localStorageGameRepository.ts` | localStorage adapter; sync methods + async wrappers; `hasPersistedSave(slotId)` for migration detection; named slots stored under `the-bar-save-v2:slot:<id>`.                                                                                                                                                                                                                                                    | Implemented                                   |
+| `src/storage/sqliteApiGameRepository.ts`    | HTTP adapter: `GET/PUT/DELETE /api/saves/:slot`; hydrates responses; sends `toPersistedSave` payload; on `404` imports from an injected `MigrationSource`; fails closed to `createInitialSave()`.                                                                                                                                                                                                                 | Implemented (unit-tested with mocked `fetch`) |
+| `src/storage/getGameRepository.ts`          | `getGameRepository()` factory selected by `VITE_STORAGE_MODE`; module-level cache; `resetGameRepositoryCache()` test seam.                                                                                                                                                                                                                                                                                        | Implemented                                   |
+| `src/config/env.ts`                         | `getStorageMode()` → `'local'` (default) \| `'sqlite-api'`.                                                                                                                                                                                                                                                                                                                                                       | Implemented                                   |
+| `src/app/App.tsx`                           | Boots via `createSessionBoot(getGameRepository())`; capability-checks a sync adapter (`isSyncGameRepository`) for a no-flicker local fast path and renders a loading frame for async adapters; loads via `loadInitialSave` / `loadBootSave`; saves and resets via `persistSaveThrough` / `resetSaveThrough`; serializes async writes through a queue with a generation guard. Exports the boot helpers for tests. | **Implemented (P1)**                          |
 
 ### Server
 
@@ -43,24 +43,26 @@ Success means: same `GameRepository` contract, identical player-visible behavior
 
 ### Tests (verified locally)
 
-`src/tests/gameRepository.test.ts` (6), `src/tests/sqliteApiGameRepository.test.ts` (7), `src/tests/saveMigration.test.ts` (5), `server/db/repository.test.ts` (4) — 22 tests, all passing. They cover slot isolation, canonical-truth exclusion, v1→v2 merge, import-on-404, HTTP failure handling, transactional upsert/audit, stale-write conflict, and restart/reopen persistence.
+Persistence-focused suites: `src/tests/gameRepository.test.ts` (6), `src/tests/sqliteApiGameRepository.test.ts` (7), `src/tests/saveMigration.test.ts` (5), `server/db/repository.test.ts` (4), `src/tests/appRepositoryIntegration.test.tsx` (8) — 30 tests. They cover slot isolation, canonical-truth exclusion, v1→v2 merge, import-on-404, HTTP failure handling, transactional upsert/audit, stale-write conflict, restart/reopen persistence, and the App↔repository boot contract (default adapter selection, sync fast path with no loading frame, async loading frame, deferred/queued async saves, load-failure fallback, and reset invalidation of in-flight saves).
 
-Handler-level HTTP integration tests also exist: `server/api.test.ts` (11 tests, passing, added in the same working tree at drafting time and picked up by `npm test`). They spawn `createServer()` on an ephemeral port against a temporary SQLite file and cover health, PUT/POST/GET round-trip, canonical-truth stripping in responses, DELETE + 404, slot listing without payloads, audit rows, stale `expectedSavedAt` → `409`, malformed JSON → `400`, oversized body → `413`, and unknown routes → `404`.
+Handler-level HTTP integration tests also exist: `server/api.test.ts` (11 tests, added in `f8e8b5e`). They spawn `createServer()` on an ephemeral port against a temporary SQLite file and cover health, PUT/POST/GET round-trip, canonical-truth stripping in responses, DELETE + 404, slot listing without payloads, audit rows, stale `expectedSavedAt` → `409`, malformed JSON → `400`, oversized body → `413`, and unknown routes → `404`.
+
+Full gate at `1990e73`: `npm run verify` PASS — 44 files / 367 tests. Note the App integration suite mocks `fetch`; the real-server adapter path is still deferred (Section 9, P3).
 
 ## 3. Data flow
 
 ### local (default)
 
 ```
-App.tsx ──sync──> localStorageGameRepository ──> save.ts ──> window.localStorage
-                                                 hydrateSave on read
-                                                 toPersistedSave on write
+App.tsx ──sync fast path──> localStorageGameRepository ──> save.ts ──> window.localStorage
+                                                        hydrateSave on read
+                                                        toPersistedSave on write
 ```
 
-### sqlite-api (opt-in, not used by App yet)
+### sqlite-api (opt-in via `VITE_STORAGE_MODE=sqlite-api`; still not the default)
 
 ```
-App (future) ──async──> getGameRepository() ──> SqliteApiGameRepository
+App (opt-in) ──async──> getGameRepository() ──> SqliteApiGameRepository
                                                    │  GET/PUT/DELETE /api/saves/:slot
                                                    ▼
                                          Vite proxy → server/api.ts
@@ -134,40 +136,42 @@ Planned boundary (not implemented):
 
 ## 9. Rollout plan
 
-| Phase        | State                                                                                                                                                                                        | Gate                                                                |
-| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| P0 (current) | `local` is default; `sqlite-api` selectable only via `VITE_STORAGE_MODE=sqlite-api`. App ignores the factory and always uses localStorage.                                                   | Existing suites + `npm run verify` green.                           |
-| P1           | Wire `App.tsx` to `getGameRepository()` with async load/save/reset; keep `local` default; handle in-flight saves (queue/debounce) and surface failures.                                      | Manual smoke on both modes; no save-loss on rapid actions.          |
-| P2           | Thread `savedAt` from responses into the next `PUT` as `expectedSavedAt`; map `409` to a defined recovery path (reload latest + notify).                                                     | Conflict test against a real server.                                |
-| P3           | Extend the existing handler-level HTTP tests (`server/api.test.ts`) to drive `SqliteApiGameRepository` against a real server: import-on-404, `409` recovery, restart, and payload stripping. | No mocked `fetch` on the integration path; tests run in `npm test`. |
-| P4           | Opt-in default flip in a preview environment; keep a documented env switch back to `local`.                                                                                                  | Parity checklist + rollback verified.                               |
-| P5           | Make `sqlite-api` the default only after P1–P4 pass and auth/ownership (or an explicit single-user decision) is recorded.                                                                    | Product owner sign-off.                                             |
+| Phase        | State                                                                                                                                                                                                                                 | Gate                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| P0 (landed)  | `local` is default; `sqlite-api` selectable only via `VITE_STORAGE_MODE=sqlite-api`; App boots through the factory with a sync fast path and a loading frame for async adapters; async writes are serialized with a generation guard. | `npm run verify` PASS — 44 files / 367 tests at `1990e73`.                              |
+| P1 (landed)  | `App.tsx` wired to `getGameRepository()` with async load/save/reset; `local` stays default; in-flight async saves queued and stale results discarded.                                                                                 | `appRepositoryIntegration.test.tsx` (8 tests) green; manual two-mode smoke outstanding. |
+| P2 (next)    | Thread `savedAt` from responses into the next `PUT` as `expectedSavedAt`; map `409` to a defined recovery path (reload latest + notify). Client currently sends only `{ payload }`.                                                   | Conflict test against a real server.                                                    |
+| P3 (pending) | Extend the existing handler-level HTTP tests (`server/api.test.ts`, 11 tests) to drive `SqliteApiGameRepository` against a real server: import-on-404, `409` recovery, restart, and payload stripping.                                | No mocked `fetch` on the integration path; tests run in `npm test`.                     |
+| P4 (pending) | Opt-in default flip in a preview environment; keep a documented env switch back to `local`.                                                                                                                                           | Parity checklist + rollback verified.                                                   |
+| P5 (pending) | Make `sqlite-api` the default only after P1–P4 pass and auth/ownership (or an explicit single-user decision) is recorded.                                                                                                             | Product owner sign-off.                                                                 |
 
 Rollback at every phase: set `VITE_STORAGE_MODE=local`; local saves were never deleted.
 
 ## 10. Known gaps / risks
 
-| #   | Gap / risk                                                                                                   | Impact                                                                               | Mitigation                                                                               |
-| --- | ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
-| 1   | `App.tsx` uses `localStorageGameRepository` directly (`src/app/App.tsx:7,207,385,405`).                      | `sqlite-api` mode is inert in the running app.                                       | P1 wiring task.                                                                          |
-| 2   | Client never sends `expectedSavedAt`.                                                                        | Server conflict guard unusable; silent last-write-wins.                              | P2.                                                                                      |
-| 3   | Adapter tests mock `fetch`; HTTP tests cover the handler, not the adapter/proxy path.                        | Client↔server contract regressions (URL shape, JSON envelope, hydration) undetected. | P3.                                                                                      |
-| 4   | Import-on-404 is a read-then-write race.                                                                     | Two tabs could both import; last write wins.                                         | P2 conflict token + idempotent import marker.                                            |
-| 5   | `slotIdFromPath` regex is `[a-zA-Z0-9_-]{1,64}` but the client `encodeURIComponent`s arbitrary IDs.          | Non-matching slot IDs 404 unexpectedly.                                              | Constrain/validate slot IDs on the client.                                               |
-| 6   | No auth/ownership.                                                                                           | Any local caller can read/write all slots.                                           | Section 8; keep loopback-only binding.                                                   |
-| 7   | Server ignores stored `schema_version` on read.                                                              | Older payloads are only fixed client-side by `hydrateSave`.                          | Document `hydrateSave` as the single upgrade point; add server-side version check later. |
-| 8   | `getGameRepository()` caches the adapter at module scope.                                                    | Changing `VITE_STORAGE_MODE` requires a reload.                                      | Acceptable (build-time env); `resetGameRepositoryCache()` exists for tests.              |
-| 9   | Async saves introduce ordering hazards in `update()`, which currently saves synchronously on every mutation. | Out-of-order writes could persist stale state.                                       | P1: single-flight queue / latest-wins sequence number.                                   |
+| #   | Gap / risk                                                                                                                                                                                                      | Impact                                                                               | Mitigation                                                                               |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| 1   | ~~`App.tsx` uses `localStorageGameRepository` directly.~~ **Resolved at `1990e73`** — App boots through `getGameRepository()`; `sqlite-api` is no longer inert.                                                 | None (closed).                                                                       | —                                                                                        |
+| 2   | Client never sends `expectedSavedAt`.                                                                                                                                                                           | Server conflict guard unusable; silent last-write-wins.                              | P2.                                                                                      |
+| 3   | Adapter tests and `appRepositoryIntegration.test.tsx` mock `fetch`; HTTP tests cover the handler, not the adapter/proxy path.                                                                                   | Client↔server contract regressions (URL shape, JSON envelope, hydration) undetected. | P3 (real-server adapter tests).                                                          |
+| 4   | Import-on-404 is a read-then-write race.                                                                                                                                                                        | Two tabs could both import; last write wins.                                         | P2 conflict token + idempotent import marker.                                            |
+| 5   | `slotIdFromPath` regex is `[a-zA-Z0-9_-]{1,64}` but the client `encodeURIComponent`s arbitrary IDs.                                                                                                             | Non-matching slot IDs 404 unexpectedly.                                              | Constrain/validate slot IDs on the client.                                               |
+| 6   | No auth/ownership.                                                                                                                                                                                              | Any local caller can read/write all slots.                                           | Section 8; keep loopback-only binding.                                                   |
+| 7   | Server ignores stored `schema_version` on read.                                                                                                                                                                 | Older payloads are only fixed client-side by `hydrateSave`.                          | Document `hydrateSave` as the single upgrade point; add server-side version check later. |
+| 8   | `getGameRepository()` caches the adapter at module scope.                                                                                                                                                       | Changing `VITE_STORAGE_MODE` requires a reload.                                      | Acceptable (build-time env); `resetGameRepositoryCache()` exists for tests.              |
+| 9   | ~~Async saves introduce ordering hazards in `update()`.~~ **Resolved at `1990e73`** — async writes go through a serialized queue and a generation guard drops stale results; resets invalidate in-flight saves. | None (closed).                                                                       | —                                                                                        |
 
 ## 11. Acceptance criteria for "ADR-001 persistence complete"
 
-1. `App.tsx` obtains its repository from `getGameRepository()` and uses the async contract; no direct `localStorageGameRepository` import in app code.
-2. `local` remains the default; `VITE_STORAGE_MODE=sqlite-api` works end-to-end through the Vite proxy with the real server.
-3. Load, save, reset, and first-run import behave identically in both modes for the same slot.
-4. Canonical truth is absent from every stored payload (localStorage and `save_slots.payload_json`) and re-derived on load — asserted by tests.
-5. Client sends `expectedSavedAt`; a stale write yields a handled `409` with a defined recovery path (no silent data loss).
-6. `npm test` includes real-server integration tests (no mocked `fetch`) covering the adapter path: import-on-404, `409` conflict/recovery, restart recovery, and payload stripping. Handler-level coverage in `server/api.test.ts` is the starting point, not the finish line.
-7. v1→v2 and localStorage→SQLite migrations are covered by automated tests, and local data is retained (rollback works).
-8. `npm run verify` passes (lint, format, typecheck, tests, build).
-9. Auth/ownership is either implemented or explicitly recorded as a deferred, documented single-user limitation with loopback-only binding.
-10. Rollout/rollback steps in Section 9 are executed and recorded in `docs/DECISIONS.md`.
+Status legend: `[x]` implemented and verified · `[~]` partially landed · `[ ]` deferred.
+
+1. [x] `App.tsx` obtains its repository from `getGameRepository()` and uses the async contract; no direct `localStorageGameRepository` import in app code. _(landed `1990e73`)_
+2. [~] `local` remains the default; `VITE_STORAGE_MODE=sqlite-api` works end-to-end through the Vite proxy with the real server. _(default confirmed; real-server smoke still outstanding — current coverage mocks `fetch`)_
+3. [ ] Load, save, reset, and first-run import behave identically in both modes for the same slot. _(unit-level only; no end-to-end parity run)_
+4. [x] Canonical truth is absent from every stored payload (localStorage and `save_slots.payload_json`) and re-derived on load — asserted by tests.
+5. [ ] Client sends `expectedSavedAt`; a stale write yields a handled `409` with a defined recovery path (no silent data loss). _(client still sends only `{ payload }`; no 409 UX)_
+6. [~] `npm test` includes real-server integration tests (no mocked `fetch`) covering the adapter path: import-on-404, `409` conflict/recovery, restart recovery, and payload stripping. _(handler-level `server/api.test.ts` exists; adapter-level real-server tests pending — P3)_
+7. [~] v1→v2 and localStorage→SQLite migrations are covered by automated tests, and local data is retained (rollback works). _(migration/import units covered; app-level migration path not yet exercised)_
+8. [x] `npm run verify` passes (lint, format, typecheck, tests, build). _(PASS — 44 files / 367 tests at `1990e73`)_
+9. [ ] Auth/ownership is either implemented or explicitly recorded as a deferred, documented single-user limitation with loopback-only binding. _(deferred; see Section 8)_
+10. [ ] Rollout/rollback steps in Section 9 are executed and recorded in `docs/DECISIONS.md`.
