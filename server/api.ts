@@ -1,7 +1,14 @@
 import http from 'node:http';
 import { URL } from 'node:url';
 import { closeDb, getDb } from './db/database';
-import { deleteSaveSlot, getSaveSlot, listAuditEvents, listSaveSlots, upsertSaveSlot } from './db/repository';
+import {
+  deleteSaveSlot,
+  getSaveSlot,
+  listAuditEvents,
+  listSaveSlots,
+  SaveConflictError,
+  upsertSaveSlot,
+} from './db/repository';
 
 function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
   const json = JSON.stringify(body);
@@ -62,11 +69,10 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
       }
       if (method === 'PUT' || method === 'POST') {
         const body = await readBody(req);
-        const payload =
-          body && typeof body === 'object' && 'payload' in (body as Record<string, unknown>)
-            ? (body as Record<string, unknown>).payload
-            : body;
-        const slot = upsertSaveSlot(getDb(), slotId, payload);
+        const bodyObj = body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
+        const payload = bodyObj && 'payload' in bodyObj ? bodyObj.payload : body;
+        const expectedSavedAt = typeof bodyObj?.expectedSavedAt === 'string' ? bodyObj.expectedSavedAt : undefined;
+        const slot = upsertSaveSlot(getDb(), slotId, payload, { expectedSavedAt });
         return sendJson(res, 200, { ok: true, slot });
       }
       if (method === 'DELETE') {
@@ -77,6 +83,7 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
 
     return sendJson(res, 404, { ok: false, error: 'NOT_FOUND' });
   } catch (error) {
+    if (error instanceof SaveConflictError) return sendJson(res, 409, { ok: false, error: 'SAVE_CONFLICT' });
     const message = error instanceof Error ? error.message : String(error);
     if (message === 'PAYLOAD_TOO_LARGE') return sendJson(res, 413, { ok: false, error: message });
     if (error instanceof SyntaxError) return sendJson(res, 400, { ok: false, error: 'INVALID_JSON' });

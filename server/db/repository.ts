@@ -30,13 +30,33 @@ function stripCanonicalTruth(payload: unknown): unknown {
   return { ...obj, caseFile: safeCaseFile };
 }
 
-export function upsertSaveSlot(db: DatabaseSync, slotId: string, payload: unknown): SaveSlotRecord {
+export class SaveConflictError extends Error {
+  constructor(message = 'SAVE_CONFLICT') {
+    super(message);
+    this.name = 'SaveConflictError';
+  }
+}
+
+export function upsertSaveSlot(
+  db: DatabaseSync,
+  slotId: string,
+  payload: unknown,
+  options?: { expectedSavedAt?: string },
+): SaveSlotRecord {
   const safePayload = stripCanonicalTruth(payload);
   const obj = safePayload && typeof safePayload === 'object' ? (safePayload as Record<string, unknown>) : null;
   const savedAt = typeof obj?.savedAt === 'string' ? obj.savedAt : new Date().toISOString();
   const schemaVersion = typeof obj?.version === 'number' ? obj.version : 2;
 
   return withTransaction(db, () => {
+    if (options?.expectedSavedAt) {
+      const current = db.prepare('SELECT saved_at FROM save_slots WHERE slot_id = ?').get(slotId) as
+        { saved_at: string } | undefined;
+      if (current && current.saved_at !== options.expectedSavedAt) {
+        throw new SaveConflictError();
+      }
+    }
+
     db.prepare(
       `
       INSERT INTO save_slots (slot_id, schema_version, saved_at, payload_json, updated_at)

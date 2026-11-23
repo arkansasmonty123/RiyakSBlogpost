@@ -3,7 +3,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { closeDb, getDb } from './database';
-import { deleteSaveSlot, getSaveSlot, listAuditEvents, listSaveSlots, upsertSaveSlot } from './repository';
+import {
+  deleteSaveSlot,
+  getSaveSlot,
+  listAuditEvents,
+  listSaveSlots,
+  SaveConflictError,
+  upsertSaveSlot,
+} from './repository';
 
 const tempDirs: string[] = [];
 
@@ -50,5 +57,34 @@ describe('sqlite save repository (ADR-001 infra start)', () => {
     const events = listAuditEvents(db, 'slot-a');
     expect(events.some((e) => e.eventType === 'save.upsert')).toBe(true);
     expect(events.some((e) => e.eventType === 'save.delete')).toBe(true);
+  });
+
+  it('rejects stale writes when expectedSavedAt does not match (concurrency guard)', () => {
+    const db = makeDb();
+    upsertSaveSlot(db, 'slot-c', { version: 2, savedAt: '2026-11-23T00:00:00.000Z' });
+    expect(() =>
+      upsertSaveSlot(db, 'slot-c', { version: 2, savedAt: '2026-11-23T00:00:01.000Z' }, { expectedSavedAt: 'stale' }),
+    ).toThrow(SaveConflictError);
+    const loaded = getSaveSlot(db, 'slot-c');
+    expect(loaded?.savedAt).toBe('2026-11-23T00:00:00.000Z');
+  });
+
+  it('persists across restart/reopen and keeps canonicalTruth stripped', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'the-bar-db-restart-'));
+    tempDirs.push(dir);
+    const filename = path.join(dir, 'restart.sqlite');
+    closeDb();
+    const db1 = getDb({ filename });
+    upsertSaveSlot(db1, 'slot-r', {
+      version: 2,
+      savedAt: '2026-11-23T00:00:00.000Z',
+      player: { name: 'Persisted' },
+      caseFile: { id: 'c1', canonicalTruth: { secret: true } },
+    });
+    closeDb();
+    const db2 = getDb({ filename });
+    const loaded = getSaveSlot(db2, 'slot-r');
+    expect((loaded?.payload as any).player.name).toBe('Persisted');
+    expect((loaded?.payload as any).caseFile.canonicalTruth).toBeUndefined();
   });
 });
