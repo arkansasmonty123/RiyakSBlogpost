@@ -15,8 +15,10 @@ The system is designed so the **Orchestrator** receives objectives, inspects sta
 | `scrutinizer` | subagent | `.opencode/agents/scrutinizer.md` | Independent audit vs PRD/task; targeted tests; evidence-based verdict | **Read-only for edits** (`edit` denied); can run shell checks; no production code rewrites |
 | `bug-fixer` | subagent | `.opencode/agents/bug-fixer.md` | Root-cause analysis, minimal fix, targeted regression verification | Edit/shell allowed; can delegate independent investigation subtasks via `subagent`; no scope expansion |
 | `architect` | subagent | `.opencode/agents/architect.md` | Breaks complex work into tasks, dependencies, risks, implementation plan | **Read-only for edits** (`edit` denied) |
-| `ui-ux-frontend` | subagent | `.opencode/agents/ui-ux-frontend.md` | Designs and implements beautiful, accessible UI/UX/components/animations; web research for inspiration/prebuilt patterns | Edit/shell allowed; websearch/webfetch allowed; can delegate independent subtasks via `subagent`; no push/deploy |
+| `game-designer` | subagent | `.opencode/agents/game-designer.md` | Designs game mechanics, rules, pacing, balancing, investigation/court flow | Edit/shell allowed; no push/deploy; prefers design specs/acceptance criteria over large code changes |
+| `ui-ux-frontend` | subagent | `.opencode/agents/ui-ux-frontend.md` | Designs and implements beautiful, accessible UI/UX/components/animations; web research; can use Stitch MCP for AI design drafts | Edit/shell allowed; websearch/webfetch allowed; Stitch MCP available; can delegate independent subtasks via `subagent`; no push/deploy |
 | `devops-engineer` | subagent | `.opencode/agents/devops-engineer.md` | CI/CD, build/release scripts, env/config, Docker, observability, developer tooling | Edit/shell allowed; push/deploy ask; destructive guarded |
+| `github-ops` | subagent | `.opencode/agents/github-ops.md` | Git/GitHub workflows: commits, branches, PRs/issues/checks, repo hygiene | Edit/shell allowed; `git push`/remote-write actions ask; no force-push/merge without approval |
 | `researcher` | subagent | `.opencode/agents/researcher.md` | External docs/library/API/best-practice research with cited sources | **Read-only for edits** (`edit` denied); websearch/webfetch allowed |
 | `qa-engineer` | subagent | `.opencode/agents/qa-engineer.md` | Test scenarios, user journeys, edge cases, regression validation | Can run/add relevant tests; no push/deploy |
 | `user-tester` | subagent | `.opencode/agents/user-tester.md` | Simulates real user behavior for usability, visuals, flows, and accessibility review | **Read-only for edits** (`edit` denied); can run app/browser checks; reports evidence-based issues |
@@ -60,6 +62,11 @@ The system is designed so the **Orchestrator** receives objectives, inspects sta
 - `instructions`: includes `AGENTS.md`, `project-management/DEV-STATUS.md`, `project-management/RECOVERY.md`, and `project-management/ORCHESTRATION-STATE.json` so agents get recovery context.
 - `permissions`: guards destructive/sensitive shell operations (`git push` asks, `sudo *` asks, `rm -rf /*` denied). Agent files also include role-specific permissions.
 
+## MCP servers & skills
+
+- **MCP servers** (configured in `opencode.jsonc`): `playwright` (local, browser automation), `context7` (remote, docs, no OAuth), `gh_grep` (remote, GitHub code search, no OAuth), `stitch` (remote, Google Stitch AI UI design, `https://stitch.googleapis.com/mcp`; auth via TUI `/mcps` if prompted).
+- **Skills** in `.agents/skills/`: `design-taste-frontend` (Taste Skill), `frontend-design`, `planning-with-files`, `stitch-design-mcp`, `vercel-composition-patterns`, `vercel-react-best-practices`, `webapp-testing`, `web-design-guidelines`. Load with the `skill` tool when relevant.
+
 ## How to start the Orchestrator
 
 From the workspace root:
@@ -95,8 +102,8 @@ The Orchestrator should inspect relevant files first, update `project-management
 The Orchestrator uses OpenCode's `subagent` tool to invoke specialized agents. Delegation is explicit and evidence-driven:
 
 1. Orchestrator inspects objective/PRD/state.
-2. Optionally delegates planning to `architect` and external research to `researcher`.
-3. Delegates implementation to `builder` (backend/general), `ui-ux-frontend` (UI/UX), or `devops-engineer` (CI/build/env/tooling) with specific acceptance criteria.
+2. Optionally delegates planning to `architect`, gameplay/rules design to `game-designer`, and external research to `researcher`.
+3. Delegates implementation to `builder` (backend/general), `ui-ux-frontend` (UI/UX), or `devops-engineer` (CI/build/env/tooling) with specific acceptance criteria; delegates commit/PR/GitHub workflows to `github-ops` when needed (never push without approval).
 4. Delegates independent verification to `scrutinizer`.
 5. If defects found, delegates to `bug-fixer`, then back to `scrutinizer`.
 6. Uses `qa-engineer` for milestone/regression testing, `user-tester` for human-like usability/visual review, and `security-auditor` for security-sensitive work.
@@ -195,7 +202,7 @@ opencode debug agents
 Confirm:
 - `opencode.jsonc` is loaded.
 - `default_agent` is `orchestrator`.
-- All 11 agent files are discoverable.
+- All 13 agent files are discoverable.
 - Orchestrator is primary; others are subagents.
 - Permission rules reflect intended safety boundaries.
 

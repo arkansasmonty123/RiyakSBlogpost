@@ -216,6 +216,7 @@ export function KnowledgeNotebook({ entries, specialists, onCreateNote, onUpdate
             const specialistName = entry.specialistId ? specialistNameById.get(entry.specialistId) : null;
             const snapshot = entry.sourceSnapshot || {};
             const hasSource = !!(snapshot.artifactKey || snapshot.title || snapshot.bibliographyRef || snapshot.sourceAuthor);
+            const hasDiscoveryProvenance = !!(entry.discoveryMemoryId || entry.discoveryClueKey);
             return (
               <article key={entry.id} className="detail-card notebook-entry">
                 <div className="badges">
@@ -223,6 +224,7 @@ export function KnowledgeNotebook({ entries, specialists, onCreateNote, onUpdate
                   {entry.artifactId && <span className="badge badge--soft">Artifact</span>}
                   {specialistName && <span className="badge badge--soft">Specialist: {specialistName}</span>}
                   {entry.concept && <span className="badge badge--soft">Concept: {entry.concept}</span>}
+                  {hasDiscoveryProvenance && <span className="badge badge--soft">Field research</span>}
                 </div>
 
                 {isEditing ? (
@@ -251,6 +253,17 @@ export function KnowledgeNotebook({ entries, specialists, onCreateNote, onUpdate
                     {entry.title && <h4>{entry.title}</h4>}
                     {entry.content && <p className="solution-prose">{entry.content}</p>}
                   </>
+                )}
+
+                {hasDiscoveryProvenance && (
+                  <div className="notebook-source">
+                    <h5>Discovery provenance</h5>
+                    <p className="muted small-note">
+                      This note is linked to field research.
+                      {entry.discoveryClueKey ? <> Clue: <strong>{String(entry.discoveryClueKey)}</strong>.</> : null}
+                      {entry.discoveryMemoryId ? <> Memory: <code>{String(entry.discoveryMemoryId)}</code>.</> : null}
+                    </p>
+                  </div>
                 )}
 
                 {hasSource && (

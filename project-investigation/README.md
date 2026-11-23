@@ -54,3 +54,40 @@ cd frontend && npm run build
 Seeded case data (solvability, reference integrity, safe-DTO allowlists) is
 linted read-only by `npm run case:validate`; see `GAP-15-NOTES.md`. The check is
 also wired as a separate step in `.github/workflows/ci.yml`.
+
+## Security / deployment hardening (M8-W6)
+
+Before any public deployment, copy `.env.example` to `.env` and review the
+**M8-W6 production hardening** section:
+
+- Set `NODE_ENV=production` (enables Secure session cookies and startup warnings)
+  and terminate TLS at the ingress proxy.
+- Set `FRONTEND_URL` (and optional `ALLOWED_ORIGINS`) to the exact deployed
+  frontend origin(s). The server enforces a lightweight Origin/Referer check on
+  mutating requests; requests with no Origin/Referer (CLI/services) are allowed
+  by design. Disable only in isolated test harnesses with `CSRF_ORIGIN_CHECK=false`.
+- Tighten `AUTH_RATE_MAX` / `CHAT_RATE_MAX` / `WRITE_RATE_MAX` (the dev defaults
+  are deliberately generous), keep `RATE_LIMIT_ENABLED=true`, and set
+  `JSON_BODY_LIMIT` (default `1mb`).
+- If using LLM failover, set a dedicated `LLM_FAILOVER_API_KEY` so the primary
+  provider key is not reused.
+
+The server logs explicit warnings for unsafe production configuration at
+startup. Finding-by-finding resolutions and the `npm audit` summary are in
+`project-management/M8-W6-SECURITY-AUDIT.md`.
+
+## Beta readiness (M8-W7)
+
+`project-management/M8-DEPLOYMENT-RUNBOOK.md` is the operator runbook for a
+**controlled beta only** — it is not authorization for a public deploy. It
+covers reproducible config, migrations/seeds, backups/restore, rollback,
+monitoring, beta access and the go/no-go checklist.
+
+New optional env settings (see `.env.example`): `APP_VERSION`, `FEEDBACK_URL`,
+`BETA_ACCESS_CODE` (closed-beta register gate, off by default) and
+`HEALTH_DB_CHECK`. Public endpoints: `GET /api/health` (liveness/readiness) and
+`GET /api/config` (safe feedback/beta metadata). Authenticated,
+session-scoped self-service endpoints: `GET /api/me/export` (player-data JSON,
+no canonical/hidden content) and `POST /api/me/delete` (requires
+`{ confirm: "DELETE" }`). The frontend exposes `/privacy`, `/terms` and a
+footer feedback link; the Progress page offers export and account deletion.

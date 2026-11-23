@@ -66,3 +66,45 @@
 - [x] **M4-BACKEND**: Migration 008, db/server/reality-map modules, validator, smoke+CI updates. 88/88.
 - [x] **M4-UI**: Reality Map tab/components, API wiring, journal/notebook claim affordances.
 - [x] **M4-VERIFY**: Full verification PASS (88/88).
+
+## M5 - Perspective Engine (complete)
+
+- [x] **M5-AUDIT**: PRD/repo/knowledge/Reality Map/specialists inspected; M5 additive scope confirmed.
+- [x] **M5-PLAN**: Architect plan produced (migration 009, frameworks/experiences, advisory suggestions, RM/notebook/specialist integration, tests).
+- [x] **M5-FOUNDATION**: Migration 009, pure modules, DB/seed/validate/CI wiring. Baseline green.
+- [x] **M5-CONTENT**: 7 spec frameworks + 12 substantive experiences authored with conservative provenance.
+- [x] **M5-API**: Routes/reflections/suggestions/chat/notebook/claim bridges; smoke +14 (102/102).
+- [x] **M5-UI**: `/perspectives` library/detail, nav entry, investigation Perspectives tab, reflection/RM/notebook/specialist bridges.
+- [x] **M5-VERIFY**: Full verification PASS (102/102 test:http) and M5 report delivered.
+
+
+## M6 - Living Investigations Engine (complete)
+
+- [x] **M6-AUDIT**: Inspected progression/events/notifications; architect plan delivered.
+- [x] **M6-BUILD-CORE**: Living-world engine, case-event framework, 3 showcase packages, seed/validate/test scripts.
+- [x] **M6-INTEGRATE**: Server routes, catch-up wiring, notifications inbox, scheduler integration.
+- [x] **M6-UI**: Activity tab/panel, catch-up summary, disagreements/upcoming, notification bell/inbox.
+- [x] **M6-TEST**: smoke-http M6 block (+8), stale M5 reflection test contract fixed, full verification green (110/110).
+- [x] **M6-DOCS**: M6 notes/report, state/log/dev-status/tasks updated; M7 not started.
+
+
+## M7 - Real-World Discovery & Knowledge Retention Engine (complete)
+
+- [x] **M7-AUDIT**: Architecture plan delivered (additive, reuse existing systems).
+- [x] **M7-1-FOUNDATION**: Migration 011, schema verify 44/44 537 cols, discovery-clues pure modules, scripts, CI wiring.
+- [x] **M7-2-CONTENT**: 3 showcase packages / 6 clues (Midnight Heist, Code Blue, Blaze), citations pending_review, no fabricated URLs.
+- [x] **M7-3-BACKEND**: Discovery service, DB helpers, 8 routes, llm-provider extraction, notebook provenance, action unlock apply, M7 smoke tests.
+- [x] **M7-4-FRONTEND**: Field Research tab, submission/evaluation/recall UI, /knowledge journal, notebook provenance, a11y/responsive.
+- [x] **M7-5-VERIFY**: Full npm test PASS (119/119 test:http), frontend build PASS, all validators PASS. M8 not started.
+
+## M8 - Product Completion, Immersion & Release Readiness (in progress)
+
+- [x] **M8-AUDIT**: Repo-grounded 7-wave plan produced. No deploy before W6 security/reliability gates pass.
+- [x] **M8-WAVE1**: Onboarding/first experience complete (human-playtest caveat). S1 foundation + S2 interactive checklist/replay/progressive tips. 124/124 test:http.
+- [ ] **M8-WAVE2**: Unified investigation UX + character immersion (M8-2/M8-3). Audit in progress.
+- [x] **M8-WAVE3**: Case quality audit + scoring framework; 25-case audit; systemic spoiler leak fixed (0/25). 6 candidates identified for deeper refinement. 124/124 test:http.
+- [x] **M8-WAVE4**: AI quality/cost optimization. Guardrails/bounds/failover/metrics/cost notes; deterministic fallback preserved. 124/124.
+- [x] **M8-WAVE5**: Long-term engagement/personal progression. /api/me/progress + /progress page; no XP/streak gimmicks. 127/127.
+- [x] **M8-WAVE6**: Production hardening/security/reliability/perf gate. PASS WITH CONDITIONS. 127/127, npm test PASS. Reports: M8-W6-*-AUDIT/GATE.
+- [ ] **M8-WAVE7**: Deployment/beta readiness (M8-8). In progress (post-W6). No public deploy.
+

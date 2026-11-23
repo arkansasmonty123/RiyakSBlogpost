@@ -58,6 +58,7 @@ export interface CheckpointView {
 export interface ActionView {
   action: string;
   label: string;
+  performed: boolean;
 }
 
 export interface CheckpointState {
@@ -541,6 +542,12 @@ export async function getCheckpointState(investigationId: string): Promise<Check
     );
     const completed = new Set(cpRes.rows.map((r) => String(r.checkpoint_id)));
 
+    const performedRes = await client.query(
+      'SELECT action FROM investigation_actions WHERE investigation_id = $1',
+      [investigationId]
+    );
+    const performed = new Set(performedRes.rows.map((r) => String(r.action)));
+
     const actions: ActionView[] = [];
     const seenActions = new Set<string>();
     for (const row of rows) {
@@ -552,7 +559,7 @@ export async function getCheckpointState(investigationId: string): Promise<Check
       const label = typeof cond.description === 'string' && cond.description.trim()
         ? cond.description
         : `Investigate: ${action.replace(/_/g, ' ')}`;
-      actions.push({ action, label });
+      actions.push({ action, label, performed: performed.has(action) });
     }
 
     return {

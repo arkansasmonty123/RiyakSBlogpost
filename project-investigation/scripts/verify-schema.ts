@@ -64,6 +64,8 @@ const EXPECTED_TABLES: Record<string, string[]> = {
     'id', 'investigation_id', 'user_id', 'title', 'description', 'claim_category',
     'confidence', 'notes', 'source_journal_entry_id', 'source_notebook_entry_id',
     'is_tutorial', 'created_at', 'updated_at',
+    // M5 Perspective Engine (migration 009) - optional provenance.
+    'source_perspective_experience_id', 'source_perspective_reflection_id',
   ],
   investigation_hypotheses: [
     'id', 'investigation_id', 'user_id', 'name', 'explanation', 'status',
@@ -82,6 +84,36 @@ const EXPECTED_TABLES: Record<string, string[]> = {
   notebook_entries: [
     'id', 'investigation_id', 'user_id', 'entry_type', 'artifact_id', 'specialist_id',
     'concept', 'title', 'content', 'source_snapshot', 'created_at', 'updated_at',
+    // M5 Perspective Engine (migration 009) - optional provenance.
+    'perspective_experience_id',
+    // M7 Discovery & Knowledge Retention (migration 011) - optional links.
+    'discovery_memory_id', 'discovery_clue_key',
+  ],
+  // M5 Perspective Engine (migration 009). Educational/advisory only.
+  perspective_frameworks: [
+    'id', 'framework_key', 'name', 'intellectual_domain', 'summary', 'core_questions',
+    'key_concepts', 'method_of_reasoning', 'limitations', 'common_misconceptions',
+    'internal_differences', 'relevant_disciplines', 'display_order', 'status',
+    'created_at', 'updated_at',
+  ],
+  perspective_experiences: [
+    'id', 'experience_key', 'title', 'framework_key', 'format', 'knowledge_class',
+    'perspective_class', 'scope_note', 'tradition_scope', 'intellectual_purpose',
+    'primary_question', 'introduction', 'intellectual_background', 'main_idea',
+    'detailed_explanation', 'sections', 'historical_context', 'epistemic_breakdown',
+    'key_concepts', 'supporting_sources', 'limitations', 'counterarguments',
+    'common_misconceptions', 'reflection_questions', 'activities', 'recommendation_tags',
+    'related_experience_keys', 'related_specialist_keys', 'related_artifact_keys',
+    'related_case_titles', 'estimated_minutes', 'difficulty', 'display_order', 'status',
+    'created_at', 'updated_at',
+  ],
+  perspective_reflections: [
+    'id', 'experience_id', 'experience_key', 'user_id', 'investigation_id', 'prompt_index',
+    'prompt', 'reflection_kind', 'response', 'created_at', 'updated_at',
+  ],
+  perspective_suggestion_state: [
+    'id', 'investigation_id', 'user_id', 'experience_key', 'reason_code',
+    'state_fingerprint', 'status', 'created_at', 'updated_at',
   ],
   characters: [
     'id', 'case_id', 'name', 'role', 'personality', 'background', 'knowledge',
@@ -98,6 +130,8 @@ const EXPECTED_TABLES: Record<string, string[]> = {
   ],
   development_log: [
     'id', 'investigation_id', 'kind', 'message', 'evidence_id', 'created_at',
+    // M6 Living Investigations (migration 010).
+    'source_event_id', 'actor_key',
   ],
   evidence: [
     'id', 'case_id', 'category', 'source', 'description', 'hidden_interpretation',
@@ -119,6 +153,8 @@ const EXPECTED_TABLES: Record<string, string[]> = {
     'progress', 'completion_timestamp', 'current_theory', 'suspicion_level',
     'discovered_evidence_ids', 'pending_events', 'theory_history', 'created_at',
     'updated_at', 'accusation_attempts', 'last_accusation_at', 'accusation_cooldown_until',
+    // M6 Living Investigations (migration 010).
+    'last_seen_at', 'last_event_tick_at',
   ],
   journal_entries: [
     'id', 'investigation_id', 'entry_type', 'content', 'related_evidence_ids',
@@ -140,6 +176,74 @@ const EXPECTED_TABLES: Record<string, string[]> = {
   weekly_collections: [
     'id', 'release_date', 'included_case_ids', 'featured_case_id',
     'publication_status', 'created_at',
+  ],
+  // M6 Living Investigations (migration 010). Additive; no canonical truth.
+  case_event_packages: [
+    'id', 'case_id', 'package_key', 'version', 'package_status', 'summary',
+    'event_count', 'created_at', 'updated_at',
+  ],
+  investigation_events: [
+    'id', 'investigation_id', 'case_id', 'event_key', 'event_type', 'idempotency_key',
+    'status', 'significance', 'group_key', 'actor_kind', 'actor_key',
+    'eligible_at', 'expires_at', 'resolved_at', 'supersedes_event_id', 'superseded_by_event_id',
+    'eligibility_conditions', 'required_state', 'consequence_definition', 'presentation',
+    'outcome', 'provenance', 'created_at', 'updated_at',
+  ],
+  investigation_flags: [
+    'id', 'investigation_id', 'flag', 'value', 'source_event_id', 'created_at',
+  ],
+  notifications: [
+    'id', 'user_id', 'investigation_id', 'event_id', 'category', 'priority',
+    'group_key', 'title', 'body', 'dedupe_key', 'status', 'created_at', 'read_at',
+  ],
+  // M7 Real-World Discovery & Knowledge Retention (migration 011). Additive;
+  // no canonical truth. Player DTOs use strict allowlists in src/discovery-clues/dto.ts.
+  discovery_clue_packages: [
+    'id', 'case_id', 'package_key', 'version', 'package_status', 'summary',
+    'clue_count', 'created_at', 'updated_at',
+  ],
+  investigation_discovery_clue_states: [
+    'id', 'investigation_id', 'user_id', 'case_id', 'clue_key', 'state',
+    'surfaced_at', 'research_started_at', 'accepted_at', 'last_submitted_at',
+    'attempt_count', 'source_context', 'created_at', 'updated_at',
+  ],
+  discovery_submissions: [
+    'id', 'investigation_id', 'user_id', 'clue_key', 'memory_item_id', 'explanation',
+    'subject_identification', 'connection_explanation', 'uncertainty', 'source_refs',
+    'confidence', 'evaluation', 'classification', 'accepted', 'score', 'llm_used',
+    'created_at',
+  ],
+  knowledge_memory_items: [
+    'id', 'user_id', 'subject_key', 'subject_label', 'reference_category',
+    'knowledge_status', 'concepts', 'corrected_understanding', 'original_explanation',
+    'latest_explanation', 'authored_sources', 'player_sources', 'first_case_id',
+    'first_investigation_id', 'first_clue_key', 'first_discovered_at', 'last_recall_at',
+    'last_successful_recall_at', 'next_due_at', 'mastery_status', 'successful_recalls',
+    'failed_recalls', 'unresolved_questions', 'follow_up_applications',
+    'created_at', 'updated_at',
+  ],
+  knowledge_memory_cases: [
+    'id', 'memory_item_id', 'user_id', 'investigation_id', 'case_id', 'clue_key',
+    'application_context', 'created_at',
+  ],
+  knowledge_memory_links: [
+    'id', 'user_id', 'from_memory_id', 'to_memory_id', 'from_subject_key',
+    'to_subject_key', 'pair_key', 'relationship', 'rationale', 'created_at',
+  ],
+  knowledge_recall_events: [
+    'id', 'user_id', 'memory_item_id', 'investigation_id', 'clue_key', 'recall_kind',
+    'prompt', 'response', 'outcome', 'scheduled_for', 'answered_at', 'interval_days',
+    'next_due_at', 'created_at',
+  ],
+  investigation_discovery_unlocks: [
+    'id', 'investigation_id', 'user_id', 'clue_key', 'unlock_key', 'kind',
+    'target_ref', 'payload', 'applied_at', 'created_at',
+  ],
+  // M8 Wave 1 (migration 012). Additive; player-owned UI state only, no
+  // canonical truth. One row per user, lazy-created on first read.
+  user_onboarding: [
+    'id', 'user_id', 'welcome_seen', 'intro_completed', 'tutorial_state',
+    'skipped', 'last_step', 'created_at', 'updated_at',
   ],
 };
 

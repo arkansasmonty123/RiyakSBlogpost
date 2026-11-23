@@ -13,7 +13,7 @@
  * server's evaluate-accusation endpoint.
  */
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
@@ -24,6 +24,7 @@ import {
 import type {
   Accusation,
   Achievement,
+  ActivitySnapshot,
   Case,
   ChatMessage,
   CheckpointState,
@@ -34,13 +35,23 @@ import type {
   JournalEntry,
   KnowledgeDepth,
   KnowledgeIntent,
+  LivingWorldResult,
+  DiscoverySnapshotDTO,
+  KnowledgeRecallResultDTO,
   NotificationSettings,
+  NotificationsResponse,
+  PerspectiveConnections,
+  PerspectiveExperienceDetail,
+  PerspectiveReflection,
+  PerspectiveReflectionKind,
+  PerspectiveSuggestion,
   PublicArtifactDetail,
   PublicArtifactSummary,
   PublicCaseKnowledgePack,
   PublicDisagreement,
   PublicNotebookEntry,
   PublicSpecialist,
+  SafeActivityEvent,
   ScheduledEvent,
   Solution,
   Suspect,
@@ -55,12 +66,21 @@ import { KnowledgeArtifactDrawer } from '../components/KnowledgeArtifactDrawer';
 import { KnowledgeNotebook } from '../components/KnowledgeNotebook';
 import { RealityMapPanel } from '../components/realitymap/RealityMapPanel';
 import type { RealityMapPrefill } from '../components/realitymap/RealityMapPanel';
+import { ActivityPanel, NotificationInbox } from '../components/activity/ActivityPanel';
+import { DiscoveryPanel } from '../components/discovery/DiscoveryPanel';
+import { InvestigationHQ } from '../components/InvestigationHQ';
+import { TabIntroTip } from '../components/TabIntroTip';
+import { OnboardingChecklist } from '../components/OnboardingChecklist';
+import { useOnboarding } from '../hooks/useOnboarding';
 
 type Tab =
   | 'chat'
+  | 'activity'
+  | 'discoveries'
   | 'evidence'
   | 'suspects'
   | 'reality'
+  | 'perspectives'
   | 'experts'
   | 'timeline'
   | 'journal'
@@ -71,9 +91,12 @@ type Tab =
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'chat', label: 'Group Chat' },
+  { id: 'activity', label: 'Activity' },
+  { id: 'discoveries', label: 'Field Research' },
   { id: 'evidence', label: 'Evidence' },
   { id: 'suspects', label: 'Suspect Board' },
   { id: 'reality', label: 'Reality Map' },
+  { id: 'perspectives', label: 'Perspectives' },
   { id: 'experts', label: 'Experts' },
   { id: 'timeline', label: 'Timeline' },
   { id: 'journal', label: 'Journal' },
@@ -186,6 +209,25 @@ export const InvestigationRoomPage = () => {
   const [notebookError, setNotebookError] = useState<string | null>(null);
   const [realityPrefill, setRealityPrefill] = useState<RealityMapPrefill | null>(null);
 
+  // M5 Perspective Engine (advisory; never evidence/verdict/canonical truth)
+  const [perspectiveSuggestions, setPerspectiveSuggestions] = useState<PerspectiveSuggestion[]>([]);
+  const [perspectiveEngagement, setPerspectiveEngagement] = useState<'none' | 'active'>('none');
+  const [perspectiveSuggestionsLoading, setPerspectiveSuggestionsLoading] = useState(false);
+  const [perspectiveSuggestionsError, setPerspectiveSuggestionsError] = useState<string | null>(null);
+  const [perspectiveSuggestionNotice, setPerspectiveSuggestionNotice] = useState<string | null>(null);
+  const [activePerspectiveKey, setActivePerspectiveKey] = useState<string | null>(null);
+  const [activePerspectiveDetail, setActivePerspectiveDetail] = useState<PerspectiveExperienceDetail | null>(null);
+  const [activePerspectiveConnections, setActivePerspectiveConnections] = useState<PerspectiveConnections | null>(null);
+  const [perspectiveDetailLoading, setPerspectiveDetailLoading] = useState(false);
+  const [perspectiveDetailError, setPerspectiveDetailError] = useState<string | null>(null);
+  const [perspectiveReflections, setPerspectiveReflections] = useState<PerspectiveReflection[]>([]);
+  const [perspectiveReflectionText, setPerspectiveReflectionText] = useState('');
+  const [perspectiveReflectionKind, setPerspectiveReflectionKind] = useState<PerspectiveReflectionKind>('reflection');
+  const [perspectiveReflectionPromptIndex, setPerspectiveReflectionPromptIndex] = useState<number | ''>('');
+  const [perspectiveReflectionBusy, setPerspectiveReflectionBusy] = useState(false);
+  const [perspectiveReflectionError, setPerspectiveReflectionError] = useState<string | null>(null);
+  const [chatPerspectiveKey, setChatPerspectiveKey] = useState<string | null>(null);
+
   // Async progression (PROD-008)
   const [checkpointState, setCheckpointState] = useState<CheckpointState | null>(null);
   const [developments, setDevelopments] = useState<Development[]>([]);
@@ -197,6 +239,24 @@ export const InvestigationRoomPage = () => {
   const [seenDevelopmentIds, setSeenDevelopmentIds] = useState<Set<string>>(new Set());
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
+
+  // M6 Living Investigations: activity feed + notification inbox.
+  const [activitySnapshot, setActivitySnapshot] = useState<ActivitySnapshot | null>(null);
+  const [activityLoading, setActivityLoading] = useState(false);
+  const [activityError, setActivityError] = useState<string | null>(null);
+  const [activityRefreshing, setActivityRefreshing] = useState(false);
+  const [activityRefreshResult, setActivityRefreshResult] = useState<LivingWorldResult | null>(null);
+  const [notifications, setNotifications] = useState<NotificationsResponse | null>(null);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
+  const [inboxOpen, setInboxOpen] = useState(false);
+  const lastSeenActivityRef = useRef<string | null>(null);
+
+  // M7 Real-World Discovery & Knowledge Retention.
+  const [discoverySnapshot, setDiscoverySnapshot] = useState<DiscoverySnapshotDTO | null>(null);
+  const [discoveryLoading, setDiscoveryLoading] = useState(false);
+  const [discoveryError, setDiscoveryError] = useState<string | null>(null);
+  const [discoveryBusyClueKey, setDiscoveryBusyClueKey] = useState<string | null>(null);
   const [selectedCheckpoint, setSelectedCheckpoint] = useState('');
   const [selectedTheoryEvidence, setSelectedTheoryEvidence] = useState<string[]>([]);
   const [theoryText, setTheoryText] = useState('');
@@ -208,6 +268,16 @@ export const InvestigationRoomPage = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('chat');
   const [actionError, setActionError] = useState<string | null>(null);
+
+  // M8 Wave 1: contextual first-time helper text for a few tabs. Dismissals are
+  // persisted in the player's onboarding tutorial state (best-effort only).
+  const { state: onboarding, loading: onboardingLoading, patch: patchOnboarding } = useOnboarding();
+  type TipKey = 'reality' | 'perspectives' | 'fieldResearch' | 'evidenceTip' | 'suspectsTip' | 'chatTip';
+  const tipVisible = (key: TipKey): boolean =>
+    !onboardingLoading && onboarding?.tutorialState?.[key] !== true;
+  const dismissTip = (key: TipKey): void => {
+    void patchOnboarding({ tutorialState: { [key]: true } });
+  };
 
   // PROD-012: abandon confirmation flow. The target may be the case shown in
   // this room or the *other* active case that blocked it (conflict panel).
@@ -284,6 +354,112 @@ export const InvestigationRoomPage = () => {
     }
   }, []);
 
+  const loadActivity = useCallback(async (investigationId: string, opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setActivityLoading(true);
+    setActivityError(null);
+    try {
+      const snapshot = await api.getActivity(investigationId, { limit: 30 });
+      setActivitySnapshot(snapshot);
+    } catch (err) {
+      setActivityError(errorMessage(err));
+    } finally {
+      if (!opts?.silent) setActivityLoading(false);
+    }
+  }, []);
+
+  const loadNotifications = useCallback(async () => {
+    setNotificationsLoading(true);
+    setNotificationsError(null);
+    try {
+      const data = await api.getNotifications({ status: 'all', limit: 20 });
+      setNotifications(data);
+    } catch (err) {
+      setNotificationsError(errorMessage(err));
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, []);
+
+  const loadDiscoveries = useCallback(async (investigationId: string, opts?: { silent?: boolean }) => {
+    if (!opts?.silent) setDiscoveryLoading(true);
+    setDiscoveryError(null);
+    try {
+      const snapshot = await api.getDiscoveries(investigationId);
+      setDiscoverySnapshot(snapshot);
+    } catch (err) {
+      setDiscoveryError(errorMessage(err));
+    } finally {
+      if (!opts?.silent) setDiscoveryLoading(false);
+    }
+  }, []);
+
+  const handleDiscoveryStart = useCallback(async (clueKey: string) => {
+    if (!investigation) return;
+    setDiscoveryBusyClueKey(clueKey);
+    setDiscoveryError(null);
+    try {
+      await api.startDiscovery(investigation.id, clueKey);
+      await loadDiscoveries(investigation.id, { silent: true });
+    } catch (err) {
+      setDiscoveryError(errorMessage(err));
+      throw err;
+    } finally {
+      setDiscoveryBusyClueKey(null);
+    }
+  }, [investigation, loadDiscoveries]);
+
+  const handleDiscoverySubmit = useCallback(async (
+    clueKey: string,
+    body: { explanation: string; subjectIdentification?: string; connectionExplanation?: string; uncertainty?: string; sourceRefs?: string[]; confidence?: string }
+  ) => {
+    if (!investigation) throw new Error('No investigation loaded.');
+    setDiscoveryBusyClueKey(clueKey);
+    setDiscoveryError(null);
+    try {
+      const result = await api.submitDiscovery(investigation.id, clueKey, body);
+      await loadDiscoveries(investigation.id, { silent: true });
+      return result;
+    } catch (err) {
+      setDiscoveryError(errorMessage(err));
+      throw err;
+    } finally {
+      setDiscoveryBusyClueKey(null);
+    }
+  }, [investigation, loadDiscoveries]);
+
+  const handleDiscoveryApplyUnlock = useCallback(async (clueKey: string, unlockKey: string) => {
+    if (!investigation) return;
+    setDiscoveryBusyClueKey(clueKey);
+    setDiscoveryError(null);
+    try {
+      const result = await api.applyDiscoveryUnlock(investigation.id, clueKey, unlockKey);
+      await loadDiscoveries(investigation.id, { silent: true });
+      // Action unlocks can affect progression/evidence; refresh when applied.
+      if (result.unlock?.kind === 'action' || result.applied || result.alreadyApplied) {
+        await refreshProgression(investigation.id).catch(() => {});
+      }
+    } catch (err) {
+      setDiscoveryError(errorMessage(err));
+      throw err;
+    } finally {
+      setDiscoveryBusyClueKey(null);
+    }
+  }, [investigation, loadDiscoveries]);
+
+  const handleDiscoveryRecall = useCallback(async (memoryId: string, response: string): Promise<KnowledgeRecallResultDTO> => {
+    const result = await api.submitKnowledgeRecall(memoryId, {
+      response,
+      investigationId: investigation?.id,
+    });
+    if (investigation) await loadDiscoveries(investigation.id, { silent: true });
+    return result;
+  }, [investigation, loadDiscoveries]);
+
+  const getDiscoveryClueDetail = useCallback(async (clueKey: string) => {
+    if (!investigation) throw new Error('No investigation loaded.');
+    return api.getDiscoveryClue(investigation.id, clueKey);
+  }, [investigation]);
+
   // -------------------------------------------------------------------------
   // Bootstrap: resolve which investigation to show, then load scoped data.
   // -------------------------------------------------------------------------
@@ -307,6 +483,17 @@ export const InvestigationRoomPage = () => {
       setNotificationSettings({ developments: true });
       setSeenDevelopmentIds(new Set());
       setSettingsError(null);
+      setActivitySnapshot(null);
+      setActivityError(null);
+      setActivityRefreshResult(null);
+      setActivityRefreshing(false);
+      setNotifications(null);
+      setNotificationsError(null);
+      setInboxOpen(false);
+      setDiscoverySnapshot(null);
+      setDiscoveryLoading(false);
+      setDiscoveryError(null);
+      setDiscoveryBusyClueKey(null);
       setSuspects([]);
       setOpenQuestions([]);
       setTheoryFeedback([]);
@@ -323,6 +510,20 @@ export const InvestigationRoomPage = () => {
       setTargetSpecialistKey(null);
       setArtifactDrawer(null);
       setNotebookError(null);
+      setPerspectiveSuggestions([]);
+      setPerspectiveEngagement('none');
+      setPerspectiveSuggestionsError(null);
+      setPerspectiveSuggestionNotice(null);
+      setActivePerspectiveKey(null);
+      setActivePerspectiveDetail(null);
+      setActivePerspectiveConnections(null);
+      setPerspectiveDetailError(null);
+      setPerspectiveReflections([]);
+      setPerspectiveReflectionText('');
+      setPerspectiveReflectionKind('reflection');
+      setPerspectiveReflectionPromptIndex('');
+      setPerspectiveReflectionError(null);
+      setChatPerspectiveKey(null);
 
       if (!caseId) {
         setLoadError('No case selected.');
@@ -440,6 +641,14 @@ export const InvestigationRoomPage = () => {
         if (cancelled) return;
         await loadStats(inv.id);
 
+        // M6: load living-activity snapshot and notification inbox (best-effort).
+        if (cancelled) return;
+        await loadActivity(inv.id).catch(() => {});
+        if (cancelled) return;
+        void loadNotifications();
+        // M7: load field research discoveries (best-effort).
+        void loadDiscoveries(inv.id);
+
         // A completed case (including one reopened from the archive via
         // ?investigation=) gets its full solution from the server.
         if (cancelled) return;
@@ -455,7 +664,7 @@ export const InvestigationRoomPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [caseId, investigationParam, loadSolution, loadAchievements, loadStats]);
+  }, [caseId, investigationParam, loadSolution, loadAchievements, loadStats, loadActivity, loadNotifications, loadDiscoveries]);
 
   const timeline = useMemo(() => {
     const items = [
@@ -488,6 +697,52 @@ export const InvestigationRoomPage = () => {
 
   const caseClosed = verdict?.evaluationResult === 'correct';
 
+  const loadPerspectiveSuggestions = useCallback(async (investigationId: string) => {
+    setPerspectiveSuggestionsLoading(true);
+    setPerspectiveSuggestionsError(null);
+    try {
+      const res = await api.getPerspectiveSuggestions(investigationId);
+      setPerspectiveSuggestions(Array.isArray(res.suggestions) ? res.suggestions : []);
+      setPerspectiveEngagement(res.engagement === 'active' ? 'active' : 'none');
+    } catch (err) {
+      setPerspectiveSuggestionsError(errorMessage(err));
+    } finally {
+      setPerspectiveSuggestionsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'perspectives' || !investigation) return;
+    void loadPerspectiveSuggestions(investigation.id);
+  }, [activeTab, investigation, loadPerspectiveSuggestions]);
+
+  useEffect(() => {
+    if (activeTab !== 'activity' || !investigation) return;
+    if (!activitySnapshot) void loadActivity(investigation.id);
+  }, [activeTab, investigation, activitySnapshot, loadActivity]);
+
+  useEffect(() => {
+    if (activeTab !== 'discoveries' || !investigation) return;
+    void loadDiscoveries(investigation.id, { silent: !!discoverySnapshot });
+    // Intentionally omit discoverySnapshot - we refresh on tab entry, not on every snapshot update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, investigation, loadDiscoveries]);
+
+  useEffect(() => {
+    if (activeTab !== 'activity' || !investigation || !activitySnapshot) return;
+    if (activitySnapshot.counts.unread <= 0) return;
+    const key = `${investigation.id}:${activitySnapshot.counts.unread}:${activitySnapshot.counts.total}`;
+    if (lastSeenActivityRef.current === key) return;
+    lastSeenActivityRef.current = key;
+    void api.markActivitySeen(investigation.id, { through: new Date().toISOString() })
+      .then(() => loadActivity(investigation.id, { silent: true }))
+      .catch(() => {});
+  }, [activeTab, investigation, activitySnapshot, loadActivity]);
+
+  useEffect(() => {
+    if (inboxOpen) void loadNotifications();
+  }, [inboxOpen, loadNotifications]);
+
   // PROD-010: mirror the server-authoritative integrity state in the UI.
   // Readiness comes from completed deduction checkpoints (the same data the
   // server gates on); attempts/cooldown come from the investigation DTO.
@@ -515,6 +770,264 @@ export const InvestigationRoomPage = () => {
       onConfirm={() => void confirmAbandon()}
     />
   ) : null;
+
+  // -------------------------------------------------------------------------
+  // M5 Perspective Engine handlers
+  // -------------------------------------------------------------------------
+  const PERSPECTIVE_REFLECTION_KINDS: Array<{ value: PerspectiveReflectionKind; label: string }> = [
+    { value: 'reflection', label: 'Reflection' },
+    { value: 'argument_for', label: 'Argument for' },
+    { value: 'argument_against', label: 'Argument against' },
+    { value: 'assumption', label: 'Assumption' },
+    { value: 'open_question', label: 'Open question' },
+    { value: 'alternative_interpretation', label: 'Alternative interpretation' },
+    { value: 'disagreement', label: 'Disagreement' },
+    { value: 'hypothesis_reconsideration', label: 'Hypothesis reconsideration' },
+  ];
+
+  function humanizePerspective(value: string): string {
+    return value.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  async function openPerspectiveInContext(experienceKey: string) {
+    setActivePerspectiveKey(experienceKey);
+    setPerspectiveDetailLoading(true);
+    setPerspectiveDetailError(null);
+    setPerspectiveReflectionError(null);
+    setPerspectiveSuggestionNotice(null);
+    try {
+      const [detail, conn, refl] = await Promise.all([
+        api.getPerspective(experienceKey),
+        api.getPerspectiveConnections(experienceKey).catch(() => null),
+        api.getPerspectiveReflections({ experienceKey, investigationId: investigation?.id }).catch(() => ({ reflections: [] })),
+      ]);
+      setActivePerspectiveDetail(detail);
+      setActivePerspectiveConnections(conn);
+      setPerspectiveReflections(Array.isArray(refl.reflections) ? refl.reflections : []);
+    } catch (err) {
+      setPerspectiveDetailError(errorMessage(err));
+      setActivePerspectiveDetail(null);
+      setActivePerspectiveConnections(null);
+    } finally {
+      setPerspectiveDetailLoading(false);
+    }
+  }
+
+  async function dismissPerspectiveSuggestionCard(suggestion: PerspectiveSuggestion) {
+    if (!investigation) return;
+    setPerspectiveSuggestionNotice(null);
+    try {
+      await api.dismissPerspectiveSuggestion(investigation.id, suggestion.experienceKey, {
+        reasonCode: suggestion.reasonCodes[0],
+        fingerprint: suggestion.stateFingerprint,
+      });
+      setPerspectiveSuggestions((prev) => prev.filter((s) => s.experienceKey !== suggestion.experienceKey));
+      setPerspectiveSuggestionNotice('Suggestion dismissed. You can continue exploring on your own terms.');
+    } catch (err) {
+      setPerspectiveSuggestionsError(errorMessage(err));
+    }
+  }
+
+  async function submitPerspectiveReflection(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!investigation || !activePerspectiveKey || !perspectiveReflectionText.trim() || perspectiveReflectionBusy) return;
+    setPerspectiveReflectionBusy(true);
+    setPerspectiveReflectionError(null);
+    try {
+      const promptIndex = perspectiveReflectionPromptIndex === '' ? null : perspectiveReflectionPromptIndex;
+      const prompt = promptIndex !== null ? activePerspectiveDetail?.reflectionQuestions[promptIndex] : undefined;
+      const res = await api.createPerspectiveReflection(activePerspectiveKey, {
+        response: perspectiveReflectionText.trim(),
+        promptIndex,
+        prompt,
+        reflectionKind: perspectiveReflectionKind,
+        investigationId: investigation.id,
+      });
+      setPerspectiveReflections((prev) => [res.reflection, ...prev]);
+      setPerspectiveReflectionText('');
+      setPerspectiveReflectionPromptIndex('');
+      setPerspectiveReflectionKind('reflection');
+    } catch (err) {
+      setPerspectiveReflectionError(errorMessage(err));
+    } finally {
+      setPerspectiveReflectionBusy(false);
+    }
+  }
+
+  async function deletePerspectiveReflection(id: string) {
+    if (!window.confirm('Delete this reflection?')) return;
+    try {
+      await api.deletePerspectiveReflection(id);
+      setPerspectiveReflections((prev) => prev.filter((r) => r.id !== id));
+    } catch (err) {
+      setPerspectiveReflectionError(errorMessage(err));
+    }
+  }
+
+  function perspectiveToClaimPrefill(opts: {
+    title: string;
+    description: string;
+    claimCategory: 'factual_observation' | 'interpretation' | 'assumption' | 'causal_explanation' | 'motive' | 'timeline_assertion' | 'unresolved_question';
+    confidence?: 'high_confidence' | 'moderate_confidence' | 'low_confidence' | 'insufficient_information';
+    notes?: string;
+    sourcePerspectiveReflectionId?: string | null;
+  }) {
+    if (!activePerspectiveKey) return;
+    setRealityPrefill({
+      sourcePerspectiveExperienceKey: activePerspectiveKey,
+      sourcePerspectiveReflectionId: opts.sourcePerspectiveReflectionId ?? null,
+      title: opts.title.slice(0, 160),
+      description: opts.description,
+      claimCategory: opts.claimCategory,
+      confidence: opts.confidence ?? 'insufficient_information',
+      notes: opts.notes ?? `Perspective: ${activePerspectiveDetail?.title || activePerspectiveKey}`,
+    });
+    setActiveTab('reality');
+  }
+
+  function perspectiveToHypothesisPrefill(reflection?: PerspectiveReflection) {
+    if (!activePerspectiveKey) return;
+    const detail = activePerspectiveDetail;
+    setRealityPrefill({
+      target: 'hypothesis',
+      sourcePerspectiveExperienceKey: activePerspectiveKey,
+      sourcePerspectiveReflectionId: reflection?.id ?? null,
+      hypothesisName: (reflection?.response || detail?.primaryQuestion || 'Reconsidered hypothesis').slice(0, 160),
+      hypothesisExplanation: reflection?.response || detail?.mainIdea || '',
+      hypothesisPlayerNotes: `Reconsidered after perspective "${detail?.title || activePerspectiveKey}". This is player reasoning, not evidence.`,
+      hypothesisMissingInformation: 'What evidence would support or challenge this reframing?',
+      hypothesisAlternativeExplanations: 'What alternative explanations remain plausible?',
+    });
+    setActiveTab('reality');
+  }
+
+  async function savePerspectiveReflectionToNotebook(reflection: PerspectiveReflection) {
+    if (!investigation || !activePerspectiveKey) return;
+    setNotebookBusy(true);
+    setNotebookError(null);
+    try {
+      await api.createNotebookEntry(investigation.id, {
+        entryType: reflection.reflectionKind === 'open_question' ? 'question' : reflection.reflectionKind === 'assumption' ? 'suspicion' : 'note',
+        title: `Perspective reflection — ${activePerspectiveDetail?.title || activePerspectiveKey}`.slice(0, 160),
+        content: reflection.response,
+        concept: humanizePerspective(reflection.reflectionKind),
+        perspectiveKey: activePerspectiveKey,
+        perspectiveExperienceId: reflection.experienceId || null,
+      });
+      await refreshNotebook();
+      setActiveTab('notebook');
+    } catch (err) {
+      setNotebookError(errorMessage(err));
+    } finally {
+      setNotebookBusy(false);
+    }
+  }
+
+  function discussPerspectiveWithSpecialist(specialistKey?: string) {
+    if (!activePerspectiveKey) return;
+    const caseKeys = new Set(specialists.map((s) => s.specialistKey));
+    const related = (activePerspectiveDetail?.relatedSpecialistKeys ?? []).filter((k) => caseKeys.has(k));
+    const chosen = (specialistKey && caseKeys.has(specialistKey))
+      ? specialistKey
+      : related[0] || specialists[0]?.specialistKey || null;
+    setSelectedSpecialistKey(chosen);
+    setSelectedIntent('explain');
+    setChatPerspectiveKey(activePerspectiveKey);
+    setTargetSpecialistKey(null);
+    setActiveTab('chat');
+    setMessageInput((current) => current.trim() ? current : `How might the perspective "${activePerspectiveDetail?.title || activePerspectiveKey}" help me think about this case?`);
+    window.setTimeout(() => document.querySelector<HTMLInputElement>('.chat-input input')?.focus(), 0);
+  }
+
+  // -------------------------------------------------------------------------
+  // M6 Living Investigations handlers
+  // -------------------------------------------------------------------------
+  const activityUnreadCount = activitySnapshot?.counts.unread ?? 0;
+  const notificationUnreadCount = notifications?.unreadCount ?? 0;
+  const discoveryNewCount = discoverySnapshot?.available ? (discoverySnapshot.newClueKeys?.length ?? 0) : 0;
+
+  async function refreshLivingActivity() {
+    if (!investigation || activityRefreshing) return;
+    setActivityRefreshing(true);
+    setActivityError(null);
+    setActivityRefreshResult(null);
+    try {
+      const result = await api.refreshActivity(investigation.id, { max: 6 });
+      setActivityRefreshResult(result);
+      await loadActivity(investigation.id, { silent: true });
+      void loadNotifications();
+      // Refresh evidence/developments in case activity materialized changes.
+      if (result.counts.resolved > 0 || result.counts.expired > 0 || result.evidenceChanges.length > 0) {
+        await refreshProgression(investigation.id).catch(() => {});
+      }
+    } catch (err) {
+      setActivityError(errorMessage(err));
+    } finally {
+      setActivityRefreshing(false);
+    }
+  }
+
+  async function markActivitySeenNow() {
+    if (!investigation) return;
+    try {
+      await api.markActivitySeen(investigation.id, { through: new Date().toISOString() });
+      await loadActivity(investigation.id, { silent: true });
+      void loadNotifications();
+    } catch (err) {
+      setActivityError(errorMessage(err));
+    }
+  }
+
+  async function narrateActivityEvent(eventId: string) {
+    if (!investigation) return null;
+    try {
+      return await api.narrateActivityEvent(investigation.id, eventId);
+    } catch {
+      return null;
+    }
+  }
+
+  function handleActivityResponse(event: SafeActivityEvent, kind: string) {
+    switch (kind) {
+      case 'open_evidence':
+        setActiveTab('evidence');
+        break;
+      case 'reply_to_specialist':
+        if (event.actor.specialistKey) {
+          setSelectedSpecialistKey(event.actor.specialistKey);
+          setTargetSpecialistKey(null);
+        }
+        setActiveTab('chat');
+        setMessageInput((current) => current.trim() ? current : `Regarding "${event.title}": `);
+        window.setTimeout(() => document.querySelector<HTMLInputElement>('.chat-input input')?.focus(), 0);
+        break;
+      case 'verify_lead':
+        setActiveTab('deductions');
+        break;
+      case 'rebuild_hypothesis':
+        setActiveTab('reality');
+        break;
+      case 'open_activity':
+      default:
+        setActiveTab('activity');
+        break;
+    }
+  }
+
+  async function handleMarkNotificationsRead(ids?: string[]) {
+    try {
+      const res = ids && ids.length > 0
+        ? await api.markNotificationsRead({ ids })
+        : await api.markNotificationsRead({ all: true });
+      setNotifications((prev) => prev ? {
+        unreadCount: res.unreadCount,
+        items: prev.items.map((item) => (ids && ids.length > 0 ? (ids.includes(item.id) ? { ...item, status: 'read' as const } : item) : { ...item, status: 'read' as const })),
+      } : prev);
+      void loadNotifications();
+    } catch (err) {
+      setNotificationsError(errorMessage(err));
+    }
+  }
 
   // -------------------------------------------------------------------------
   // Render states
@@ -578,6 +1091,33 @@ export const InvestigationRoomPage = () => {
           </p>
         </div>
         <div className="heading-actions">
+          <div className="notification-bell-wrap">
+            <button
+              type="button"
+              className="notification-bell"
+              aria-label={notificationUnreadCount > 0 ? `Notifications, ${notificationUnreadCount} unread` : 'Notifications'}
+              aria-haspopup="dialog"
+              aria-expanded={inboxOpen}
+              onClick={() => setInboxOpen((v) => !v)}
+            >
+              <svg className="notification-bell__icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 1 0-12 0v3.2a2 2 0 0 1-.6 1.4L4 17h5"/><path d="M9 17a3 3 0 0 0 6 0"/></svg>
+              {notificationUnreadCount > 0 && (
+                <span className="notification-bell__count" aria-hidden="true">
+                  {notificationUnreadCount > 99 ? '99+' : notificationUnreadCount}
+                </span>
+              )}
+            </button>
+            <NotificationInbox
+              open={inboxOpen}
+              onClose={() => setInboxOpen(false)}
+              notifications={notifications}
+              loading={notificationsLoading}
+              error={notificationsError}
+              onRefresh={() => void loadNotifications()}
+              onMarkRead={(ids) => void handleMarkNotificationsRead(ids)}
+              onMarkAllRead={() => void handleMarkNotificationsRead()}
+            />
+          </div>
           {investigation.status !== 'completed' && investigation.status !== 'abandoned' && (
             <button
               type="button"
@@ -601,9 +1141,29 @@ export const InvestigationRoomPage = () => {
         </details>
       )}
 
+      {!!onboarding && !onboarding.tutorialState?.guideCompleted && (
+        <OnboardingChecklist tutorialState={onboarding.tutorialState} onPatch={patchOnboarding} />
+      )}
+
       {actionError && <div className="error">{actionError}</div>}
 
-      {stats && <StatsPanel stats={stats} />}
+      <InvestigationHQ
+        investigation={investigation}
+        stats={stats}
+        evidenceDiscovered={stats?.evidence.discovered ?? discoveredIds.size}
+        evidenceTotal={stats?.evidence.total ?? evidence.length}
+        checkpointsAnswered={stats?.checkpoints.answered ?? checkpointState?.completedCheckpoints.length ?? 0}
+        checkpointsTotal={stats?.checkpoints.total ?? checkpointState?.checkpoints.length ?? 0}
+        accusationCount={stats?.accusations ?? investigation.accusationAttempts ?? 0}
+        achievementCount={stats?.achievements ?? achievements.length}
+        activityUnread={activityUnreadCount}
+        fieldResearchNew={discoveryNewCount}
+        recallDue={discoverySnapshot?.recallPrompts?.length ?? 0}
+        developmentsUnread={unreadCount}
+        notificationUnread={notificationUnreadCount}
+        caseClosed={caseClosed}
+        onNavigate={(tab) => setActiveTab(tab as Tab)}
+      />
 
       {(!caseClosed || developments.length > 0) && (
         <section className="developments-panel" aria-label="Recent developments">
@@ -688,18 +1248,38 @@ export const InvestigationRoomPage = () => {
 
       {caseClosed && <AchievementsPanel achievements={achievements} />}
 
-      <nav className="tabs" aria-label="Investigation sections">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            className={activeTab === tab.id ? 'tab tab--active' : 'tab'}
-            aria-current={activeTab === tab.id ? 'page' : undefined}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
+      {activitySnapshot && (activitySnapshot.sinceLastVisit.newCount > 0 || activitySnapshot.sinceLastVisit.highlights.length > 0) && (
+        <div className="activity-visit-strip" aria-live="polite">
+          <div className="activity-visit-strip__content">
+            <strong>Since your last visit:</strong>{' '}
+            <span>{activitySnapshot.sinceLastVisit.summary || `${activitySnapshot.sinceLastVisit.newCount} new development${activitySnapshot.sinceLastVisit.newCount === 1 ? '' : 's'}.`}</span>
+          </div>
+          <button type="button" className="link-button" onClick={() => setActiveTab('activity')}>
+            View activity
           </button>
-        ))}
+        </div>
+      )}
+
+      <nav className="tabs" aria-label="Investigation sections">
+        {TABS.map((tab) => {
+          const badgeCount =
+            tab.id === 'activity' ? activityUnreadCount
+            : tab.id === 'discoveries' ? discoveryNewCount
+            : 0;
+          const badgeLabel = tab.id === 'discoveries' ? `${badgeCount} new` : `${badgeCount} unread`;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              className={activeTab === tab.id ? 'tab tab--active' : 'tab'}
+              aria-current={activeTab === tab.id ? 'page' : undefined}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              <span className="tab__label">{tab.label}</span>
+              {badgeCount > 0 && <span className="tab-badge" aria-label={badgeLabel}>{badgeCount > 99 ? '99+' : badgeCount}</span>}
+            </button>
+          );
+        })}
       </nav>
 
       <div className="tab-panel" key={activeTab}>
@@ -707,12 +1287,30 @@ export const InvestigationRoomPage = () => {
           <section>
             <div className="section-heading">
               <h3>Group Chat</h3>
-              {selectedSpecialistKey && (
-                <span className="badge badge--soft">
-                  Speaking with {specialists.find((s) => s.specialistKey === selectedSpecialistKey)?.name ?? 'specialist'}
-                </span>
-              )}
+              <div className="badges">
+                {selectedSpecialistKey && (
+                  <span className="badge badge--soft">
+                    Speaking with {specialists.find((s) => s.specialistKey === selectedSpecialistKey)?.name ?? 'specialist'}
+                  </span>
+                )}
+                {chatPerspectiveKey && (
+                  <span className="badge badge--warning">Perspective context: {chatPerspectiveKey}</span>
+                )}
+              </div>
             </div>
+            {tipVisible('chatTip') && (
+              <TabIntroTip title="Group Chat" onDismiss={() => dismissTip('chatTip')}>
+                Ask the investigation team, or switch the responder to a specialist for a second opinion. Their answers help you think — they are not evidence and never reveal the verdict.
+              </TabIntroTip>
+            )}
+
+            {chatPerspectiveKey && (
+              <div className="perspective-engagement-banner" role="note">
+                <strong>Epistemic note:</strong> This conversation uses the selected perspective as an advisory lens. It is not evidence, does not affect the verdict, and does not reveal the solution.
+                {' '}
+                <button type="button" className="link-button" onClick={() => setChatPerspectiveKey(null)}>Clear perspective context</button>
+              </div>
+            )}
 
             {specialists.length > 0 && (
               <div className="chat-controls" aria-label="Specialist chat controls">
@@ -771,41 +1369,71 @@ export const InvestigationRoomPage = () => {
               {messages.length === 0 && !chatError && (
                 <p className="chat-empty">No messages yet. Ask the team a question to begin.</p>
               )}
-              {messages.map((message, index) => (
-                <div
-                  key={`${message.timestamp}-${index}`}
-                  className={`chat-message chat-message--${message.role}`}
-                >
-                  <div className="chat-message__meta">
-                    <span className="chat-message__role">
-                      {message.role === 'player'
-                        ? 'You'
-                        : (message.specialistName || message.responderLabel || 'Investigator')}
-                      :
-                    </span>
-                    {message.role === 'investigator' && message.specialistKey && (
-                      <span className="chat-message__badges">
-                        <span className="badge badge--soft">Specialist</span>
-                        {message.intent && <span className="badge badge--soft">{labelIntent(message.intent as KnowledgeIntent)}</span>}
-                        {message.depth && <span className="badge badge--soft">{message.depth}</span>}
+              {messages.map((message, index) => {
+                // M8-2: small identity + continuity cues for specialist replies.
+                // Both derive from data already in the room (the loaded public
+                // specialists and the messages array) - no new API calls, no
+                // hidden/canonical data, no change to the message contract.
+                const messageSpecialist = message.role === 'investigator' && message.specialistKey
+                  ? specialists.find((s) => s.specialistKey === message.specialistKey)
+                  : undefined;
+                const priorConsultations = message.role === 'investigator' && message.specialistKey
+                  ? messages.slice(0, index).filter(
+                    (m) => m.role === 'investigator' && m.specialistKey === message.specialistKey,
+                  ).length
+                  : 0;
+                return (
+                  <div
+                    key={`${message.timestamp}-${index}`}
+                    className={`chat-message chat-message--${message.role}`}
+                  >
+                    <div className="chat-message__meta">
+                      <span className="chat-message__role">
+                        {message.role === 'player'
+                          ? 'You'
+                          : (message.specialistName || message.responderLabel || 'Investigator')}
+                        :
                       </span>
+                      {message.role === 'investigator' && message.specialistKey && (
+                        <span className="chat-message__badges">
+                          <span className="badge badge--soft">Specialist</span>
+                          {messageSpecialist?.discipline && (
+                            <span className="badge badge--soft">{messageSpecialist.discipline}</span>
+                          )}
+                          {messageSpecialist && (
+                            <span className="badge badge--soft">
+                              {messageSpecialist.isFictional ? 'Fictional persona' : 'Real discipline'}
+                            </span>
+                          )}
+                          {priorConsultations > 0 && (
+                            <span
+                              className="badge badge--soft"
+                              title={`${priorConsultations} earlier exchange${priorConsultations === 1 ? '' : 's'} with this specialist in this case`}
+                            >
+                              Continuing
+                            </span>
+                          )}
+                          {message.intent && <span className="badge badge--soft">{labelIntent(message.intent as KnowledgeIntent)}</span>}
+                          {message.depth && <span className="badge badge--soft">{message.depth}</span>}
+                        </span>
+                      )}
+                    </div>
+                    <span className="chat-message__content">{displayChatContent(message)}</span>
+                    {message.role === 'investigator' && investigation && (
+                      <div className="chat-message__actions">
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() => void saveExplanationToNotebook(message)}
+                          disabled={notebookBusy}
+                        >
+                          Save to notebook
+                        </button>
+                      </div>
                     )}
                   </div>
-                  <span className="chat-message__content">{displayChatContent(message)}</span>
-                  {message.role === 'investigator' && investigation && (
-                    <div className="chat-message__actions">
-                      <button
-                        type="button"
-                        className="link-button"
-                        onClick={() => void saveExplanationToNotebook(message)}
-                        disabled={notebookBusy}
-                      >
-                        Save to notebook
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
             {chatError && <div className="error">{chatError}</div>}
             {notebookError && <div className="error">{notebookError}</div>}
@@ -825,6 +1453,43 @@ export const InvestigationRoomPage = () => {
           </section>
         )}
 
+        {activeTab === 'activity' && investigation && (
+          <ActivityPanel
+            snapshot={activitySnapshot}
+            loading={activityLoading}
+            error={activityError}
+            refreshing={activityRefreshing}
+            refreshResult={activityRefreshResult}
+            onRefresh={() => void refreshLivingActivity()}
+            onRetry={() => void loadActivity(investigation.id)}
+            onMarkSeen={() => void markActivitySeenNow()}
+            onResponse={handleActivityResponse}
+            onNarrate={narrateActivityEvent}
+          />
+        )}
+
+        {activeTab === 'discoveries' && investigation && (
+          <>
+            {tipVisible('fieldResearch') && (
+              <TabIntroTip title="Field Research" onDismiss={() => dismissTip('fieldResearch')}>
+                Investigate real-world sources and bring what you find back. Submitting knowledge builds your memory for later recall and can unlock new leads — it is guidance, not case evidence, and never a shortcut to the verdict.
+              </TabIntroTip>
+            )}
+            <DiscoveryPanel
+              snapshot={discoverySnapshot}
+              loading={discoveryLoading}
+              error={discoveryError}
+              onRefresh={() => loadDiscoveries(investigation.id)}
+              onStart={handleDiscoveryStart}
+              onSubmit={handleDiscoverySubmit}
+              onApplyUnlock={handleDiscoveryApplyUnlock}
+              onRecall={handleDiscoveryRecall}
+              getClueDetail={getDiscoveryClueDetail}
+              busyClueKey={discoveryBusyClueKey}
+            />
+          </>
+        )}
+
         {activeTab === 'evidence' && (
           <section>
             <div className="section-heading">
@@ -833,6 +1498,11 @@ export const InvestigationRoomPage = () => {
                 {discoveredIds.size} examined · {evidence.length} visible
               </span>
             </div>
+            {tipVisible('evidenceTip') && (
+              <TabIntroTip title="Evidence Room" onDismiss={() => dismissTip('evidenceTip')}>
+                Read each item and mark it as examined when you have looked it over. Examined items become available to support claims in your Reality Map and your final verdict.
+              </TabIntroTip>
+            )}
             {evidence.length === 0 ? (
               <p className="empty-state">No evidence is available for this case yet.</p>
             ) : (
@@ -867,17 +1537,271 @@ export const InvestigationRoomPage = () => {
         )}
 
         {activeTab === 'suspects' && (
-          <SuspectBoardPanel suspects={suspects} openQuestions={openQuestions} />
+          <section>
+            {tipVisible('suspectsTip') && (
+              <TabIntroTip title="Suspect Board" onDismiss={() => dismissTip('suspectsTip')}>
+                Get to know the people involved — their motives, relationships, and what links them to discovered evidence. Follow your questions; first impressions can be wrong.
+              </TabIntroTip>
+            )}
+            <SuspectBoardPanel suspects={suspects} openQuestions={openQuestions} />
+          </section>
         )}
 
         {activeTab === 'reality' && investigation && (
-          <RealityMapPanel
-            investigationId={investigation.id}
-            caseClosed={caseClosed}
-            specialists={specialists}
-            prefill={realityPrefill}
-            onPrefillConsumed={() => setRealityPrefill(null)}
-          />
+          <>
+            {tipVisible('reality') && (
+              <TabIntroTip title="Reality Map" onDismiss={() => dismissTip('reality')}>
+                Turn what you find into claims and competing hypotheses, then link them to show what supports or contradicts each idea. This is your reasoning workspace, not evidence.
+              </TabIntroTip>
+            )}
+            <RealityMapPanel
+              investigationId={investigation.id}
+              caseClosed={caseClosed}
+              specialists={specialists}
+              prefill={realityPrefill}
+              onPrefillConsumed={() => setRealityPrefill(null)}
+            />
+          </>
+        )}
+
+        {activeTab === 'perspectives' && investigation && (
+          <section className="perspectives-tab" aria-label="Perspective suggestions and exploration">
+            {tipVisible('perspectives') && (
+              <TabIntroTip title="Perspectives" onDismiss={() => dismissTip('perspectives')}>
+                Optional lenses for thinking about the case. They are advisory, never evidence, and do not affect the verdict - explore them whenever you like.
+              </TabIntroTip>
+            )}
+            <div className="section-heading">
+              <div>
+                <h3>Perspectives</h3>
+                <p className="muted">Advisory lenses for thinking. They are not evidence, do not affect the verdict, and do not reveal the solution.</p>
+              </div>
+              <div className="badges">
+                <span className="badge badge--soft">Advisory</span>
+                <span className="badge badge--soft">Not evidence</span>
+              </div>
+            </div>
+
+            <div className="perspective-disclaimer detail-card" role="note">
+              <strong>How to use perspectives.</strong>{' '}
+              <span className="muted">Suggestions are optional and based on your current investigation state. You can dismiss them, explore freely, or ignore them entirely.</span>
+            </div>
+
+            {perspectiveSuggestionNotice && <p className="muted" role="status">{perspectiveSuggestionNotice}</p>}
+            {perspectiveSuggestionsError && <div className="error">{perspectiveSuggestionsError}</div>}
+
+            <div className="detail-card">
+              <div className="section-heading">
+                <h4>Suggestions for this investigation</h4>
+                <span className="muted">{perspectiveSuggestionsLoading ? 'Loading…' : `${perspectiveSuggestions.length} suggestion${perspectiveSuggestions.length === 1 ? '' : 's'}`}</span>
+              </div>
+              {perspectiveEngagement === 'none' && !perspectiveSuggestionsLoading && (
+                <div className="perspective-engagement-banner">
+                  Fresh investigation — perspectives are available when you want them. You can open the <Link to="/perspectives">Perspectives library</Link> anytime, or use the suggestions below as optional starting points.
+                </div>
+              )}
+              {perspectiveSuggestionsLoading ? (
+                <p className="muted">Loading suggestions…</p>
+              ) : perspectiveSuggestions.length === 0 ? (
+                <p className="empty-state">No advisory suggestions right now. You can still explore the <Link to="/perspectives">Perspectives library</Link>.</p>
+              ) : (
+                <div className="perspective-suggestions">
+                  {perspectiveSuggestions.map((s) => (
+                    <article key={s.experienceKey} className="detail-card perspective-suggestion-card">
+                      <div className="badges">
+                        <span className="badge">{humanizePerspective(s.frameworkKey)}</span>
+                        <span className="badge badge--soft">Advisory</span>
+                      </div>
+                      <h4>{s.title}</h4>
+                      <p className="muted"><strong>Why this appeared:</strong> {s.reasonText || 'A perspective that may help you reflect on your current investigation state.'}</p>
+                      {s.reasonCodes.length > 0 && (
+                        <ul className="perspective-suggestion-reasons" aria-label="Suggestion reasons">
+                          {s.reasonCodes.map((code) => <li key={code}>{humanizePerspective(code)}</li>)}
+                        </ul>
+                      )}
+                      <div className="button-row">
+                        <button type="button" className="small-button" onClick={() => void openPerspectiveInContext(s.experienceKey)}>Open perspective</button>
+                        <button type="button" className="link-button" onClick={() => void dismissPerspectiveSuggestionCard(s)}>Dismiss</button>
+                        <Link className="link-button" to={`/perspectives/${encodeURIComponent(s.experienceKey)}`}>Full page</Link>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {(activePerspectiveKey || perspectiveDetailLoading || perspectiveDetailError) && (
+              <div className="detail-card perspective-inline-detail" aria-label="Perspective detail">
+                <div className="perspective-inline-detail__header">
+                  <div>
+                    <h4>{activePerspectiveDetail?.title || 'Perspective detail'}</h4>
+                    <p className="muted small-note">In-context view. Reflections can be saved to Reality Map or Notebook; nothing is auto-applied.</p>
+                  </div>
+                  <button type="button" className="link-button" onClick={() => { setActivePerspectiveKey(null); setActivePerspectiveDetail(null); setActivePerspectiveConnections(null); setPerspectiveReflections([]); setPerspectiveDetailError(null); }}>Close</button>
+                </div>
+
+                {perspectiveDetailLoading && <p className="muted">Loading perspective…</p>}
+                {perspectiveDetailError && <div className="error">{perspectiveDetailError}</div>}
+
+                {activePerspectiveDetail && !perspectiveDetailLoading && (
+                  <>
+                    <div className="perspective-disclaimer detail-card" role="note">
+                      <strong>Advisory only.</strong> <span className="muted">{activePerspectiveDetail.disclaimer}</span>
+                    </div>
+
+                    <div className="badges">
+                      <span className="badge">{activePerspectiveDetail.framework?.name || humanizePerspective(activePerspectiveDetail.frameworkKey)}</span>
+                      <span className="badge badge--soft">{humanizePerspective(activePerspectiveDetail.format)}</span>
+                      <span className="badge badge--soft">{humanizePerspective(activePerspectiveDetail.difficulty)}</span>
+                      <span className="badge badge--soft">~{activePerspectiveDetail.estimatedMinutes} min</span>
+                    </div>
+
+                    <p><strong>Primary question:</strong> {activePerspectiveDetail.primaryQuestion}</p>
+                    {activePerspectiveDetail.scopeNote && <p className="muted"><strong>Scope:</strong> {activePerspectiveDetail.scopeNote}</p>}
+                    {activePerspectiveDetail.mainIdea && <p className="solution-prose"><strong>Main idea:</strong> {activePerspectiveDetail.mainIdea}</p>}
+                    {activePerspectiveDetail.detailedExplanation && (
+                      <details className="detail-card">
+                        <summary>Detailed explanation</summary>
+                        <p className="solution-prose">{activePerspectiveDetail.detailedExplanation}</p>
+                      </details>
+                    )}
+                    {activePerspectiveDetail.sections?.length > 0 && (
+                      <details className="detail-card">
+                        <summary>Sections ({activePerspectiveDetail.sections.length})</summary>
+                        <div className="card-list">
+                          {activePerspectiveDetail.sections.map((sec, i) => (
+                            <article key={`${sec.heading}-${i}`} className="detail-card">
+                              <h4>{sec.heading}</h4>
+                              <p className="solution-prose">{sec.body}</p>
+                            </article>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+
+                    {activePerspectiveDetail.limitations.length > 0 && (
+                      <div className="detail-card">
+                        <h4>Limitations</h4>
+                        <ul className="specialist-list">{activePerspectiveDetail.limitations.map((l, i) => <li key={i}>{l}</li>)}</ul>
+                      </div>
+                    )}
+                    {activePerspectiveDetail.counterarguments.length > 0 && (
+                      <div className="detail-card">
+                        <h4>Counterarguments</h4>
+                        <ul className="specialist-list">{activePerspectiveDetail.counterarguments.map((c, i) => <li key={i}>{c}</li>)}</ul>
+                      </div>
+                    )}
+
+                    <div className="detail-card">
+                      <h4>Reality Map bridges</h4>
+                      <p className="muted small-note">These actions prefill Reality Map items for your review. Nothing is auto-applied and confidence is never changed automatically.</p>
+                      <div className="perspective-bridge-actions">
+                        <button type="button" className="small-button" onClick={() => perspectiveToClaimPrefill({ title: activePerspectiveDetail.primaryQuestion, description: activePerspectiveDetail.mainIdea || activePerspectiveDetail.introduction, claimCategory: 'interpretation', confidence: 'low_confidence', notes: `Perspective lens: ${activePerspectiveDetail.title}` })}>Save as claim</button>
+                        <button type="button" className="small-button" onClick={() => perspectiveToClaimPrefill({ title: `Assumption: ${activePerspectiveDetail.primaryQuestion}`.slice(0, 160), description: activePerspectiveDetail.mainIdea || '', claimCategory: 'assumption', confidence: 'insufficient_information', notes: `Assumption surfaced while reflecting on ${activePerspectiveDetail.title}.` })}>Record assumption</button>
+                        <button type="button" className="small-button" onClick={() => perspectiveToClaimPrefill({ title: activePerspectiveDetail.reflectionQuestions[0] || activePerspectiveDetail.primaryQuestion, description: 'Open question from perspective reflection.', claimCategory: 'unresolved_question', confidence: 'insufficient_information', notes: `Open question from ${activePerspectiveDetail.title}.` })}>Add open question</button>
+                        <button type="button" className="small-button" onClick={() => perspectiveToClaimPrefill({ title: `Argument for: ${activePerspectiveDetail.title}`.slice(0, 160), description: activePerspectiveDetail.mainIdea || activePerspectiveDetail.detailedExplanation.slice(0, 800), claimCategory: 'causal_explanation', confidence: 'low_confidence', notes: 'Argument-for perspective note; review before treating as case reasoning.' })}>Save argument</button>
+                        <button type="button" className="small-button" onClick={() => perspectiveToClaimPrefill({ title: `Counterargument: ${activePerspectiveDetail.title}`.slice(0, 160), description: (activePerspectiveDetail.counterarguments[0] || activePerspectiveDetail.limitations[0] || 'Counterargument from perspective.'), claimCategory: 'interpretation', confidence: 'low_confidence', notes: 'Counterargument from perspective; review before using in case reasoning.' })}>Save counterargument</button>
+                        <button type="button" className="small-button" onClick={() => perspectiveToHypothesisPrefill()}>Reconsider hypothesis</button>
+                      </div>
+                    </div>
+
+                    <div className="detail-card">
+                      <h4>Specialist bridge</h4>
+                      <p className="muted small-note">Discuss this perspective with a specialist. Specialist responses remain advisory and must not be treated as evidence or case truth.</p>
+                      <div className="button-row">
+                        {(() => {
+                          const caseKeys = new Set(specialists.map((s) => s.specialistKey));
+                          const related = (activePerspectiveDetail.relatedSpecialistKeys ?? []).filter((k) => caseKeys.has(k));
+                          const keys = related.length > 0 ? related : specialists.slice(0, 3).map((s) => s.specialistKey);
+                          if (keys.length === 0) return <p className="muted">No specialists available for this case.</p>;
+                          return keys.map((key) => {
+                            const spec = specialists.find((s) => s.specialistKey === key);
+                            return (
+                              <button key={key} type="button" className="small-button" onClick={() => discussPerspectiveWithSpecialist(key)}>
+                                Discuss with {spec?.name || humanizePerspective(key)}
+                              </button>
+                            );
+                          });
+                        })()}
+                      </div>
+                    </div>
+
+                    <div className="detail-card">
+                      <h4>Reflection</h4>
+                      <p className="muted small-note">Save a reflection linked to this investigation. You can then send it to Reality Map or Notebook.</p>
+                      <form className="perspective-reflection-form" onSubmit={submitPerspectiveReflection}>
+                        <label className="field-label">Reflection kind
+                          <select value={perspectiveReflectionKind} onChange={(e) => setPerspectiveReflectionKind(e.target.value as PerspectiveReflectionKind)}>
+                            {PERSPECTIVE_REFLECTION_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
+                          </select>
+                        </label>
+                        <label className="field-label">Prompt (optional)
+                          <select value={perspectiveReflectionPromptIndex} onChange={(e) => setPerspectiveReflectionPromptIndex(e.target.value === '' ? '' : Number(e.target.value))}>
+                            <option value="">No specific prompt</option>
+                            {activePerspectiveDetail.reflectionQuestions.map((q, i) => <option key={i} value={i}>{q.slice(0, 90)}{q.length > 90 ? '…' : ''}</option>)}
+                          </select>
+                        </label>
+                        <label className="field-label">Your response
+                          <textarea value={perspectiveReflectionText} onChange={(e) => setPerspectiveReflectionText(e.target.value)} rows={4} maxLength={4000} required />
+                        </label>
+                        {perspectiveReflectionError && <div className="error">{perspectiveReflectionError}</div>}
+                        <button type="submit" className="small-button" disabled={perspectiveReflectionBusy || !perspectiveReflectionText.trim()}>
+                          {perspectiveReflectionBusy ? 'Saving…' : 'Save reflection'}
+                        </button>
+                      </form>
+
+                      <div className="perspective-reflection-list" aria-label="Saved reflections">
+                        {perspectiveReflections.filter(Boolean).length === 0 ? (
+                          <p className="muted">No reflections saved for this perspective in this investigation.</p>
+                        ) : perspectiveReflections.filter(Boolean).map((r) => {
+                          const kind = r.reflectionKind || 'reflection';
+                          return (
+                          <article key={r.id} className="detail-card">
+                            <div className="badges">
+                              <span className="badge badge--soft">{humanizePerspective(kind)}</span>
+                              {r.investigationId && <span className="badge badge--soft">Case-linked</span>}
+                            </div>
+                            {r.prompt && <p className="muted small-note"><strong>Prompt:</strong> {r.prompt}</p>}
+                            <p>{r.response}</p>
+                            <div className="perspective-bridge-actions">
+                              <button type="button" className="small-button" onClick={() => perspectiveToClaimPrefill({ title: (r.response || '').slice(0, 160), description: r.response || '', claimCategory: kind === 'assumption' ? 'assumption' : kind === 'open_question' ? 'unresolved_question' : 'interpretation', confidence: 'insufficient_information', notes: `From perspective reflection (${humanizePerspective(kind)}).`, sourcePerspectiveReflectionId: r.id })}>Save as claim</button>
+                              <button type="button" className="small-button" onClick={() => perspectiveToClaimPrefill({ title: `Assumption: ${(r.response || '').slice(0, 140)}`, description: r.response || '', claimCategory: 'assumption', confidence: 'insufficient_information', notes: 'Recorded as assumption from perspective reflection.', sourcePerspectiveReflectionId: r.id })}>Record assumption</button>
+                              <button type="button" className="small-button" onClick={() => perspectiveToClaimPrefill({ title: (r.response || '').slice(0, 160), description: r.response || '', claimCategory: 'unresolved_question', confidence: 'insufficient_information', notes: 'Open question from perspective reflection.', sourcePerspectiveReflectionId: r.id })}>Add open question</button>
+                              <button type="button" className="small-button" onClick={() => perspectiveToHypothesisPrefill(r)}>Reconsider hypothesis</button>
+                              <button type="button" className="small-button" onClick={() => void savePerspectiveReflectionToNotebook(r)} disabled={notebookBusy}>Save to notebook</button>
+                              <button type="button" className="link-button link-button--danger" onClick={() => void deletePerspectiveReflection(r.id)}>Delete</button>
+                            </div>
+                          </article>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {activePerspectiveConnections && activePerspectiveConnections.relatedExperiences.length > 0 && (
+                      <div className="detail-card">
+                        <h4>Related experiences</h4>
+                        <div className="card-list">
+                          {activePerspectiveConnections.relatedExperiences.map((r) => (
+                            <article key={r.experienceKey} className="detail-card">
+                              <div className="badges">
+                                <span className="badge badge--soft">{humanizePerspective(r.frameworkKey)}</span>
+                                <span className="badge badge--soft">{humanizePerspective(r.format)}</span>
+                              </div>
+                              <h5><Link to={`/perspectives/${encodeURIComponent(r.experienceKey)}`}>{r.title}</Link></h5>
+                              <p className="muted small-note">{r.primaryQuestion}</p>
+                              <div className="button-row">
+                                <button type="button" className="small-button" onClick={() => void openPerspectiveInContext(r.experienceKey)}>Open here</button>
+                              </div>
+                            </article>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+          </section>
         )}
 
         {activeTab === 'experts' && (
@@ -1152,10 +2076,10 @@ export const InvestigationRoomPage = () => {
                       key={action.action}
                       type="button"
                       className="small-button"
-                      disabled={actionBusy !== null || caseClosed}
+                      disabled={actionBusy !== null || caseClosed || action.performed}
                       onClick={() => void performAction(action.action)}
                     >
-                      {actionBusy === action.action ? 'Working...' : action.label}
+                      {actionBusy === action.action ? 'Working...' : action.performed ? `${action.label} (done)` : action.label}
                     </button>
                   ))}
                 </div>
@@ -1559,18 +2483,24 @@ export const InvestigationRoomPage = () => {
           intent: selectedIntent,
           depth: selectedDepth,
           ...(targetSpecialistKey ? { targetSpecialistKey } : {}),
+          ...(chatPerspectiveKey ? { perspectiveKey: chatPerspectiveKey } : {}),
         }
-      : undefined;
+      : chatPerspectiveKey
+        ? { perspectiveKey: chatPerspectiveKey }
+        : undefined;
 
     setSending(true);
     setChatError(null);
     setMessageInput('');
 
+    const specialistOpts = opts && 'specialistKey' in opts ? opts : null;
     const optimistic: ChatMessage = {
       role: 'player',
       content: text,
       timestamp: new Date().toISOString(),
-      ...(opts?.specialistKey ? { specialistKey: opts.specialistKey, intent: opts.intent, depth: opts.depth } : {}),
+      ...(specialistOpts?.specialistKey
+        ? { specialistKey: specialistOpts.specialistKey, intent: specialistOpts.intent, depth: specialistOpts.depth }
+        : {}),
     };
     setMessages((previous) => [...previous, optimistic]);
 
@@ -1764,55 +2694,7 @@ function formatDate(value: string): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
 
-function formatElapsed(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return '—';
-  if (seconds < 60) return `${seconds}s`;
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (hours > 0) return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
-  const remainder = seconds % 60;
-  return remainder > 0 ? `${minutes}m ${remainder}s` : `${minutes}m`;
-}
-
-// P2-POLISH: compact, read-only stats card. Every value arrives from the
-// server's allowlisted stats DTO; nothing here derives data from canonical
-// truth or hidden evidence, and no value is editable by the client.
-function StatsPanel({ stats }: { stats: InvestigationStats }) {
-  const statusLabel = stats.status
-    ? stats.status.charAt(0).toUpperCase() + stats.status.slice(1).replace(/_/g, ' ')
-    : 'Unknown';
-  const items: Array<{ label: string; value: string }> = [
-    { label: 'Progress', value: `${Math.min(100, Math.max(0, stats.progress))}%` },
-    {
-      label: 'Evidence',
-      value: `${stats.evidence.discovered} / ${stats.evidence.total}`,
-    },
-    {
-      label: 'Checkpoints',
-      value: `${stats.checkpoints.answered} / ${stats.checkpoints.total}`,
-    },
-    { label: 'Accusations', value: String(stats.accusations) },
-    { label: 'Achievements', value: String(stats.achievements) },
-    { label: 'Time elapsed', value: formatElapsed(stats.elapsedSeconds) },
-  ];
-
-  return (
-    <section className="stats-panel" aria-label="Investigation statistics">
-      <div className="section-heading">
-        <h3>Case statistics</h3>
-        <span className="badge">{statusLabel}</span>
-      </div>
-      <dl className="stats-grid">
-        {items.map((item) => (
-          <div className="stats-grid__item" key={item.label}>
-            <dt>{item.label}</dt>
-            <dd>{item.value}</dd>
-          </div>
-        ))}
-      </dl>
-    </section>
-  );
-}
+// Legacy StatsPanel removed - replaced by InvestigationHQ (M8-3).
 
 // PROD-013: renders the server's safe suspect projection. Nothing here is
 // computed on the client from canonical data - all fields arrive pre-filtered.

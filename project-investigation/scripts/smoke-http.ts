@@ -169,6 +169,35 @@ async function main() {
     return `/api/investigations/${invId}/evaluate-accusation`;
   }
 
+  console.log('\n=== M8-W7 Beta Readiness: Health / Config Tests ===\n');
+
+  await test('GET /api/health returns a safe liveness shape', async () => {
+    const res = await request('GET', '/api/health');
+    if (res.status !== 200) throw new Error(`Health failed: ${res.status}`);
+    if (res.body.status !== 'ok') throw new Error('Health status is not ok');
+    if (typeof res.body.timestamp !== 'string' || Number.isNaN(Date.parse(res.body.timestamp))) {
+      throw new Error('Health timestamp missing/invalid');
+    }
+    if (typeof res.body.version !== 'string') throw new Error('Health version missing');
+    if (JSON.stringify(res.body).match(/password|token|secret|database_url/i)) {
+      throw new Error('Health response leaked sensitive data');
+    }
+  });
+
+  await test('GET /api/config exposes only public feedback/beta metadata', async () => {
+    const res = await request('GET', '/api/config');
+    if (res.status !== 200) throw new Error(`Config failed: ${res.status}`);
+    if (typeof res.body.feedbackUrl !== 'string' || !res.body.feedbackUrl) {
+      throw new Error('Config feedbackUrl missing');
+    }
+    if (typeof res.body.betaAccessRequired !== 'boolean') {
+      throw new Error('Config betaAccessRequired missing');
+    }
+    if (JSON.stringify(res.body).match(/password|token|secret|database_url|access.?code/i)) {
+      throw new Error('Config response leaked sensitive data');
+    }
+  });
+
   console.log('\n=== Authentication Tests ===\n');
 
   const primaryEmail = `smoketest-${suffix}@example.com`;
@@ -215,6 +244,93 @@ async function main() {
     if (!res.body.id) throw new Error('/api/me returned no user id');
   });
 
+  // M8-W7: self-service export and explicit account deletion.
+  console.log('\n=== M8-W7 Beta Readiness: Data Export / Deletion Tests ===\n');
+
+  await test('GET /api/me/export requires authentication', async () => {
+    const res = await request('GET', '/api/me/export');
+    if (res.status !== 401) throw new Error(`Unauthenticated export not rejected: ${res.status}`);
+  });
+
+  await test('GET /api/me/export returns a safe, self-only DTO', async () => {
+    if (!primaryCookie) throw new Error('No session cookie from login');
+    const res = await request('GET', '/api/me/export', undefined, primaryCookie);
+    if (res.status !== 200) throw new Error(`Export failed: ${res.status} ${JSON.stringify(res.body)}`);
+    const body = res.body;
+    for (const key of ['exportedAt', 'formatVersion', 'profile', 'investigations', 'notebook', 'knowledge', 'notifications']) {
+      if (!(key in body)) throw new Error(`Export missing ${key}`);
+    }
+    if (body.profile?.email !== primaryEmail) throw new Error('Export returned the wrong profile');
+    if (!Array.isArray(body.investigations) || !Array.isArray(body.notebook)) {
+      throw new Error('Export collections are not arrays');
+    }
+    const forbidden = /canonical|hidden|secret|truth|password|token|evaluation_result|hidden_events/i;
+    const scan = (value: unknown, path: string): void => {
+      if (Array.isArray(value)) {
+        value.forEach((item, index) => scan(item, `${path}[${index}]`));
+        return;
+      }
+      if (value && typeof value === 'object') {
+        for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+          if (forbidden.test(key)) throw new Error(`Export leaked field ${path}.${key}`);
+          scan(child, `${path}.${key}`);
+        }
+      }
+    };
+    scan(body, 'export');
+  });
+
+  await test('POST /api/me/delete requires explicit confirmation', async () => {
+    const cookie = await registerAndLogin('delete-guard');
+    const missing = await request('POST', '/api/me/delete', {}, cookie);
+    const wrong = await request('POST', '/api/me/delete', { confirm: 'yes' }, cookie);
+    if (missing.status !== 400 || wrong.status !== 400) {
+      throw new Error(`Confirmation guard failed: missing ${missing.status}, wrong ${wrong.status}`);
+    }
+    const stillThere = await request('GET', '/api/me', undefined, cookie);
+    if (stillThere.status !== 200) throw new Error('Account removed without confirmation');
+    // Clean up the guard fixture through the real, confirmed flow.
+    const done = await request('POST', '/api/me/delete', { confirm: 'DELETE' }, cookie);
+    if (done.status !== 200 || done.body.ok !== true) throw new Error('Confirmed deletion failed');
+  });
+
+  await test('POST /api/me/delete removes only caller data and revokes its session', async () => {
+    const victimCookie = await registerAndLogin('delete-victim');
+    const observerCookie = await registerAndLogin('delete-observer');
+    const victimMe = await request('GET', '/api/me', undefined, victimCookie);
+    const victimId = String(victimMe.body.id);
+    const victimInv = await createInvestigation(victimCookie, caseId);
+    const observerInv = await createInvestigation(observerCookie, caseId);
+    const note = await request('POST', `/api/investigations/${victimInv}/journal`, {
+      entryType: 'note', content: 'A private note that should be deleted',
+    }, victimCookie);
+    if (note.status !== 201 && note.status !== 200) throw new Error(`Journal fixture failed: ${note.status}`);
+
+    const del = await request('POST', '/api/me/delete', { confirm: 'DELETE' }, victimCookie);
+    if (del.status !== 200 || del.body.ok !== true) throw new Error(`Deletion failed: ${del.status}`);
+
+    const after = await request('GET', '/api/me', undefined, victimCookie);
+    if (after.status !== 401) throw new Error('Session was not revoked after deletion');
+    for (const [label, sql] of [
+      ['investigations', 'SELECT id FROM investigations WHERE user_id = $1'],
+      ['users', 'SELECT id FROM users WHERE id = $1'],
+      ['sessions', 'SELECT token_hash FROM sessions WHERE user_id = $1'],
+      ['notebook', 'SELECT id FROM notebook_entries WHERE user_id = $1'],
+    ] as const) {
+      const rows = await query(sql, [victimId]);
+      if ((rows.rowCount ?? 0) !== 0) throw new Error(`${label} rows survived deletion`);
+    }
+    const journalRows = await query('SELECT id FROM journal_entries WHERE investigation_id = $1', [victimInv]);
+    if ((journalRows.rowCount ?? 0) !== 0) throw new Error('journal rows survived deletion');
+
+    const observerCheck = await request('GET', '/api/me', undefined, observerCookie);
+    if (observerCheck.status !== 200) throw new Error('Other user session was revoked');
+    const observerInvCheck = await query('SELECT id FROM investigations WHERE id = $1', [observerInv]);
+    if (observerInvCheck.rowCount !== 1) throw new Error('Other user investigation was deleted');
+  });
+
+  console.log('\n=== Notification Settings Tests ===\n');
+
   // GAP-14 (P2): MVP in-app notification preferences (existing users column).
   await test('Notification settings require auth', async () => {
     const get = await request('GET', '/api/me/notification-settings');
@@ -257,6 +373,218 @@ async function main() {
     }
     // Restore the default so later tests are unaffected by this user's state.
     await request('PATCH', '/api/me/notification-settings', { developments: true }, primaryCookie);
+  });
+
+  // M8 Wave 1: per-user onboarding progress (safe, auth-gated DTO).
+  console.log('\n=== Onboarding Tests ===\n');
+
+  await test('Onboarding endpoints require auth', async () => {
+    const get = await request('GET', '/api/me/onboarding');
+    const patch = await request('PATCH', '/api/me/onboarding', { welcomeSeen: true });
+    if (get.status !== 401 || patch.status !== 401) {
+      throw new Error(`Unauthenticated onboarding access not rejected: GET ${get.status} PATCH ${patch.status}`);
+    }
+  });
+
+  await test('Onboarding defaults are safe and lazily created for a fresh user', async () => {
+    const cookie = await registerAndLogin('onboarding-default');
+    const res = await request('GET', '/api/me/onboarding', undefined, cookie);
+    if (res.status !== 200) throw new Error(`Onboarding fetch failed: ${res.status}`);
+    const keys = Object.keys(res.body).sort();
+    const expected = ['completed', 'introCompleted', 'lastStep', 'skipped', 'tutorialState', 'welcomeSeen'];
+    if (JSON.stringify(keys) !== JSON.stringify(expected)) {
+      throw new Error(`Unexpected onboarding DTO shape: ${JSON.stringify(keys)}`);
+    }
+    if (res.body.welcomeSeen !== false || res.body.introCompleted !== false ||
+        res.body.skipped !== false || res.body.completed !== false || res.body.lastStep !== null) {
+      throw new Error(`Unsafe onboarding defaults: ${JSON.stringify(res.body)}`);
+    }
+    if (res.body.tutorialState === null || typeof res.body.tutorialState !== 'object' ||
+        Object.keys(res.body.tutorialState).length !== 0) {
+      throw new Error(`Expected an empty tutorialState: ${JSON.stringify(res.body.tutorialState)}`);
+    }
+    if (keys.some((k) => /canonical|hidden|secret|truth/i.test(k))) {
+      throw new Error('Onboarding DTO leaked a hidden/canonical field');
+    }
+  });
+
+  await test('Onboarding PATCH persists allowlisted fields and ignores unknown keys', async () => {
+    const cookie = await registerAndLogin('onboarding-patch');
+    const patch = await request('PATCH', '/api/me/onboarding', {
+      welcomeSeen: true,
+      lastStep: 'toolkit',
+      tutorialState: { reality: true, canonicalTruth: 'leak' },
+      introCompleted: 'yes', // non-boolean values are ignored
+      skipped: 42,
+      canonicalTruth: 'leak',
+      userId: 'spoofed',
+    }, cookie);
+    if (patch.status !== 200) throw new Error(`Onboarding patch failed: ${patch.status}`);
+    if (patch.body.welcomeSeen !== true || patch.body.lastStep !== 'toolkit') {
+      throw new Error(`Allowlisted fields not persisted: ${JSON.stringify(patch.body)}`);
+    }
+    if (patch.body.introCompleted !== false || patch.body.skipped !== false || patch.body.completed !== false) {
+      throw new Error(`Invalid/non-boolean fields were accepted: ${JSON.stringify(patch.body)}`);
+    }
+    if (patch.body.tutorialState?.reality !== true) {
+      throw new Error(`Allowlisted tutorial key not persisted: ${JSON.stringify(patch.body.tutorialState)}`);
+    }
+    const tutorialKeys = Object.keys(patch.body.tutorialState ?? {});
+    const allowlistedTutorialKeys = [
+      'reality', 'perspectives', 'fieldResearch',
+      'evidenceTip', 'suspectsTip', 'chatTip', 'guideCompleted',
+      'stepBriefing', 'stepEvidence', 'stepChat', 'stepClaims', 'stepFieldResearch', 'stepVerdict',
+    ];
+    if (tutorialKeys.some((k) => !allowlistedTutorialKeys.includes(k))) {
+      throw new Error(`Tutorial state accepted an unknown key: ${JSON.stringify(tutorialKeys)}`);
+    }
+    if (Object.keys(patch.body).some((k) => /canonical|hidden|secret|truth|user_?id/i.test(k))) {
+      throw new Error('Onboarding DTO accepted/returned an unsafe field');
+    }
+    const readBack = await request('GET', '/api/me/onboarding', undefined, cookie);
+    if (readBack.body.lastStep !== 'toolkit' || readBack.body.tutorialState?.reality !== true) {
+      throw new Error('Onboarding state did not persist across requests');
+    }
+  });
+
+  await test('Onboarding completion/skip marks state complete and shallow-merges tutorial flags', async () => {
+    const cookie = await registerAndLogin('onboarding-complete');
+    const first = await request('PATCH', '/api/me/onboarding', { tutorialState: { perspectives: true } }, cookie);
+    if (first.status !== 200 || first.body.tutorialState?.perspectives !== true) {
+      throw new Error(`First tutorial patch failed: ${JSON.stringify(first.body)}`);
+    }
+    const done = await request('PATCH', '/api/me/onboarding', {
+      introCompleted: true,
+      tutorialState: { fieldResearch: true },
+    }, cookie);
+    if (done.body.introCompleted !== true || done.body.completed !== true) {
+      throw new Error(`Completion not reflected in state: ${JSON.stringify(done.body)}`);
+    }
+    if (done.body.tutorialState?.perspectives !== true || done.body.tutorialState?.fieldResearch !== true) {
+      throw new Error(`Tutorial flags were not shallow-merged: ${JSON.stringify(done.body.tutorialState)}`);
+    }
+    const skipped = await request('PATCH', '/api/me/onboarding', { skipped: true }, cookie);
+    if (skipped.body.skipped !== true || skipped.body.completed !== true) {
+      throw new Error(`Skip not reflected in state: ${JSON.stringify(skipped.body)}`);
+    }
+  });
+
+  await test('Onboarding replay resets the guide and persists new tutorial keys', async () => {
+    const cookie = await registerAndLogin('onboarding-replay');
+    const seeded = await request('PATCH', '/api/me/onboarding', {
+      welcomeSeen: true,
+      introCompleted: true,
+      lastStep: null,
+      tutorialState: { guideCompleted: true, stepBriefing: true, evidenceTip: true },
+    }, cookie);
+    if (seeded.status !== 200 || seeded.body.completed !== true) {
+      throw new Error(`Could not seed a completed guide: ${JSON.stringify(seeded.body)}`);
+    }
+    if (seeded.body.tutorialState?.stepBriefing !== true || seeded.body.tutorialState?.evidenceTip !== true) {
+      throw new Error(`New tutorial keys not persisted: ${JSON.stringify(seeded.body.tutorialState)}`);
+    }
+    if (seeded.body.tutorialState?.guideCompleted !== true) {
+      throw new Error(`Guide completion flag not persisted: ${JSON.stringify(seeded.body.tutorialState)}`);
+    }
+
+    // Replay: reset the intro + hide-flag while leaving other step flags intact.
+    const replay = await request('PATCH', '/api/me/onboarding', {
+      welcomeSeen: false,
+      introCompleted: false,
+      skipped: false,
+      lastStep: null,
+      tutorialState: { guideCompleted: false },
+    }, cookie);
+    if (replay.body.welcomeSeen !== false || replay.body.introCompleted !== false ||
+        replay.body.skipped !== false || replay.body.lastStep !== null || replay.body.completed !== false) {
+      throw new Error(`Replay did not reset the guide to its initial state: ${JSON.stringify(replay.body)}`);
+    }
+    if (replay.body.tutorialState?.guideCompleted !== false) {
+      throw new Error(`Replay did not unhide the checklist: ${JSON.stringify(replay.body.tutorialState)}`);
+    }
+    if (replay.body.tutorialState?.stepBriefing !== true || replay.body.tutorialState?.evidenceTip !== true) {
+      throw new Error(`Replay lost unrelated tutorial flags: ${JSON.stringify(replay.body.tutorialState)}`);
+    }
+    const readBack = await request('GET', '/api/me/onboarding', undefined, cookie);
+    if (readBack.body.completed !== false || readBack.body.tutorialState?.stepBriefing !== true) {
+      throw new Error('Replayed onboarding state did not persist');
+    }
+  });
+
+  console.log('\n=== M8-6 Personal Progress Tests ===\n');
+
+  await test('M8-6: /api/me/progress requires authentication', async () => {
+    const res = await request('GET', '/api/me/progress');
+    if (res.status !== 401) throw new Error(`Progress route not auth-gated: ${res.status}`);
+  });
+
+  await test('M8-6: fresh user gets a safe, honest, empty-progress DTO', async () => {
+    const cookie = await registerAndLogin('m8-progress-fresh');
+    const res = await request('GET', '/api/me/progress', undefined, cookie);
+    if (res.status !== 200) throw new Error(`Progress fetch failed: ${res.status} ${JSON.stringify(res.body)}`);
+    const body = res.body;
+    if (!body || typeof body !== 'object') throw new Error('Progress DTO is not an object');
+    if (typeof body.generatedAt !== 'string' || typeof body.disclaimer !== 'string') {
+      throw new Error('Progress DTO missing generatedAt/disclaimer');
+    }
+    if (!body.investigations || !body.knowledge || !body.openThreads || !body.recentActivity) {
+      throw new Error('Progress DTO missing a required section');
+    }
+    if (!Array.isArray(body.milestones) || !Array.isArray(body.suggestions)) {
+      throw new Error('Progress DTO milestones/suggestions must be arrays');
+    }
+    if (body.recentActivity.windowDays !== 7) {
+      throw new Error('Recent activity must use the honest 7-day window');
+    }
+    for (const key of ['completed', 'abandoned', 'active', 'paused', 'total', 'distinctCasesPlayed'] as const) {
+      if (typeof body.investigations[key] !== 'number') {
+        throw new Error(`Progress investigation field ${key} is not a number`);
+      }
+    }
+    if (body.investigations.total !== 0 || body.knowledge.memoryItems !== 0 ||
+        body.knowledge.discoveriesAccepted !== 0 || body.milestones.some((m: any) => m.achieved)) {
+      throw new Error('Fresh user progress should be empty');
+    }
+    if (body.suggestions.some((s: any) => !s.caseId || !s.title || !s.reason)) {
+      throw new Error('Suggestions must expose only safe library fields');
+    }
+
+    // Deep scan: no canonical/hidden/internal field names anywhere in the DTO.
+    const forbidden = /canonical|hidden|secret|truth|culprit|motive|method|evaluation|reason_?code|user_?id/i;
+    const scan = (value: unknown, path: string): void => {
+      if (Array.isArray(value)) {
+        value.forEach((entry, index) => scan(entry, `${path}[${index}]`));
+        return;
+      }
+      if (value && typeof value === 'object') {
+        for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+          if (forbidden.test(key)) throw new Error(`Progress DTO leaked field ${path}.${key}`);
+          scan(child, `${path}.${key}`);
+        }
+      }
+    };
+    scan(body, 'progress');
+  });
+
+  await test('M8-6: progress is ownership-scoped and reflects only own activity', async () => {
+    const ownerCookie = await registerAndLogin('m8-progress-owner');
+    const otherCookie = await registerAndLogin('m8-progress-other');
+
+    const beforeOwner = await request('GET', '/api/me/progress', undefined, ownerCookie);
+    const beforeOther = await request('GET', '/api/me/progress', undefined, otherCookie);
+    if (beforeOwner.body.investigations.active !== 0 || beforeOther.body.investigations.active !== 0) {
+      throw new Error('Both progress DTOs should start with no active investigations');
+    }
+
+    await createInvestigation(ownerCookie, String(caseId));
+    const afterOwner = await request('GET', '/api/me/progress', undefined, ownerCookie);
+    const afterOther = await request('GET', '/api/me/progress', undefined, otherCookie);
+    if (afterOwner.body.investigations.active !== 1 || afterOwner.body.investigations.total !== 1) {
+      throw new Error(`Owner progress did not reflect own investigation: ${JSON.stringify(afterOwner.body.investigations)}`);
+    }
+    if (afterOther.body.investigations.active !== 0 || afterOther.body.investigations.total !== 0) {
+      throw new Error('Another user\'s investigation leaked into the progress DTO');
+    }
   });
 
   await test('Forged session token is rejected', async () => {
@@ -2377,6 +2705,923 @@ async function main() {
     }
     if (afterSnap.body.claims.length !== beforeSnap.body.claims.length + 1) throw new Error('Claim not persisted');
   });
+
+  // ---------------------------------------------------------------------------
+  // M5 Perspective Engine (advisory lenses, reflections, suggestion state).
+  // Safety properties: no canonical/hidden leakage, no verdict/progression/
+  // evidence coupling, reflections/state player-scoped, suggestions read-only.
+  // ---------------------------------------------------------------------------
+  console.log('\n=== M5 Perspective Engine Tests ===\n');
+
+  const m5Cookie = await registerAndLogin('m5-perspectives');
+  const m5OtherCookie = await registerAndLogin('m5-other');
+  const m5FreshCookie = await registerAndLogin('m5-fresh');
+  const m5InvId = await createInvestigation(m5Cookie, caseId);
+  const m5OtherInvId = await createInvestigation(m5OtherCookie, caseId);
+  const m5FreshInvId = await createInvestigation(m5FreshCookie, caseId);
+  const m5Base = `/api/investigations/${m5InvId}/reality-map`;
+  const smokeExperienceKey = 'smoke-perspective-lens';
+  const hiddenUuids = hiddenEvidenceId ? [String(hiddenEvidenceId)] : [];
+
+  // Deterministic published fixture with an UNVERIFIED source URL so the DTO's
+  // verified-only URL rule can be asserted directly. Recreate it each run so a
+  // prior run's version cannot make filter assertions stale.
+  await query('DELETE FROM perspective_experiences WHERE experience_key = $1', [smokeExperienceKey]);
+  await query(
+    `INSERT INTO perspective_experiences
+       (experience_key, framework_key, format, knowledge_class, title, perspective_class,
+        intellectual_purpose, primary_question, main_idea, scope_note, display_order, status,
+        supporting_sources, recommendation_tags, related_case_titles, key_concepts)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb,$14::jsonb,$15::jsonb,$16::jsonb)
+     ON CONFLICT (experience_key) DO NOTHING`,
+    [
+      smokeExperienceKey, 'scientific_reasoning', 'thought_experiment', 'philosophical',
+      'Smoke Test: A Lens on Observation', 'framework_primer',
+      'To separate observation from inference in a disciplined way.',
+      'What is actually established here, and what am I taking on trust?',
+      'A short teaching example about distinguishing what is seen from what is inferred.',
+      'A deterministic smoke-test fixture; not authored case content.',
+      99, 'published',
+      JSON.stringify([{
+        label: 'Smoke bibliographic reference (unverified)',
+        author: 'Smoke Test', title: 'An Unverified Reference',
+        url: 'https://example.invalid/secret-source', source_type: 'other',
+        verification_status: 'pending_review', source_verified: false,
+        notes: 'URL must not be exposed by the API.', quote: 'A short smoke quote.',
+      }]),
+      JSON.stringify(['open_question', 'skeptical_inquiry', 'mystery', 'observation']),
+      JSON.stringify(['The Midnight Heist']),
+      JSON.stringify(['observation', 'inference', 'burden of proof']),
+    ]
+  );
+  const fixtureRow = await query('SELECT id FROM perspective_experiences WHERE experience_key = $1', [smokeExperienceKey]);
+  const smokeExperienceId = fixtureRow.rows[0]?.id as string | undefined;
+  if (!smokeExperienceId) throw new Error('Perspective smoke fixture missing');
+
+  let m5Reflection: any = null;
+
+  await test('M5: frameworks returns 7 published lenses with epistemic fields', async () => {
+    const res = await request('GET', '/api/perspectives/frameworks', undefined, m5Cookie);
+    if (res.status !== 200) throw new Error(`Frameworks failed: ${res.status} ${JSON.stringify(res.body)}`);
+    if (res.body.count !== 7 || !Array.isArray(res.body.frameworks) || res.body.frameworks.length !== 7) {
+      throw new Error(`Expected 7 frameworks, got ${res.body.count}/${res.body.frameworks?.length}`);
+    }
+    for (const f of res.body.frameworks) {
+      if (!Array.isArray(f.coreQuestions) || !Array.isArray(f.limitations)
+        || !Array.isArray(f.commonMisconceptions) || !Array.isArray(f.internalDifferences)
+        || typeof f.methodOfReasoning !== 'string') {
+        throw new Error(`Framework ${f.frameworkKey} missing epistemic fields`);
+      }
+    }
+    if (res.body.advisory !== true || res.body.affectsVerdict !== false || typeof res.body.disclaimer !== 'string') {
+      throw new Error('Frameworks missing advisory flags/disclaimer');
+    }
+    assertNoLeak(res.body, 'M5 frameworks', M4_CANONICAL_TERMS, hiddenUuids);
+  });
+
+  await test('M5: perspective routes require authentication', async () => {
+    for (const path of ['/api/perspectives', '/api/perspectives/frameworks', '/api/perspectives/discover', '/api/perspectives/reflections']) {
+      const res = await request('GET', path);
+      if (res.status !== 401 && res.status !== 403) throw new Error(`${path} was not auth-guarded: ${res.status}`);
+    }
+  });
+
+  await test('M5: discovery and list are curated, safe and filtered', async () => {
+    const discover = await request('GET', '/api/perspectives/discover', undefined, m5Cookie);
+    if (discover.status !== 200) throw new Error(`Discover failed: ${discover.status}`);
+    if (!Array.isArray(discover.body.openingQuestions) || !Array.isArray(discover.body.featured)
+      || !Array.isArray(discover.body.connections) || discover.body.frameworkCount !== 7) {
+      throw new Error('Discovery payload missing curated sections');
+    }
+    const list = await request('GET', '/api/perspectives', undefined, m5Cookie);
+    if (list.status !== 200 || !Array.isArray(list.body.experiences)) throw new Error('List failed');
+    const filtered = await request('GET', '/api/perspectives?framework=scientific_reasoning&q=observation', undefined, m5Cookie);
+    if (filtered.status !== 200 || !filtered.body.experiences.some((e: any) => e.experienceKey === smokeExperienceKey)) {
+      throw new Error('Framework/text filter did not return the fixture experience');
+    }
+    const badFormat = await request('GET', '/api/perspectives?format=not_a_format', undefined, m5Cookie);
+    if (badFormat.status !== 400) throw new Error(`Invalid format accepted: ${badFormat.status}`);
+    assertNoLeak(discover.body, 'M5 discovery', M4_CANONICAL_TERMS, hiddenUuids);
+    assertNoLeak(list.body, 'M5 list', M4_CANONICAL_TERMS, hiddenUuids);
+  });
+
+  await test('M5: detail has disclaimer and nulls unverified source URLs', async () => {
+    const res = await request('GET', `/api/perspectives/${smokeExperienceKey}`, undefined, m5Cookie);
+    if (res.status !== 200) throw new Error(`Detail failed: ${res.status} ${JSON.stringify(res.body)}`);
+    if (typeof res.body.disclaimer !== 'string' || !res.body.disclaimer.includes('not evidence')) {
+      throw new Error('Detail disclaimer missing');
+    }
+    if (res.body.advisory !== true || res.body.isEvidence !== false || res.body.affectsVerdict !== false
+      || res.body.revealsCanonicalTruth !== false) {
+      throw new Error('Detail advisory flags wrong');
+    }
+    if (!Array.isArray(res.body.supportingSources) || res.body.supportingSources.length < 1) {
+      throw new Error('Detail supporting sources missing');
+    }
+    for (const source of res.body.supportingSources) {
+      if (source.sourceUrl !== null) throw new Error(`Unverified source URL leaked: ${source.sourceUrl}`);
+      if (source.verificationStatus === 'verified' && source.sourceVerified !== true) {
+        throw new Error('Verified status without sourceVerified flag');
+      }
+    }
+    const missing = await request('GET', '/api/perspectives/does-not-exist', undefined, m5Cookie);
+    if (missing.status !== 404) throw new Error(`Unknown experience accepted: ${missing.status}`);
+    assertNoLeak(res.body, 'M5 detail', M4_CANONICAL_TERMS, hiddenUuids);
+  });
+
+  await test('M5: connections returns related experiences and case bridges', async () => {
+    const res = await request('GET', `/api/perspectives/${smokeExperienceKey}/connections`, undefined, m5Cookie);
+    if (res.status !== 200) throw new Error(`Connections failed: ${res.status}`);
+    if (!Array.isArray(res.body.relatedExperiences) || !Array.isArray(res.body.sharedConcepts)
+      || !Array.isArray(res.body.bridges)) {
+      throw new Error('Connections payload malformed');
+    }
+    if (res.body.bridges.length === 0) throw new Error('Expected a case bridge for the fixture');
+    assertNoLeak(res.body, 'M5 connections', M4_CANONICAL_TERMS, hiddenUuids);
+  });
+
+  await test('M5: reflection CRUD is owner-only', async () => {
+    const created = await request('POST', `/api/perspectives/${smokeExperienceKey}/reflections`, {
+      response: 'I should separate what I saw from what I inferred.',
+      reflectionKind: 'reflection',
+      investigationId: m5InvId,
+      promptIndex: 0,
+      prompt: 'What is established here?',
+    }, m5Cookie);
+    const createdReflection = created.body?.reflection ?? created.body;
+    if (created.status !== 201 || !createdReflection?.id) throw new Error(`Reflection create failed: ${created.status} ${JSON.stringify(created.body)}`);
+    m5Reflection = createdReflection;
+    if (m5Reflection.experienceKey !== smokeExperienceKey || m5Reflection.investigationId !== m5InvId) {
+      throw new Error('Reflection provenance mismatch');
+    }
+
+    const listed = await request('GET', `/api/perspectives/reflections?experienceKey=${smokeExperienceKey}&investigationId=${m5InvId}`, undefined, m5Cookie);
+    const listedRows = Array.isArray(listed.body?.reflections) ? listed.body.reflections : Array.isArray(listed.body) ? listed.body : [];
+    if (listed.status !== 200 || !listedRows.some((r: any) => r.id === m5Reflection.id)) throw new Error('Reflection list missing created row');
+
+    const temp = await request('POST', `/api/perspectives/${smokeExperienceKey}/reflections`, {
+      response: 'Temporary reflection for ownership checks.',
+    }, m5Cookie);
+    const tempReflection = temp.body?.reflection ?? temp.body;
+    if (temp.status !== 201 || !tempReflection?.id) throw new Error('Temp reflection create failed');
+
+    const ownerPatch = await request('PATCH', `/api/perspectives/reflections/${tempReflection.id}`, {
+      response: 'Updated by owner.', reflectionKind: 'assumption',
+    }, m5Cookie);
+    const patched = ownerPatch.body?.reflection ?? ownerPatch.body;
+    if (ownerPatch.status !== 200 || patched?.response !== 'Updated by owner.' || patched?.reflectionKind !== 'assumption') {
+      throw new Error('Owner patch failed');
+    }
+    const otherPatch = await request('PATCH', `/api/perspectives/reflections/${tempReflection.id}`, { response: 'Intrusion' }, m5OtherCookie);
+    if (otherPatch.status !== 404) throw new Error(`Non-owner patch not rejected: ${otherPatch.status}`);
+    const otherDelete = await request('DELETE', `/api/perspectives/reflections/${tempReflection.id}`, undefined, m5OtherCookie);
+    if (otherDelete.status !== 404) throw new Error(`Non-owner delete not rejected: ${otherDelete.status}`);
+    const ownerDelete = await request('DELETE', `/api/perspectives/reflections/${tempReflection.id}`, undefined, m5Cookie);
+    if (ownerDelete.status !== 200) throw new Error('Owner delete failed');
+  });
+
+  await test('M5: reflection input and investigation ownership are validated', async () => {
+    const blank = await request('POST', `/api/perspectives/${smokeExperienceKey}/reflections`, { response: '   ' }, m5Cookie);
+    if (blank.status !== 400) throw new Error(`Blank response accepted: ${blank.status}`);
+    const badKind = await request('POST', `/api/perspectives/${smokeExperienceKey}/reflections`, {
+      response: 'Valid text', reflectionKind: 'not_a_kind',
+    }, m5Cookie);
+    if (badKind.status !== 400) throw new Error(`Invalid kind accepted: ${badKind.status}`);
+    const foreign = await request('POST', `/api/perspectives/${smokeExperienceKey}/reflections`, {
+      response: 'Valid text', investigationId: m5OtherInvId,
+    }, m5Cookie);
+    if (foreign.status !== 404) throw new Error(`Foreign investigation accepted: ${foreign.status}`);
+  });
+
+  await test('M5: suggestions are empty for a fresh investigation', async () => {
+    // Use a dedicated untouched investigation - the main fixture already has
+    // a reflection and journal/chat activity by the time this test runs.
+    const res = await request('GET', `/api/investigations/${m5FreshInvId}/perspectives/suggestions`, undefined, m5FreshCookie);
+    if (res.status !== 200) throw new Error(`Suggestions failed: ${res.status}`);
+    if (res.body.engagement !== 'none' || !Array.isArray(res.body.suggestions) || res.body.suggestions.length !== 0) {
+      throw new Error('Fresh investigation should have no suggestions');
+    }
+    const unauth = await request('GET', `/api/investigations/${m5FreshInvId}/perspectives/suggestions`);
+    if (unauth.status !== 401) throw new Error('Suggestions not auth-guarded');
+  });
+
+  let m5Suggestions: any[] = [];
+  await test('M5: suggestions are advisory, bounded and read-only', async () => {
+    // Establish genuine player engagement using a visible discovery.
+    if (visibleEvidenceId) {
+      await request('POST', `/api/investigations/${m5InvId}/discover-evidence`, { evidenceId: visibleEvidenceId }, m5Cookie);
+    }
+    const before = await request('GET', `/api/investigations/${m5InvId}`, undefined, m5Cookie);
+    const claimsBefore = await request('GET', m5Base, undefined, m5Cookie);
+    const res = await request('GET', `/api/investigations/${m5InvId}/perspectives/suggestions`, undefined, m5Cookie);
+    if (res.status !== 200) throw new Error(`Suggestions failed: ${res.status}`);
+    if (res.body.advisory !== true || res.body.isEvidence !== false || res.body.affectsVerdict !== false) {
+      throw new Error('Suggestions missing advisory flags');
+    }
+    if (!Array.isArray(res.body.suggestions) || res.body.suggestions.length > 2) {
+      throw new Error(`Expected at most 2 suggestions, got ${res.body.suggestions?.length}`);
+    }
+    if (res.body.suggestions.length === 0) throw new Error('Expected suggestions after engagement');
+    for (const s of res.body.suggestions) {
+      if (s.advisory !== true || s.isEvidence !== false || s.affectsVerdict !== false || !s.reasonText) {
+        throw new Error('Suggestion item missing advisory fields');
+      }
+    }
+    m5Suggestions = res.body.suggestions;
+    const after = await request('GET', `/api/investigations/${m5InvId}`, undefined, m5Cookie);
+    const claimsAfter = await request('GET', m5Base, undefined, m5Cookie);
+    if (JSON.stringify(before.body.discoveredEvidenceIds) !== JSON.stringify(after.body.discoveredEvidenceIds)
+      || before.body.status !== after.body.status || before.body.progress !== after.body.progress) {
+      throw new Error('Suggestions GET mutated the investigation');
+    }
+    if (JSON.stringify(claimsBefore.body.claims) !== JSON.stringify(claimsAfter.body.claims)) {
+      throw new Error('Suggestions GET created claims');
+    }
+    assertNoLeak(res.body, 'M5 suggestions', M4_CANONICAL_TERMS, hiddenUuids);
+  });
+
+  await test('M5: dismiss writes only suggestion state and excludes the lens', async () => {
+    const target = m5Suggestions[0]?.experienceKey ?? smokeExperienceKey;
+    const invBefore = await request('GET', `/api/investigations/${m5InvId}`, undefined, m5Cookie);
+    const res = await request('POST', `/api/investigations/${m5InvId}/perspectives/suggestions/${target}/dismiss`, {
+      reasonCode: 'broadens_perspective', fingerprint: 'm5-test-fingerprint',
+    }, m5Cookie);
+    if (res.status !== 200 || res.body.status !== 'dismissed') throw new Error(`Dismiss failed: ${res.status} ${JSON.stringify(res.body)}`);
+    const stored = await query('SELECT status, reason_code, state_fingerprint FROM perspective_suggestion_state WHERE investigation_id = $1 AND experience_key = $2', [m5InvId, target]);
+    if (stored.rows.length === 0 || stored.rows[0].status !== 'dismissed' || stored.rows[0].state_fingerprint !== 'm5-test-fingerprint') {
+      throw new Error('Dismiss state not persisted');
+    }
+    const after = await request('GET', `/api/investigations/${m5InvId}/perspectives/suggestions`, undefined, m5Cookie);
+    if (after.body.suggestions.some((s: any) => s.experienceKey === target)) throw new Error('Dismissed lens still suggested');
+    const invAfter = await request('GET', `/api/investigations/${m5InvId}`, undefined, m5Cookie);
+    if (JSON.stringify(invBefore.body.discoveredEvidenceIds) !== JSON.stringify(invAfter.body.discoveredEvidenceIds)
+      || invBefore.body.status !== invAfter.body.status || invBefore.body.progress !== invAfter.body.progress) {
+      throw new Error('Dismiss mutated the investigation');
+    }
+    const badReason = await request('POST', `/api/investigations/${m5InvId}/perspectives/suggestions/${target}/dismiss`, { reasonCode: 'solve_case' }, m5Cookie);
+    if (badReason.status !== 400) throw new Error(`Invalid reason code accepted: ${badReason.status}`);
+  });
+
+  await test('M5: claim accepts validated perspective provenance', async () => {
+    const created = await request('POST', `${m5Base}/claims`, {
+      title: 'A lens-informed question', claimCategory: 'unresolved_question',
+      sourcePerspectiveExperienceKey: smokeExperienceKey,
+      sourcePerspectiveReflectionId: m5Reflection.id,
+    }, m5Cookie);
+    if (created.status !== 201) throw new Error(`Claim create failed: ${created.status} ${JSON.stringify(created.body)}`);
+    if (created.body.sourcePerspectiveExperienceId !== smokeExperienceId
+      || created.body.sourcePerspectiveReflectionId !== m5Reflection.id) {
+      throw new Error('Claim perspective provenance not stored');
+    }
+    if (created.body.confidence !== 'insufficient_information') throw new Error('Claim confidence was auto-set');
+    const badReflection = await request('POST', `${m5Base}/claims`, {
+      title: 'Bad reflection', claimCategory: 'unresolved_question',
+      sourcePerspectiveExperienceKey: smokeExperienceKey, sourcePerspectiveReflectionId: RANDOM_UUID,
+    }, m5Cookie);
+    if (badReflection.status !== 404) throw new Error(`Unknown reflection accepted: ${badReflection.status}`);
+    const otherReflectionRes = await request('POST', `/api/perspectives/${smokeExperienceKey}/reflections`, {
+      response: 'A reflection owned by another player.',
+    }, m5OtherCookie);
+    const otherReflection = otherReflectionRes.body?.reflection ?? otherReflectionRes.body;
+    if (otherReflectionRes.status !== 201 || !otherReflection?.id) throw new Error('Other user reflection setup failed');
+    const foreignReflection = await request('POST', `${m5Base}/claims`, {
+      title: 'Foreign reflection', claimCategory: 'unresolved_question',
+      sourcePerspectiveExperienceKey: smokeExperienceKey,
+      sourcePerspectiveReflectionId: otherReflection.id,
+    }, m5Cookie);
+    if (foreignReflection.status !== 404) throw new Error(`Non-owner reflection accepted: ${foreignReflection.status}`);
+    assertNoLeak(created.body, 'M5 claim', M4_CANONICAL_TERMS, hiddenUuids);
+  });
+
+  await test('M5: notebook accepts a perspective source with safe snapshot', async () => {
+    const created = await request('POST', `/api/investigations/${m5InvId}/notebook`, {
+      entryType: 'note', title: 'A lens note',
+      content: 'A perspective-informed observation.', perspectiveKey: smokeExperienceKey,
+    }, m5Cookie);
+    if (created.status !== 201) throw new Error(`Notebook create failed: ${created.status} ${JSON.stringify(created.body)}`);
+    if (created.body.perspectiveExperienceId !== smokeExperienceId) throw new Error('Notebook perspective id not stored');
+    if (created.body.sourceSnapshot?.kind !== 'perspective_experience'
+      || typeof created.body.sourceSnapshot?.disclaimer !== 'string') {
+      throw new Error('Notebook perspective snapshot missing/disclaimer absent');
+    }
+    const sources = created.body.sourceSnapshot?.supportingSources ?? [];
+    if (sources.some((s: any) => s.sourceUrl !== null)) throw new Error('Notebook snapshot exposed an unverified URL');
+    const badKey = await request('POST', `/api/investigations/${m5InvId}/notebook`, {
+      entryType: 'note', perspectiveKey: 'does-not-exist',
+    }, m5Cookie);
+    if (badKey.status !== 404) throw new Error(`Unknown perspective key accepted: ${badKey.status}`);
+    assertNoLeak(created.body, 'M5 notebook', M4_CANONICAL_TERMS, hiddenUuids);
+  });
+
+  await test('M5: chat perspectiveKey yields epistemic note in deterministic fallback', async () => {
+    if (!m2Specialists.length) throw new Error('No specialist fixture for chat');
+    const key = m2Specialists[0].specialistKey;
+    const withLens = await request('POST', `/api/investigations/${m5InvId}/chat`, {
+      message: 'What should I check next?', specialistKey: key, perspectiveKey: smokeExperienceKey,
+    }, m5Cookie);
+    if (withLens.status !== 200) throw new Error(`Perspective chat failed: ${withLens.status} ${JSON.stringify(withLens.body)}`);
+    if (withLens.body.perspectiveKey !== smokeExperienceKey || typeof withLens.body.perspectiveDisclaimer !== 'string') {
+      throw new Error('Perspective chat meta missing');
+    }
+    if (!withLens.body.content.includes('Perspective lens note')) throw new Error('Deterministic fallback missing epistemic note');
+    const plain = await request('POST', `/api/investigations/${m5InvId}/chat`, {
+      message: 'What should I check next?', specialistKey: key,
+    }, m5Cookie);
+    if (plain.status !== 200 || plain.body.content.includes('Perspective lens note')) {
+      throw new Error('Non-perspective chat behaviour changed');
+    }
+    assertNoLeak(withLens.body, 'M5 perspective chat', M4_CANONICAL_TERMS, hiddenUuids);
+  });
+
+  await test('M5: perspective payloads contain no canonical or hidden evidence data', async () => {
+    const paths = [
+      '/api/perspectives/frameworks', '/api/perspectives/discover', '/api/perspectives',
+      `/api/perspectives/${smokeExperienceKey}`,
+      `/api/perspectives/${smokeExperienceKey}/connections`,
+      '/api/perspectives/reflections',
+      `/api/investigations/${m5InvId}/perspectives/suggestions`,
+    ];
+    for (const path of paths) {
+      const res = await request('GET', path, undefined, m5Cookie);
+      if (res.status !== 200) throw new Error(`${path} failed: ${res.status}`);
+      assertNoLeak(res.body, `M5 leak scan ${path}`, M4_CANONICAL_TERMS, hiddenUuids);
+      const serialized = JSON.stringify(res.body).toLowerCase();
+      // Only internal column/table identifiers are suspicious here. Words like
+      // "solution" can legitimately appear in pedagogical disclaimers.
+      for (const term of ['canonical_truth', 'hidden_events', 'source_verified=true']) {
+        if (serialized.includes(term)) throw new Error(`${path} leaked internal term: ${term}`);
+      }
+    }
+  });
+
+  // M5 fixture cleanup: do not leak smoke content into player-facing catalog.
+  try { await query('DELETE FROM perspective_experiences WHERE experience_key = $1', [smokeExperienceKey]); } catch {}
+
+  // ---------------------------------------------------------------------------
+  // M6 Living Investigations (deterministic activity feed, notifications inbox,
+  // legacy developments compatibility). Safety properties: no canonical/hidden
+  // leakage, no client-controlled time, idempotent materialization, ownership
+  // isolation, and empty-safe behaviour for cases without an authored package.
+  // ---------------------------------------------------------------------------
+  console.log('\n=== M6 Living Investigations Tests ===\n');
+
+  const M6_LEAK_TERMS = [...M4_CANONICAL_TERMS, 'Victor Sterling'];
+  const M6_INTERNAL_TERMS = [
+    'canonical_truth', 'hidden_events', 'discovery_conditions',
+    'release_conditions', 'hidden_interpretation',
+  ];
+  const M6_SHOWCASE_TITLES = ['The Midnight Heist', 'Code Blue at the Clinic', 'Blaze at Dawn Bakery'];
+  const M6_ACTIVITY_KEYS = [
+    'sinceLastVisit', 'groups', 'counts', 'upcoming',
+    'outstandingDisagreements', 'pendingResponse', 'hasMore', 'nextEligibleAt',
+  ];
+  function assertNoM6Internal(value: unknown, label: string): void {
+    const serialized = JSON.stringify(value).toLowerCase();
+    for (const term of M6_INTERNAL_TERMS) {
+      if (serialized.includes(term)) throw new Error(`${label} leaked internal term: ${term}`);
+    }
+  }
+  const m6PackageCount = (await query('SELECT COUNT(*)::int AS c FROM case_event_packages')).rows[0]?.c ?? 0;
+  if (m6PackageCount === 0) {
+    throw new Error('M6 case-event packages are not seeded - run npm run db:seed:case-events');
+  }
+
+  const m6Cookie = await registerAndLogin('m6-activity');
+  const m6InvId = await createInvestigation(m6Cookie, caseId);
+  const m6OtherInvIds: string[] = [];
+
+  try {
+    // HTTP exposes no time hook. Backdate ONLY this fixture (never other tests)
+    // so authored events become due; the engine itself reads server time only.
+    await query(
+      `UPDATE investigations
+          SET start_timestamp = NOW() - INTERVAL '3 hours',
+              last_event_tick_at = NOW() - INTERVAL '3 hours'
+        WHERE id = $1`,
+      [m6InvId]
+    );
+    await query(
+      `UPDATE investigation_events
+          SET eligible_at = NOW() - INTERVAL '5 minutes'
+        WHERE investigation_id = $1 AND status IN ('scheduled','eligible')`,
+      [m6InvId]
+    );
+
+    let m6EventId: string | null = null;
+    let m6NotificationIds: string[] = [];
+
+    await test('M6: refresh resolves due events once and is idempotent (no duplicate notifications)', async () => {
+      const first = await request('POST', `/api/investigations/${m6InvId}/activity/refresh`, {}, m6Cookie);
+      if (first.status !== 200) throw new Error(`Refresh failed: ${first.status} ${JSON.stringify(first.body)}`);
+      if (!Array.isArray(first.body?.resolved) || first.body.resolved.length === 0) {
+        throw new Error(`Expected due events to resolve after backdating: ${JSON.stringify(first.body)}`);
+      }
+      if (!(first.body.counts?.notifications >= 1)) {
+        throw new Error(`Expected notifications from resolved events: ${JSON.stringify(first.body.counts)}`);
+      }
+      m6EventId = String(first.body.resolved[0]?.id ?? '');
+
+      const inbox1 = await request('GET', '/api/notifications?status=all&limit=50', undefined, m6Cookie);
+      if (inbox1.status !== 200 || !Array.isArray(inbox1.body?.items)) throw new Error('Notifications inbox failed');
+      const mine = inbox1.body.items.filter((n: any) => n.investigationId === m6InvId);
+      if (mine.length < 1 || !(inbox1.body.unreadCount >= 1)) throw new Error('No unread notifications after refresh');
+      m6NotificationIds = mine.map((n: any) => String(n.id));
+      const dedupe = new Set(mine.map((n: any) => `${n.eventId}|${n.groupKey}`));
+      if (dedupe.size !== mine.length) throw new Error('Duplicate notifications after first refresh');
+
+      const second = await request('POST', `/api/investigations/${m6InvId}/activity/refresh`, {}, m6Cookie);
+      if (second.status !== 200) throw new Error(`Second refresh failed: ${second.status}`);
+      if (second.body?.resolved?.length !== 0) throw new Error('Second refresh resolved events again');
+
+      const inbox2 = await request('GET', '/api/notifications?status=all&limit=50', undefined, m6Cookie);
+      const mine2 = inbox2.body.items.filter((n: any) => n.investigationId === m6InvId);
+      if (mine2.length !== mine.length || inbox2.body.unreadCount !== inbox1.body.unreadCount) {
+        throw new Error('Second refresh duplicated notifications');
+      }
+      const activity = await request('GET', `/api/investigations/${m6InvId}/activity`, undefined, m6Cookie);
+      if (activity.status !== 200) throw new Error('Activity fetch failed');
+      const ids = activity.body.groups.flatMap((g: any) => g.items.map((i: any) => i.id));
+      if (new Set(ids).size !== ids.length) throw new Error('Activity snapshot contains duplicate event ids');
+    });
+
+    await test('M6: activity snapshot returns a safe grouped structure', async () => {
+      const res = await request('GET', `/api/investigations/${m6InvId}/activity`, undefined, m6Cookie);
+      if (res.status !== 200) throw new Error(`Activity failed: ${res.status} ${JSON.stringify(res.body)}`);
+      const body = res.body;
+      for (const key of M6_ACTIVITY_KEYS) {
+        if (!(key in body)) throw new Error(`Activity snapshot missing ${key}`);
+      }
+      for (const key of ['from', 'to', 'summary', 'highlights', 'unresolvedCount', 'newCount']) {
+        if (!(key in body.sinceLastVisit)) throw new Error(`sinceLastVisit missing ${key}`);
+      }
+      for (const key of ['total', 'unread', 'high', 'byCategory']) {
+        if (!(key in body.counts)) throw new Error(`counts missing ${key}`);
+      }
+      if (!Array.isArray(body.groups) || body.groups.length === 0) throw new Error('Expected resolved activity groups');
+      for (const g of body.groups) {
+        if (typeof g.groupKey !== 'string' || typeof g.title !== 'string'
+          || !Array.isArray(g.items) || g.items.length === 0) {
+          throw new Error('Malformed activity group');
+        }
+        for (const item of g.items) {
+          for (const field of [
+            'id', 'eventKey', 'category', 'title', 'summary', 'detail',
+            'whyItMatters', 'status', 'significance', 'occurredAt', 'changes', 'provenanceLabel',
+          ]) {
+            if (!(field in item)) throw new Error(`Activity event missing ${field}`);
+          }
+          if (item.provenanceLabel !== 'case-package') throw new Error('Unexpected activity provenanceLabel');
+        }
+      }
+      if (typeof body.hasMore !== 'boolean') throw new Error('hasMore is not boolean');
+      if (!(body.nextEligibleAt === null || typeof body.nextEligibleAt === 'string')) {
+        throw new Error('nextEligibleAt has wrong type');
+      }
+      assertNoLeak(body, 'M6 activity snapshot', M6_LEAK_TERMS, hiddenForCaseId ? [hiddenForCaseId] : []);
+      assertNoM6Internal(body, 'M6 activity snapshot');
+    });
+
+    await test('M6: client-supplied timestamps cannot advance the world', async () => {
+      const before = await request('GET', `/api/investigations/${m6InvId}/activity`, undefined, m6Cookie);
+      const beforeTotal = before.body.counts.total;
+      const beforeUnread = before.body.counts.unread;
+      const res = await request('POST', `/api/investigations/${m6InvId}/activity/refresh`, {
+        now: 'garbage', eligibleAt: '1999-01-01T00:00:00Z', max: 50, status: 'resolved',
+      }, m6Cookie);
+      if (res.status !== 200) throw new Error(`Garbage-timestamp refresh crashed: ${res.status}`);
+      if (res.body?.resolved?.length !== 0) throw new Error('Client timestamps forced event resolution');
+      const after = await request('GET', `/api/investigations/${m6InvId}/activity`, undefined, m6Cookie);
+      if (after.body.counts.total !== beforeTotal || after.body.counts.unread !== beforeUnread) {
+        throw new Error('Client timestamps changed activity state');
+      }
+    });
+
+    await test('M6: activity and notification payloads contain no internal leak terms', async () => {
+      const paths: Array<[string, string]> = [
+        ['GET', `/api/investigations/${m6InvId}/activity`],
+        ['GET', '/api/notifications?status=all&limit=50'],
+      ];
+      if (m6EventId) {
+        paths.push(['GET', `/api/investigations/${m6InvId}/activity/events/${m6EventId}`]);
+        paths.push(['POST', `/api/investigations/${m6InvId}/activity/events/${m6EventId}/narrate`]);
+      }
+      for (const [method, path] of paths) {
+        const res = await request(method, path, method === 'POST' ? {} : undefined, m6Cookie);
+        if (res.status !== 200) throw new Error(`${path} failed: ${res.status}`);
+        assertNoM6Internal(res.body, `M6 leak scan ${path}`);
+        assertNoLeak(res.body, `M6 leak scan ${path}`, M6_LEAK_TERMS, hiddenForCaseId ? [hiddenForCaseId] : []);
+      }
+    });
+
+    await test('M6: mark-seen reduces unread notifications', async () => {
+      const before = await request('GET', '/api/notifications?status=all&limit=50', undefined, m6Cookie);
+      if (!(before.body.unreadCount >= 1)) throw new Error('No unread notifications to mark seen');
+      const unread = before.body.items.filter((n: any) =>
+        n.investigationId === m6InvId && n.status === 'unread');
+      if (unread.length === 0) throw new Error('No fixture unread notifications');
+      const res = await request('POST', `/api/investigations/${m6InvId}/activity/seen`, {
+        eventIds: unread.map((n: any) => n.eventId).filter(Boolean),
+      }, m6Cookie);
+      if (res.status !== 200) throw new Error(`Mark-seen failed: ${res.status}`);
+      const after = await request('GET', '/api/notifications?status=all&limit=50', undefined, m6Cookie);
+      if (!(after.body.unreadCount < before.body.unreadCount)) {
+        throw new Error(`Unread count did not decrease: ${before.body.unreadCount} -> ${after.body.unreadCount}`);
+      }
+      const remaining = after.body.items.filter((n: any) =>
+        n.investigationId === m6InvId && n.status === 'unread');
+      if (remaining.length !== 0) throw new Error('Fixture notifications remained unread after mark-seen');
+    });
+
+    await test('M6: notifications inbox is user-scoped and activity access is owner-only', async () => {
+      const other = await registerAndLogin('m6-other');
+      const inbox = await request('GET', '/api/notifications?status=all&limit=50', undefined, other);
+      if (inbox.status !== 200) throw new Error(`Other inbox failed: ${inbox.status}`);
+      if (inbox.body.items.some((n: any) =>
+        n.investigationId === m6InvId || m6NotificationIds.includes(String(n.id)))) {
+        throw new Error("Other user could see the owner's notifications");
+      }
+      if (inbox.body.unreadCount !== 0) throw new Error('Fresh user has unexpected unread notifications');
+
+      const foreign = await request('GET', `/api/investigations/${m6InvId}/activity`, undefined, other);
+      if (foreign.status !== 403 && foreign.status !== 404) {
+        throw new Error(`Foreign activity not rejected: ${foreign.status}`);
+      }
+      const foreignEvent = await request(
+        'GET', `/api/investigations/${m6InvId}/activity/events/${m6EventId || RANDOM_UUID}`, undefined, other
+      );
+      if (foreignEvent.status !== 403 && foreignEvent.status !== 404) {
+        throw new Error(`Foreign event detail not rejected: ${foreignEvent.status}`);
+      }
+      const missing = await request(
+        'GET', `/api/investigations/${m6InvId}/activity/events/${RANDOM_UUID}`, undefined, m6Cookie
+      );
+      if (missing.status !== 404) throw new Error(`Unknown event detail not 404: ${missing.status}`);
+    });
+
+    await test('M6: legacy developments endpoint still returns a safe array', async () => {
+      const res = await request('GET', `/api/investigations/${m6InvId}/developments`, undefined, m6Cookie);
+      if (res.status !== 200 || !Array.isArray(res.body)) throw new Error(`Developments failed: ${res.status}`);
+      for (const d of res.body) {
+        if (!d || typeof d.id !== 'string' || typeof d.message !== 'string') {
+          throw new Error('Malformed development entry');
+        }
+      }
+      assertNoM6Internal(res.body, 'M6 developments');
+      assertNoLeak(res.body, 'M6 developments', M6_LEAK_TERMS, hiddenForCaseId ? [hiddenForCaseId] : []);
+    });
+
+    await test('M6: cases without an event package return safe empty activity', async () => {
+      const nonShowcase = allCases.find((c: any) => c.id && !M6_SHOWCASE_TITLES.includes(c.title));
+      if (!nonShowcase) throw new Error('No non-showcase case available');
+      const cookie = await registerAndLogin('m6-nopackage');
+      const invId = await createInvestigation(cookie, nonShowcase.id);
+      m6OtherInvIds.push(invId);
+
+      const res = await request('GET', `/api/investigations/${invId}/activity`, undefined, cookie);
+      if (res.status !== 200) throw new Error(`No-package activity failed: ${res.status} ${JSON.stringify(res.body)}`);
+      for (const key of M6_ACTIVITY_KEYS) {
+        if (!(key in res.body)) throw new Error(`No-package snapshot missing ${key}`);
+      }
+      if (!Array.isArray(res.body.groups) || res.body.groups.length !== 0) {
+        throw new Error('No-package case produced activity groups');
+      }
+      if (res.body.counts.total !== 0) throw new Error('No-package case produced activity events');
+      const refresh = await request('POST', `/api/investigations/${invId}/activity/refresh`, {}, cookie);
+      if (refresh.status !== 200 || refresh.body.resolved.length !== 0) {
+        throw new Error('No-package refresh resolved events');
+      }
+      assertNoM6Internal(res.body, 'M6 no-package activity');
+    });
+  } finally {
+    // M6 tables have no ON DELETE CASCADE to investigations, so remove all
+    // engine-created rows for these fixtures directly. No other test shares
+    // these investigation ids.
+    for (const id of [m6InvId, ...m6OtherInvIds]) {
+      await query('DELETE FROM notifications WHERE investigation_id = $1', [id]);
+      await query('DELETE FROM investigation_events WHERE investigation_id = $1', [id]);
+      await query('DELETE FROM investigation_flags WHERE investigation_id = $1', [id]);
+      await query('DELETE FROM development_log WHERE investigation_id = $1', [id]);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // M7 Real-World Discovery & Knowledge Retention.
+  // The harness starts the API with USE_LLM=false, so every submission here
+  // exercises the deterministic-only path (no LLM call, llmUsed=false).
+  // ---------------------------------------------------------------------------
+  console.log('\n=== M7 Discovery & Knowledge Retention Tests ===\n');
+
+  const M7_LEAK_TERMS = [...M4_CANONICAL_TERMS, 'Victor Sterling', 'hollow base', 'silver trophy', 'Sterling Holdings', '20 million'];
+  const M7_INTERNAL_TERMS = [
+    'canonical_truth', 'hidden_events', 'hidden_interpretation', 'discovery_conditions',
+    'release_conditions', 'conceptcriteria', 'minessentialmatches', 'misconceptionterms',
+    'leakageterms', 'subjectaliases', 'confidentmarkers', 'acceptancethreshold',
+  ];
+  function assertNoM7Internal(value: unknown, label: string): void {
+    const serialized = JSON.stringify(value).toLowerCase();
+    for (const term of M7_INTERNAL_TERMS) {
+      if (serialized.includes(term)) throw new Error(`${label} leaked internal term: ${term}`);
+    }
+  }
+  function assertM7Safe(value: unknown, label: string): void {
+    assertNoM7Internal(value, label);
+    assertNoLeak(value, label, M7_LEAK_TERMS, hiddenForCaseId ? [hiddenForCaseId] : []);
+  }
+
+  const m7Cookie = await registerAndLogin('m7-discovery');
+  const m7InvId = await createInvestigation(m7Cookie, caseId);
+  const m7UserIdForCleanup = String(
+    (await query('SELECT id FROM users WHERE email = $1', [`m7-discovery-${suffix}@example.com`])).rows[0]?.id ?? ''
+  );
+  const m7NotebookIds: string[] = [];
+  const m7PackageCount = (await query('SELECT COUNT(*)::int AS c FROM discovery_clue_packages')).rows[0]?.c ?? 0;
+  if (m7PackageCount === 0) {
+    throw new Error('M7 discovery packages are not seeded - run npm run db:seed:discoveries');
+  }
+
+  try {
+    const m7VisibleEvidence: string[] = (await query(
+      `SELECT e.id FROM evidence e JOIN cases c ON c.id = e.case_id
+        WHERE c.title = $1 AND e.player_visible = true ORDER BY e.discovery_order`,
+      [midnightHeist.title],
+    )).rows.map((r: any) => String(r.id));
+    if (m7VisibleEvidence.length < 4) throw new Error('M7 fixture: fewer than four visible evidence items');
+
+    const locard = 'mh-locard-trace-transfer';
+    const locardInsight = 'mh-locard-insight';
+    const diamond = 'mh-diamond-simulant-identification';
+    const diamondAction = 'mh-reexamine-display-case';
+    const m7Path = (suffixPath: string) => `/api/investigations/${m7InvId}${suffixPath}`;
+
+    const weakSubmission = {
+      subjectIdentification: 'the exchange principle',
+      explanation: 'It is relevant to thinking about the display case and the evidence record in this investigation.',
+      connectionExplanation: '',
+      uncertainty: '',
+      sourceRefs: [],
+      confidence: 'low',
+    };
+    const correctLocard = {
+      subjectIdentification: "Locard's exchange principle",
+      explanation:
+        'When people and surfaces come into contact, trace material is transferred in both directions: something is left behind and something is carried away.',
+      connectionExplanation:
+        'In this case the fingerprint analysis can show contact with the display, but it cannot establish when that contact happened or how long it lasted.',
+      uncertainty: '',
+      sourceRefs: ['forensic textbook'],
+      confidence: 'high',
+    };
+    const correctDiamond = {
+      subjectIdentification: 'diamond identification and simulants',
+      explanation:
+        'A clear stone can look like a diamond to the eye, but visual appearance alone cannot establish what it is. A laboratory measures properties such as refractive index, thermal conductivity and specific gravity, and treats a simulant such as moissanite or cubic zirconia as a separate category from diamond.',
+      connectionExplanation:
+        'In this case the recovered stone and debris record need those laboratory tests rather than appearance.',
+      uncertainty: '',
+      sourceRefs: [],
+      confidence: 'high',
+    };
+
+    await test('M7: snapshot is owner-scoped, auth-required, and hidden clues stay hidden', async () => {
+      const anon = await request('GET', m7Path('/discoveries'));
+      if (anon.status !== 401) throw new Error(`Anonymous snapshot not rejected: ${anon.status}`);
+      const other = await registerAndLogin('m7-other');
+      const foreign = await request('GET', m7Path('/discoveries'), undefined, other);
+      if (foreign.status !== 403 && foreign.status !== 404) {
+        throw new Error(`Foreign discovery snapshot not rejected: ${foreign.status}`);
+      }
+      const res = await request('GET', m7Path('/discoveries'), undefined, m7Cookie);
+      if (res.status !== 200 || !res.body?.available) throw new Error(`Snapshot failed: ${res.status} ${JSON.stringify(res.body)}`);
+      for (const key of ['disclaimer', 'clues', 'newClueKeys', 'states', 'memories', 'unlocks', 'recallPrompts', 'specialistNotices']) {
+        if (!(key in res.body)) throw new Error(`Snapshot missing ${key}`);
+      }
+      if (res.body.clues.some((c: any) => c.key === locard)) throw new Error('Locard clue surfaced before its trigger');
+      const detail = await request('GET', m7Path(`/discoveries/${locard}`), undefined, m7Cookie);
+      if (detail.status !== 404) throw new Error(`Hidden clue detail not 404: ${detail.status}`);
+      assertM7Safe(res.body, 'M7 initial snapshot');
+      assertM7Safe(detail.body, 'M7 hidden clue detail');
+    });
+
+    await test('M7: player actions establish eligibility and the clue appears', async () => {
+      for (const id of m7VisibleEvidence) {
+        const res = await request('POST', m7Path('/discover-evidence'), { evidenceId: id }, m7Cookie);
+        if (res.status !== 200) throw new Error(`Visible discovery failed: ${res.status}`);
+      }
+      const action = await request('POST', m7Path('/investigate'), { action: 'examine_diamond_case' }, m7Cookie);
+      if (action.status !== 200) throw new Error(`Investigative action failed: ${action.status} ${JSON.stringify(action.body)}`);
+
+      const res = await request('GET', m7Path('/discoveries'), undefined, m7Cookie);
+      if (res.status !== 200) throw new Error(`Snapshot refetch failed: ${res.status}`);
+      const clue = res.body.clues.find((c: any) => c.key === locard);
+      if (!clue) throw new Error('Locard clue did not surface after its trigger');
+      if (clue.correctedUnderstanding !== null) throw new Error('Unaccepted clue exposed correctedUnderstanding');
+      if (clue.criteria || clue.leakageTerms || clue.matchedEssential) throw new Error('Internal clue fields leaked');
+      const detail = await request('GET', m7Path(`/discoveries/${locard}`), undefined, m7Cookie);
+      if (detail.status !== 200 || detail.body.clue.key !== locard) throw new Error(`Clue detail failed: ${detail.status}`);
+      assertM7Safe(res.body, 'M7 eligible snapshot');
+      assertM7Safe(detail.body, 'M7 eligible detail');
+    });
+
+    await test('M7: research state persists and a weak answer is not accepted', async () => {
+      const start = await request('POST', m7Path(`/discoveries/${locard}/start`), {}, m7Cookie);
+      if (start.status !== 200 || start.body.state !== 'researching') {
+        throw new Error(`Start research failed: ${start.status} ${JSON.stringify(start.body)}`);
+      }
+      const detailBefore = await request('GET', m7Path(`/discoveries/${locard}`), undefined, m7Cookie);
+      if (detailBefore.body.state?.state !== 'researching') throw new Error('Research state did not persist');
+
+      const weak = await request('POST', m7Path(`/discoveries/${locard}/submissions`), weakSubmission, m7Cookie);
+      if (weak.status !== 201) throw new Error(`Weak submission failed: ${weak.status} ${JSON.stringify(weak.body)}`);
+      if (weak.body.accepted !== false) throw new Error('Weak answer was accepted');
+      if (weak.body.correctedUnderstanding !== null) throw new Error('Weak answer exposed correctedUnderstanding');
+      if (weak.body.memoryItemId !== null || weak.body.unlocks.length !== 0) throw new Error('Weak answer created memory/unlocks');
+      if (weak.body.submission.evaluation.llmUsed !== false) throw new Error('LLM was used with USE_LLM=false');
+      if (weak.body.state.attemptCount !== 1) throw new Error('Attempt count was not incremented');
+      assertM7Safe(weak.body, 'M7 weak submission');
+
+      const journal = await request('GET', '/api/knowledge/journal', undefined, m7Cookie);
+      if (journal.status !== 200 || journal.body.items.length !== 0) throw new Error('Weak answer created a memory item');
+    });
+
+    let m7MemoryId: string | null = null;
+    await test('M7: correct answer is accepted with correction, memory and unlocks (deterministic)', async () => {
+      const invBefore = await request('GET', m7Path('/'), undefined, m7Cookie);
+      const countBefore = invBefore.body.discoveredEvidenceIds?.length ?? 0;
+
+      const res = await request('POST', m7Path(`/discoveries/${locard}/submissions`), correctLocard, m7Cookie);
+      if (res.status !== 201) throw new Error(`Correct submission failed: ${res.status} ${JSON.stringify(res.body)}`);
+      if (res.body.accepted !== true || res.body.classification !== 'established') throw new Error('Correct answer was not accepted');
+      if (!res.body.correctedUnderstanding || !res.body.memoryItemId) throw new Error('Accepted answer missing correction/memory');
+      if (!Array.isArray(res.body.unlocks) || res.body.unlocks.length < 3) throw new Error('Accepted answer missing unlocks');
+      if (res.body.submission.evaluation.llmUsed !== false) throw new Error('LLM advisory used despite USE_LLM=false');
+      if (res.body.unlocks.some((u: any) => u.kind === 'action')) throw new Error('Locard clue should not carry an action unlock');
+      m7MemoryId = String(res.body.memoryItemId);
+      assertM7Safe(res.body, 'M7 accepted submission');
+
+      // Pre-authored unlocks never release evidence directly.
+      const invAfter = await request('GET', m7Path('/'), undefined, m7Cookie);
+      const countAfter = invAfter.body.discoveredEvidenceIds?.length ?? 0;
+      if (countAfter !== countBefore) throw new Error('Acceptance changed evidence discovery state');
+
+      const detail = await request('GET', m7Path(`/discoveries/${locard}`), undefined, m7Cookie);
+      if (!detail.body.clue.accepted || detail.body.clue.correctedUnderstanding === null) {
+        throw new Error('Detail did not reflect acceptance');
+      }
+      assertM7Safe(detail.body, 'M7 accepted detail');
+    });
+
+    await test('M7: duplicate accepted submission adds no submission/unlocks', async () => {
+      const before = (await query('SELECT COUNT(*)::int AS c FROM discovery_submissions WHERE investigation_id = $1', [m7InvId])).rows[0]?.c;
+      const res = await request('POST', m7Path(`/discoveries/${locard}/submissions`), correctLocard, m7Cookie);
+      if (res.status !== 201 || res.body.duplicate !== true || res.body.accepted !== true) {
+        throw new Error(`Duplicate submission not handled: ${res.status} ${JSON.stringify(res.body)}`);
+      }
+      const after = (await query('SELECT COUNT(*)::int AS c FROM discovery_submissions WHERE investigation_id = $1', [m7InvId])).rows[0]?.c;
+      if (after !== before) throw new Error('Duplicate submission inserted a row');
+      const unlockCount = (await query('SELECT COUNT(*)::int AS c FROM investigation_discovery_unlocks WHERE investigation_id = $1 AND clue_key = $2', [m7InvId, locard])).rows[0]?.c;
+      if (unlockCount !== 4) throw new Error(`Expected 4 pre-authored unlocks, got ${unlockCount}`);
+      assertM7Safe(res.body, 'M7 duplicate submission');
+    });
+
+    let m7ActionUnlockKey: string | null = null;
+    await test('M7: action unlock apply uses progression, is idempotent and authorized', async () => {
+      const other = await registerAndLogin('m7-unlock-other');
+      const forbidden = await request('POST', m7Path(`/discoveries/${locard}/unlocks/${locardInsight}/apply`), {}, other);
+      if (forbidden.status !== 403 && forbidden.status !== 404) throw new Error(`Foreign unlock apply not rejected: ${forbidden.status}`);
+
+      const missing = await request('POST', m7Path(`/discoveries/${locard}/unlocks/does-not-exist/apply`), {}, m7Cookie);
+      if (missing.status !== 404) throw new Error(`Unknown unlock not 404: ${missing.status}`);
+
+      // Informational unlocks cannot be applied as actions.
+      const insight = await request('POST', m7Path(`/discoveries/${locard}/unlocks/${locardInsight}/apply`), {}, m7Cookie);
+      if (insight.status !== 400) throw new Error(`Insight unlock apply not rejected: ${insight.status}`);
+
+      // Establish the diamond clue eligibility (second showcase thread).
+      const action = await request('POST', m7Path('/investigate'), { action: 'examine_case_debris' }, m7Cookie);
+      if (action.status !== 200) throw new Error(`Debris action failed: ${action.status}`);
+      const accepted = await request('POST', m7Path(`/discoveries/${diamond}/submissions`), correctDiamond, m7Cookie);
+      if (accepted.status !== 201 || accepted.body.accepted !== true) {
+        throw new Error(`Diamond clue acceptance failed: ${accepted.status} ${JSON.stringify(accepted.body)}`);
+      }
+      const actionUnlock = accepted.body.unlocks.find((u: any) => u.kind === 'action');
+      if (!actionUnlock) throw new Error('Diamond clue did not expose its pre-authored action unlock');
+      m7ActionUnlockKey = String(actionUnlock.unlockKey);
+      if (actionUnlock.action !== 'examine_diamond_case') throw new Error('Unexpected authored action');
+
+      const first = await request('POST', m7Path(`/discoveries/${diamond}/unlocks/${m7ActionUnlockKey}/apply`), {}, m7Cookie);
+      if (first.status !== 200 || first.body.applied !== true || !first.body.progression) {
+        throw new Error(`Action unlock apply failed: ${first.status} ${JSON.stringify(first.body)}`);
+      }
+      const second = await request('POST', m7Path(`/discoveries/${diamond}/unlocks/${m7ActionUnlockKey}/apply`), {}, m7Cookie);
+      if (second.status !== 200 || second.body.alreadyApplied !== true) throw new Error('Action unlock was not idempotent');
+      assertM7Safe(first.body, 'M7 action unlock apply');
+      assertM7Safe(second.body, 'M7 idempotent unlock apply');
+    });
+
+    await test('M7: journal is user-scoped and recall never downgrades mastery', async () => {
+      if (!m7MemoryId) throw new Error('No memory fixture');
+      const other = await registerAndLogin('m7-journal-other');
+      const foreign = await request('GET', '/api/knowledge/journal', undefined, other);
+      if (foreign.status !== 200 || foreign.body.items.length !== 0) throw new Error('Journal was not user-scoped');
+      const foreignSubject = await request('GET', '/api/knowledge/journal/locard-exchange-principle', undefined, other);
+      if (foreignSubject.status !== 404) throw new Error('Foreign subject detail not 404');
+
+      const own = await request('GET', '/api/knowledge/journal', undefined, m7Cookie);
+      if (own.status !== 200 || own.body.items.length < 1) throw new Error('Owner journal missing memory');
+      const memory = own.body.items.find((m: any) => m.id === m7MemoryId);
+      if (!memory) throw new Error('Accepted memory missing from journal');
+      const masteryBefore = memory.masteryStatus;
+
+      const foreignRecall = await request('POST', `/api/knowledge/recall/${m7MemoryId}`, { response: 'x', outcome: 'success' }, other);
+      if (foreignRecall.status !== 404) throw new Error('Foreign recall not 404');
+      const missed = await request('POST', `/api/knowledge/recall/${m7MemoryId}`, {
+        response: 'I cannot recall the details right now.',
+        outcome: 'missed',
+      }, m7Cookie);
+      if (missed.status !== 200 || missed.body.recall.outcome !== 'missed') throw new Error(`Recall failed: ${missed.status} ${JSON.stringify(missed.body)}`);
+      if (missed.body.memory.masteryStatus !== masteryBefore) throw new Error('Missed recall downgraded mastery');
+      if (missed.body.recall.intervalDays !== 1) throw new Error('Missed recall did not reset the interval');
+      const success = await request('POST', `/api/knowledge/recall/${m7MemoryId}`, {
+        response: 'Contact transfers material both ways, with limits on timing.',
+        outcome: 'success',
+      }, m7Cookie);
+      if (success.status !== 200) throw new Error(`Successful recall failed: ${success.status}`);
+      const subject = await request('GET', '/api/knowledge/journal/locard-exchange-principle', undefined, m7Cookie);
+      if (subject.status !== 200 || subject.body.recallHistory.length !== 2) throw new Error('Recall history not persisted');
+      assertM7Safe(own.body, 'M7 journal');
+      assertM7Safe(missed.body, 'M7 recall result');
+      assertM7Safe(subject.body, 'M7 journal subject');
+    });
+
+    await test('M7: notebook discovery provenance is owner-scoped and safe', async () => {
+      if (!m7MemoryId) throw new Error('No memory fixture');
+      const created = await request('POST', m7Path('/notebook'), {
+        entryType: 'note',
+        title: 'Trace and timing',
+        content: 'A trace shows contact; timing needs another record.',
+        discoveryMemoryId: m7MemoryId,
+        discoveryClueKey: locard,
+      }, m7Cookie);
+      if (created.status !== 201 || !created.body.id) throw new Error(`Notebook create failed: ${created.status} ${JSON.stringify(created.body)}`);
+      m7NotebookIds.push(String(created.body.id));
+      if (created.body.discoveryMemoryId !== m7MemoryId) throw new Error('Notebook did not store discoveryMemoryId');
+      const snapshot = created.body.sourceSnapshot;
+      if (snapshot?.kind !== 'discovery_memory' || snapshot.subjectKey !== 'locard-exchange-principle') {
+        throw new Error('Notebook source snapshot was not a discovery_memory snapshot');
+      }
+      if (!snapshot.correctedUnderstanding || !Array.isArray(snapshot.citations) || !snapshot.disclaimer) {
+        throw new Error('Discovery snapshot missing safe fields');
+      }
+      const listed = await request('GET', m7Path('/notebook'), undefined, m7Cookie);
+      if (!Array.isArray(listed.body) || !listed.body.some((e: any) => e.id === created.body.id)) {
+        throw new Error('Notebook list missing discovery entry');
+      }
+      const other = await registerAndLogin('m7-notebook-other');
+      const foreign = await request('POST', m7Path('/notebook'), {
+        entryType: 'note', content: 'x', discoveryMemoryId: m7MemoryId,
+      }, other);
+      // Ownership is enforced by investigationRouter first; the service also
+      // rejects a memory that does not belong to the caller.
+      if (foreign.status !== 403 && foreign.status !== 404) {
+        throw new Error(`Foreign notebook discovery link not rejected: ${foreign.status}`);
+      }
+      const invalid = await request('POST', m7Path('/notebook'), {
+        entryType: 'note', content: 'x', discoveryMemoryId: RANDOM_UUID,
+      }, m7Cookie);
+      if (invalid.status !== 404) throw new Error(`Unknown memory id not 404: ${invalid.status} ${JSON.stringify(invalid.body)}`);
+      assertM7Safe(created.body, 'M7 notebook entry');
+      assertM7Safe(listed.body, 'M7 notebook list');
+    });
+
+    await test('M7: all discovery payloads pass hidden-truth and internal-field scans', async () => {
+      const paths: Array<[string, string]> = [
+        ['GET', m7Path('/discoveries')],
+        ['GET', m7Path(`/discoveries/${locard}`)],
+        ['GET', m7Path(`/discoveries/${diamond}`)],
+        ['GET', '/api/knowledge/journal'],
+        ['GET', '/api/knowledge/journal/locard-exchange-principle'],
+      ];
+      for (const [method, path] of paths) {
+        const res = await request(method, path, undefined, m7Cookie);
+        if (res.status !== 200) throw new Error(`${path} failed: ${res.status}`);
+        assertM7Safe(res.body, `M7 leak scan ${path}`);
+      }
+    });
+  } finally {
+    // M7 tables have no ON DELETE CASCADE to investigations. Remove only the
+    // rows created by this fixture block; no other test shares these ids.
+    for (const id of m7NotebookIds) {
+      await query('DELETE FROM notebook_entries WHERE id = $1', [id]);
+    }
+    await query('DELETE FROM knowledge_recall_events WHERE investigation_id = $1', [m7InvId]);
+    await query('DELETE FROM knowledge_recall_events WHERE memory_item_id IN (SELECT id FROM knowledge_memory_items WHERE user_id = $1)', [m7UserIdForCleanup]);
+    await query('DELETE FROM knowledge_memory_links WHERE user_id = $1', [m7UserIdForCleanup]);
+    await query('DELETE FROM knowledge_memory_cases WHERE investigation_id = $1', [m7InvId]);
+    await query('DELETE FROM knowledge_memory_items WHERE user_id = $1', [m7UserIdForCleanup]);
+    await query('DELETE FROM investigation_discovery_unlocks WHERE investigation_id = $1', [m7InvId]);
+    await query('DELETE FROM discovery_submissions WHERE investigation_id = $1', [m7InvId]);
+    await query('DELETE FROM investigation_discovery_clue_states WHERE investigation_id = $1', [m7InvId]);
+  }
 
   console.log(`\n=== Results: ${passed} passed, ${failed} failed ===`);
   await pool.end();

@@ -119,6 +119,20 @@ export function ExpertsPanel({
 
                   <p className="specialist-card__summary">{specialist.expertiseSummary}</p>
 
+                  {/* M8-2: make each specialist's identity legible at a glance. */}
+                  {specialist.communicationStyle && (
+                    <p className="muted small-note">
+                      <strong>How they speak:</strong> {specialist.communicationStyle}
+                    </p>
+                  )}
+                  {specialist.realDisciplineBasis && (
+                    <p className="muted small-note">
+                      {specialist.isFictional
+                        ? <>Fictional persona grounded in the real discipline of <strong>{specialist.realDisciplineBasis}</strong>.</>
+                        : <>Presenting the established discipline of <strong>{specialist.realDisciplineBasis}</strong>.</>}
+                    </p>
+                  )}
+
                   {specialist.knowledgeDomains.length > 0 && (
                     <div className="specialist-meta">
                       <span className="specialist-meta__label">Domains</span>
@@ -136,7 +150,7 @@ export function ExpertsPanel({
 
                   {specialist.limitations.length > 0 && (
                     <div className="specialist-meta">
-                      <span className="specialist-meta__label">Limitations</span>
+                      <span className="specialist-meta__label">Limits &amp; known biases</span>
                       <ul className="specialist-list">
                         {specialist.limitations.map((limit, i) => (
                           <li key={i}>{limit}</li>
@@ -289,6 +303,10 @@ export function ExpertsPanel({
 
                   {open && (
                     <div className="disagreement-card__body">
+                      <p className="muted small-note">
+                        Ask one specialist to critique the other&apos;s reasoning — a grounded exchange
+                        about method and interpretation, not a verdict or a claim about who is guilty.
+                      </p>
                       <div className="disagreement-positions">
                         <div className="disagreement-position">
                           <p className="disagreement-position__name">{d.specialistAName}</p>

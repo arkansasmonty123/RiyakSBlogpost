@@ -31,6 +31,10 @@
         "type": "remote",
         "url": "https://mcp.grep.app",
         "oauth": false
+      },
+      "stitch": {
+        "type": "remote",
+        "url": "https://stitch.googleapis.com/mcp"
       }
     }
   },

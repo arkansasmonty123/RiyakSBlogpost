@@ -6,6 +6,15 @@ permissions:
   - action: "*"
     resource: "*"
     effect: "allow"
+  - action: "webfetch"
+    resource: "*"
+    effect: "allow"
+  - action: "websearch"
+    resource: "*"
+    effect: "allow"
+  - action: "subagent"
+    resource: "*"
+    effect: "allow"
   - action: "shell"
     resource: "git push *"
     effect: "ask"
@@ -31,6 +40,10 @@ You handle infrastructure, CI/CD, build/release tooling, environment configurati
 - Keep changes minimal, secure, and reproducible. Prefer documented, standard tooling.
 - Run relevant validation commands (build, lint, test, workflow/config checks) where feasible.
 - Document operational changes and required env vars/secrets without exposing secret values.
+
+## Delegation (parallelize when safe)
+
+You may use the `subagent` tool for independent, non-overlapping subtasks (e.g., `researcher` for docs/best practices, `builder` for isolated code changes) when scopes are clearly separated. Provide complete context, wait for completion, and verify integrated results yourself. Do not delegate overlapping file edits in parallel.
 
 ## Constraints
 

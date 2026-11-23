@@ -67,6 +67,10 @@ jobs:
             migrations/005_p2_db_rate_limits.sql \
             migrations/006_m2_knowledge.sql \
             migrations/008_m4_reality_map.sql \
+            migrations/009_m5_perspective_engine.sql \
+            migrations/010_m6_living_investigations.sql \
+            migrations/011_m7_discovery_knowledge.sql \
+            migrations/012_m8_onboarding.sql \
             scripts/ci-seed.sql \
             seed.sql
           do
@@ -77,6 +81,12 @@ jobs:
           npx tsx scripts/seed-extra-cases.ts
           echo "Seeding M2 knowledge (specialists/artifacts/disagreements)"
           npx tsx scripts/seed-knowledge.ts
+          echo "Seeding M5 perspectives (frameworks/experiences)"
+          npx tsx scripts/seed-perspectives.ts
+          echo "Seeding M6 case events"
+          npx tsx scripts/seed-case-events.ts
+          echo "Seeding M7 discovery clue packages"
+          npx tsx scripts/seed-discovery-clues.ts
 
       - name: Typecheck
         run: npm run typecheck
@@ -99,6 +109,28 @@ jobs:
         # strings, tutorial labels, and a static purity guard on the domain
         # module (no canonical_truth / db imports, no numeric probabilities).
         run: npm run reality-map:validate
+
+      - name: M5 Perspective Engine validation
+        # Read-only: migration-009 schema, 7 frameworks, experience content and
+        # provenance rules, no long quotes / canonical leakage, and a static
+        # purity guard on the recommender + DTO modules.
+        run: npm run perspectives:validate
+
+      - name: M6 Living Investigations validation
+        # Read-only: event package coverage, leak guards, consequence safety,
+        # and static purity guard (no canonical_truth/db mutation in living-world).
+        run: npm run case-events:validate
+
+      - name: M6 Living World deterministic tests
+        run: npm run test:living
+
+      - name: M7 Discovery clue validation
+        # Read-only: authored package coverage, trigger/unlock grounding,
+        # leakage/source-URL policy, static purity guard and DTO safety.
+        run: npm run discovery-clues:validate
+
+      - name: M7 Discovery engine deterministic tests
+        run: npm run test:discovery
 
       - name: Frontend production build
         run: npm run build --prefix frontend

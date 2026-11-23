@@ -69,7 +69,7 @@ async function main(): Promise<void> {
     // PROD-014: force the deterministic chat responder so role-aware response
     // shape/fallback assertions are reproducible and never depend on a local
     // LLM endpoint being up. Production/default behaviour is unchanged.
-    env: { ...process.env, PORT: String(port), SMOKE_BASE_URL: baseUrl, USE_LLM: 'false' },
+    env: { ...process.env, PORT: String(port), SMOKE_BASE_URL: baseUrl, USE_LLM: 'false', AUTH_RATE_MAX: '100000', CHAT_RATE_MAX: '100000', WRITE_RATE_MAX: '100000' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 

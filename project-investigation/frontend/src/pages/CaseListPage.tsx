@@ -8,6 +8,9 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, errorMessage } from '../api';
 import type { Case, Investigation } from '../api';
+import { useOnboarding } from '../hooks/useOnboarding';
+
+const GUIDANCE_DISMISSED_KEY = 'investigation:onboarding-guidance-dismissed';
 
 export const CaseListPage = () => {
   const [searchParams] = useSearchParams();
@@ -19,6 +22,26 @@ export const CaseListPage = () => {
   const [search, setSearch] = useState('');
   const [genre, setGenre] = useState('');
   const [difficulty, setDifficulty] = useState('');
+
+  // M8 Wave 1: lightweight, non-blocking guidance for players still in their
+  // first experience. Dismissal is stored locally so it never nags on reload.
+  const { state: onboarding } = useOnboarding();
+  const [guidanceDismissed, setGuidanceDismissed] = useState(() => {
+    try {
+      return window.localStorage.getItem(GUIDANCE_DISMISSED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const isNewUser = !!onboarding && !onboarding.completed;
+  const dismissGuidance = () => {
+    setGuidanceDismissed(true);
+    try {
+      window.localStorage.setItem(GUIDANCE_DISMISSED_KEY, '1');
+    } catch {
+      // Best-effort only; the guidance is hidden for this session regardless.
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +86,13 @@ export const CaseListPage = () => {
     [cases]
   );
 
+  // A stable, spoiler-free starting suggestion: the richly supported showcase
+  // case when present, otherwise the first published case.
+  const recommendedCase = useMemo(
+    () => cases.find((c) => c.title === 'The Midnight Heist') ?? cases[0] ?? null,
+    [cases]
+  );
+
   const visibleCases = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return cases.filter((c) => {
@@ -103,6 +133,28 @@ export const CaseListPage = () => {
             Continue investigation
           </Link>
         </div>
+      )}
+
+      {isNewUser && !active && !guidanceDismissed && (
+        <aside className="begin-guide" aria-label="How to begin">
+          <div>
+            <strong>How to begin</strong>
+            <p className="muted">
+              Choose a case, examine its evidence, question the people involved, and build your
+              theory in the Reality Map. When you're ready, submit a verdict. Nothing is timed.
+            </p>
+          </div>
+          <div className="begin-guide__actions">
+            {recommendedCase && (
+              <Link className="text-link" to={`/investigation/${recommendedCase.id}`}>
+                Start with the recommended case →
+              </Link>
+            )}
+            <button type="button" className="link-button" onClick={dismissGuidance}>
+              Dismiss
+            </button>
+          </div>
+        </aside>
       )}
 
       <div className="filters" role="search">
@@ -155,6 +207,9 @@ export const CaseListPage = () => {
             return (
               <div key={c.id} className="case-card">
                 <div className="badges">
+                  {isNewUser && recommendedCase?.id === c.id && (
+                    <span className="badge badge--recommended">Recommended first case</span>
+                  )}
                   {c.genre && <span className="badge">{c.genre}</span>}
                   {c.difficulty && <span className="badge">{c.difficulty}</span>}
                   {c.duration && <span className="badge">{c.duration}</span>}

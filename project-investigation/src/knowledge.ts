@@ -309,6 +309,9 @@ export function toPublicNotebookEntry(row: AnyRow) {
     title: str(pick(row, 'title', 'title')),
     content: str(pick(row, 'content', 'content')),
     sourceSnapshot: asRecord(pick(row, 'sourceSnapshot', 'source_snapshot')),
+    // M7: optional, safe provenance link to an accepted knowledge memory item.
+    discoveryMemoryId: pick(row, 'discoveryMemoryId', 'discovery_memory_id') ?? null,
+    discoveryClueKey: pick(row, 'discoveryClueKey', 'discovery_clue_key') ?? null,
     createdAt: pick(row, 'createdAt', 'created_at'),
     updatedAt: pick(row, 'updatedAt', 'updated_at'),
   };
@@ -458,20 +461,37 @@ export interface SpecialistContextParams {
   message: string;
   artifacts: AnyRow[]; // public artifact summaries (safe)
   disagreements: AnyRow[]; // public disagreement DTOs (safe)
+  // M8-2: optional, bounded continuity note derived ONLY from already-loaded,
+  // player-safe conversation state. Never canonical/hidden case data.
+  continuityNote?: string;
 }
 
 export function buildSpecialistContext(p: SpecialistContextParams): string {
   const s = p.specialist;
   const lines: string[] = [];
   lines.push('GROUNDING RULES: Use ONLY the safe reference material below. Never reveal unreleased evidence, character secrets, the culprit, or the canonical solution. Never invent a source, quote or URL. Treat player theories as unconfirmed. Reply in at most ~90 words.');
+  // M8-2: reinforce the hard authority boundary inside the grounded context.
+  // A specialist offers perspective only - it can never authorize case state.
+  lines.push('AUTHORITY BOUNDARY: You cannot release evidence, decide a verdict, or change case state. You only offer a disciplined, in-character perspective.');
   lines.push(`RESPONDING AS: ${clip(s.name, 80)} — ${clip(s.title, 80)} (${clip(s.discipline, 80)})`);
+  // M8-2: make the persona / real-discipline distinction explicit and legible
+  // to the model. All fields are already public in the specialists list DTO.
+  if (s.isFictional === true) {
+    const basis = clip(s.realDisciplineBasis, 160);
+    lines.push(`PERSONA BASIS: A fictional persona${basis ? ` grounded in the real discipline of ${basis}` : ''}. The discipline is real; the person is authored for this case.`);
+  }
+  if (str(s.caseRelevance)) {
+    lines.push(`CASE RELEVANCE (public, authored): ${clip(s.caseRelevance, 240)}`);
+  }
+  // M8-2: continuity/recognition from safe, already-loaded conversation state.
+  if (p.continuityNote) lines.push(`CONTINUITY: ${clip(p.continuityNote, 320)}`);
   lines.push(`SPECIALIZATION: ${clip(s.specialization, 160)}`);
   lines.push(`EXPERTISE: ${clip(s.expertiseSummary, KNOWLEDGE_LIMITS.maxPersonaChars)}`);
-  lines.push(`PERSONA / STYLE: ${clip(s.personality, 200)} ${clip(s.communicationStyle, 200)}`);
+  lines.push(`VOICE & MANNER (stay in this character; do not sound like a generic assistant): ${clip(s.personality, 200)} ${clip(s.communicationStyle, 200)}`);
   lines.push(`REASONING APPROACH: ${clip(s.reasoningApproach, 240)}`);
   const limitations = asStringArray(s.limitations).map((l) => clip(l, 200));
   if (limitations.length > 0) {
-    lines.push('RESPECT THESE LIMITATIONS (do not conclude beyond them):');
+    lines.push('LIMITATIONS & KNOWN BIASES (do not conclude beyond them):');
     for (const limitation of limitations) lines.push(`- ${limitation}`);
   }
   const guidance = asRecord(s.depthGuidance)[p.depth];
@@ -493,7 +513,9 @@ export function buildSpecialistContext(p: SpecialistContextParams): string {
 
   const disagreements = p.disagreements.slice(0, 2);
   if (disagreements.length > 0) {
-    lines.push('CONTESTED POINTS (present both sides, keep the uncertainty):');
+    // M8-2: explicit "group feel" - encourage respectful, grounded disagreement
+    // about method/interpretation, never a verdict or guilt claim.
+    lines.push('CONTESTED POINTS (engage respectfully and on method/interpretation only; present both sides, credit the other specialist\'s expertise, keep the uncertainty, and note what evidence would discriminate — never claim who is guilty or what the verdict is):');
     for (const d of disagreements) {
       lines.push(
         `- ${clip(d.topic, 140)} | ${clip(d.specialistAName, 40)}: ${clip(d.positionA, 160)} ` +
@@ -568,6 +590,10 @@ export function deterministicSpecialistReply(
   depth: KnowledgeDepth,
   artifacts: AnyRow[],
   disagreements: AnyRow[],
+  // M8-2: count of this specialist's PRIOR replies in the current conversation,
+  // derived from already-loaded safe messages. Optional so existing callers and
+  // the deterministic (USE_LLM=false) path stay backward compatible.
+  ongoingCount: number = 0,
 ): string {
   // `message` is intentionally NOT echoed verbatim: player text can contain
   // canonical spoilers, and even a safe responder must not replay them.
@@ -617,6 +643,12 @@ export function deterministicSpecialistReply(
   const limitations = asStringArray(specialist.limitations);
   if (limitations.length > 0) {
     parts.push(`Even so, I have to flag what I cannot conclude: ${clip(limitations[0], 240)}${limitations.length > 1 ? ' ' + clip(limitations[1], 200) : ''}.`);
+  }
+
+  // M8-2: make continuity visible even on the deterministic path. Bounded and
+  // derived only from a count of prior safe exchanges - no case facts added.
+  if (ongoingCount > 0) {
+    parts.push(`We have spoken ${ongoingCount} time${ongoingCount === 1 ? '' : 's'} on this case already, so let us build on that rather than start over.`);
   }
 
   parts.push(askedAQuestion

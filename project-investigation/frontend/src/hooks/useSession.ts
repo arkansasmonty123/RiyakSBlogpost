@@ -18,7 +18,7 @@ export interface UseSessionResult {
   /** POST /api/login - establishes the session cookie on success. */
   login: (email: string, password: string) => Promise<SessionUser>;
   /** POST /api/register - creates the account and establishes the session cookie. */
-  register: (email: string, password: string) => Promise<SessionUser>;
+  register: (email: string, password: string, betaAccessCode?: string) => Promise<SessionUser>;
   logout: () => Promise<void>;
   /** Re-check /api/me and update session state. */
   refresh: () => Promise<void>;
@@ -84,8 +84,16 @@ export const useSession = (): UseSessionResult => {
     return user;
   }, []);
 
-  const register = useCallback(async (email: string, password: string): Promise<SessionUser> => {
-    const { ok, status, data } = await postJson<AuthResponse>('/api/register', { email, password });
+  const register = useCallback(async (
+    email: string,
+    password: string,
+    betaAccessCode?: string
+  ): Promise<SessionUser> => {
+    const { ok, status, data } = await postJson<AuthResponse>('/api/register', {
+      email,
+      password,
+      ...(betaAccessCode ? { betaAccessCode } : {}),
+    });
     if (!ok) {
       throw new Error(data?.error || `Registration failed (${status})`);
     }

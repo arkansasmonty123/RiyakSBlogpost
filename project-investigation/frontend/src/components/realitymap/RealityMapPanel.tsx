@@ -26,13 +26,22 @@ import type {
 } from '../../api';
 
 export interface RealityMapPrefill {
+  target?: 'claim' | 'hypothesis';
   sourceJournalEntryId?: string | null;
   sourceNotebookEntryId?: string | null;
+  sourcePerspectiveExperienceKey?: string | null;
+  sourcePerspectiveReflectionId?: string | null;
   title?: string;
   description?: string;
   claimCategory?: RealityClaimCategory;
   confidence?: RealityConfidence;
   notes?: string;
+  // Hypothesis-prefill fields (used when target === 'hypothesis')
+  hypothesisName?: string;
+  hypothesisExplanation?: string;
+  hypothesisMissingInformation?: string;
+  hypothesisAlternativeExplanations?: string;
+  hypothesisPlayerNotes?: string;
 }
 
 interface RealityMapPanelProps {
@@ -164,6 +173,8 @@ interface ClaimDraft {
   notes: string;
   sourceJournalEntryId: string | null;
   sourceNotebookEntryId: string | null;
+  sourcePerspectiveExperienceKey: string | null;
+  sourcePerspectiveReflectionId: string | null;
 }
 
 const EMPTY_CLAIM: ClaimDraft = {
@@ -174,6 +185,8 @@ const EMPTY_CLAIM: ClaimDraft = {
   notes: '',
   sourceJournalEntryId: null,
   sourceNotebookEntryId: null,
+  sourcePerspectiveExperienceKey: null,
+  sourcePerspectiveReflectionId: null,
 };
 
 interface HypothesisDraft {
@@ -256,6 +269,20 @@ export function RealityMapPanel({ investigationId, caseClosed, specialists, pref
 
   useEffect(() => {
     if (!prefill) return;
+    if (prefill.target === 'hypothesis') {
+      setView('hypotheses');
+      setEditingHypothesisId(null);
+      setHypothesisDraft({
+        ...EMPTY_HYPOTHESIS,
+        name: prefill.hypothesisName ?? prefill.title ?? '',
+        explanation: prefill.hypothesisExplanation ?? prefill.description ?? '',
+        missingInformation: prefill.hypothesisMissingInformation ?? '',
+        alternativeExplanations: prefill.hypothesisAlternativeExplanations ?? '',
+        playerNotes: prefill.hypothesisPlayerNotes ?? prefill.notes ?? '',
+      });
+      onPrefillConsumed();
+      return;
+    }
     setView('claims');
     setEditingClaimId(null);
     setClaimDraft({
@@ -267,6 +294,8 @@ export function RealityMapPanel({ investigationId, caseClosed, specialists, pref
       notes: prefill.notes ?? '',
       sourceJournalEntryId: prefill.sourceJournalEntryId ?? null,
       sourceNotebookEntryId: prefill.sourceNotebookEntryId ?? null,
+      sourcePerspectiveExperienceKey: prefill.sourcePerspectiveExperienceKey ?? null,
+      sourcePerspectiveReflectionId: prefill.sourcePerspectiveReflectionId ?? null,
     });
     onPrefillConsumed();
   }, [prefill, onPrefillConsumed]);
@@ -365,6 +394,8 @@ export function RealityMapPanel({ investigationId, caseClosed, specialists, pref
       notes: claimDraft.notes,
       ...(claimDraft.sourceJournalEntryId ? { sourceJournalEntryId: claimDraft.sourceJournalEntryId } : {}),
       ...(claimDraft.sourceNotebookEntryId ? { sourceNotebookEntryId: claimDraft.sourceNotebookEntryId } : {}),
+      ...(claimDraft.sourcePerspectiveExperienceKey ? { sourcePerspectiveExperienceKey: claimDraft.sourcePerspectiveExperienceKey } : {}),
+      ...(claimDraft.sourcePerspectiveReflectionId ? { sourcePerspectiveReflectionId: claimDraft.sourcePerspectiveReflectionId } : {}),
     };
     const ok = await withBusy(editingClaimId ? `claim-save-${editingClaimId}` : 'claim-create', async () => {
       if (editingClaimId) await api.updateRealityClaim(investigationId, editingClaimId, payload);
@@ -387,6 +418,8 @@ export function RealityMapPanel({ investigationId, caseClosed, specialists, pref
       notes: claim.notes || '',
       sourceJournalEntryId: claim.sourceJournalEntryId ?? null,
       sourceNotebookEntryId: claim.sourceNotebookEntryId ?? null,
+      sourcePerspectiveExperienceKey: null,
+      sourcePerspectiveReflectionId: null,
     });
   }
 

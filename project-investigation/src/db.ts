@@ -135,6 +135,41 @@ const COLUMN_ALIASES: Record<string, string> = {
   missing_information: 'missingInformation',
   alternative_explanations: 'alternativeExplanations',
   player_notes: 'playerNotes',
+  // M5 Perspective Engine (migration 009).
+  framework_key: 'frameworkKey',
+  intellectual_domain: 'intellectualDomain',
+  core_questions: 'coreQuestions',
+  key_concepts: 'keyConcepts',
+  method_of_reasoning: 'methodOfReasoning',
+  common_misconceptions: 'commonMisconceptions',
+  internal_differences: 'internalDifferences',
+  relevant_disciplines: 'relevantDisciplines',
+  experience_key: 'experienceKey',
+  perspective_class: 'perspectiveClass',
+  scope_note: 'scopeNote',
+  tradition_scope: 'traditionScope',
+  intellectual_purpose: 'intellectualPurpose',
+  primary_question: 'primaryQuestion',
+  intellectual_background: 'intellectualBackground',
+  main_idea: 'mainIdea',
+  detailed_explanation: 'detailedExplanation',
+  historical_context: 'historicalContext',
+  epistemic_breakdown: 'epistemicBreakdown',
+  supporting_sources: 'supportingSources',
+  counterarguments: 'counterarguments',
+  reflection_questions: 'reflectionQuestions',
+  recommendation_tags: 'recommendationTags',
+  related_experience_keys: 'relatedExperienceKeys',
+  related_specialist_keys: 'relatedSpecialistKeys',
+  related_case_titles: 'relatedCaseTitles',
+  estimated_minutes: 'estimatedMinutes',
+  source_perspective_experience_id: 'sourcePerspectiveExperienceId',
+  source_perspective_reflection_id: 'sourcePerspectiveReflectionId',
+  perspective_experience_id: 'perspectiveExperienceId',
+  reflection_kind: 'reflectionKind',
+  prompt_index: 'promptIndex',
+  reason_code: 'reasonCode',
+  state_fingerprint: 'stateFingerprint',
 };
 
 function toCamelKey(key: string): string {
@@ -313,6 +348,149 @@ export async function updateNotificationSettings(
     [JSON.stringify(next), userId]
   );
   return next;
+}
+
+// ===== USER ONBOARDING (M8 Wave 1) =====
+//
+// Per-user, player-owned first-experience progress. Stored in the additive
+// `user_onboarding` table (migration 012). This carries NO canonical truth and
+// no hidden evidence. Every field read/written here goes through an explicit
+// allowlist so a client cannot stash arbitrary (or canonical) data in jsonb.
+
+/**
+ * Player-owned first-experience flags. Every key is allowlisted in
+ * ONBOARDING_TUTORIAL_KEYS and values are always booleans. This is UI state only
+ * (no canonical/hidden data). Slice 1 introduced the contextual tab-tip keys;
+ * slice 2 adds a few more tips plus the first-investigation checklist steps.
+ */
+export interface OnboardingTutorialState {
+  // Contextual tab tips (slice 1).
+  reality?: boolean;
+  perspectives?: boolean;
+  fieldResearch?: boolean;
+  // Contextual tab tips (slice 2).
+  evidenceTip?: boolean;
+  suspectsTip?: boolean;
+  chatTip?: boolean;
+  // First-investigation interactive checklist (slice 2).
+  guideCompleted?: boolean;
+  stepBriefing?: boolean;
+  stepEvidence?: boolean;
+  stepChat?: boolean;
+  stepClaims?: boolean;
+  stepFieldResearch?: boolean;
+  stepVerdict?: boolean;
+}
+
+/** Safe, player-facing onboarding projection returned by the API. */
+export interface OnboardingState {
+  welcomeSeen: boolean;
+  introCompleted: boolean;
+  skipped: boolean;
+  lastStep: string | null;
+  tutorialState: OnboardingTutorialState;
+  /** True when the user finished OR skipped the intro (never shown again). */
+  completed: boolean;
+}
+
+const ONBOARDING_TUTORIAL_KEYS = [
+  'reality', 'perspectives', 'fieldResearch',
+  'evidenceTip', 'suspectsTip', 'chatTip',
+  'guideCompleted',
+  'stepBriefing', 'stepEvidence', 'stepChat', 'stepClaims', 'stepFieldResearch', 'stepVerdict',
+] as const;
+const MAX_ONBOARDING_STEP_LENGTH = 80;
+
+function normalizeTutorialState(raw: unknown): OnboardingTutorialState {
+  const obj = raw && typeof raw === 'object' && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : {};
+  const out: OnboardingTutorialState = {};
+  for (const key of ONBOARDING_TUTORIAL_KEYS) {
+    if (typeof obj[key] === 'boolean') out[key] = obj[key] as boolean;
+  }
+  return out;
+}
+
+function mapOnboardingRow(row: any): OnboardingState {
+  const introCompleted = row?.intro_completed === true;
+  const skipped = row?.skipped === true;
+  return {
+    welcomeSeen: row?.welcome_seen === true,
+    introCompleted,
+    skipped,
+    lastStep: typeof row?.last_step === 'string' && row.last_step.trim()
+      ? row.last_step.trim().slice(0, MAX_ONBOARDING_STEP_LENGTH)
+      : null,
+    tutorialState: normalizeTutorialState(row?.tutorial_state),
+    completed: introCompleted || skipped,
+  };
+}
+
+/** Read a user's onboarding state, lazily creating a safe default row. */
+export async function getOnboarding(userId: string): Promise<OnboardingState> {
+  await query(
+    `INSERT INTO user_onboarding (user_id) VALUES ($1) ON CONFLICT (user_id) DO NOTHING`,
+    [userId]
+  );
+  const result = await query('SELECT * FROM user_onboarding WHERE user_id = $1', [userId]);
+  return mapOnboardingRow(result.rows[0]);
+}
+
+/**
+ * Merge a partial, untrusted patch into the allowlisted onboarding fields and
+ * persist it. Unknown keys/non-boolean values are ignored; tutorialState is a
+ * shallow merge over only the allowlisted boolean keys. Returns the full,
+ * normalized state so the client can render from the server response.
+ */
+export async function updateOnboarding(
+  userId: string,
+  patch: unknown
+): Promise<OnboardingState> {
+  // Ensure the row exists before reading/merging (idempotent, race-safe).
+  await getOnboarding(userId);
+  const obj = patch && typeof patch === 'object' && !Array.isArray(patch)
+    ? (patch as Record<string, unknown>)
+    : {};
+
+  const current = await query(
+    'SELECT tutorial_state FROM user_onboarding WHERE user_id = $1',
+    [userId]
+  );
+  const mergedTutorial = normalizeTutorialState(current.rows[0]?.tutorial_state);
+  if (obj.tutorialState && typeof obj.tutorialState === 'object' && !Array.isArray(obj.tutorialState)) {
+    const incoming = normalizeTutorialState(obj.tutorialState);
+    for (const key of ONBOARDING_TUTORIAL_KEYS) {
+      const value = incoming[key];
+      if (typeof value === 'boolean') mergedTutorial[key] = value;
+    }
+  }
+
+  const assignments: string[] = ['tutorial_state = $1', 'updated_at = NOW()'];
+  const params: any[] = [JSON.stringify(mergedTutorial)];
+
+  const addBoolean = (column: string, value: boolean): void => {
+    params.push(value);
+    assignments.push(`${column} = $${params.length}`);
+  };
+  if (typeof obj.welcomeSeen === 'boolean') addBoolean('welcome_seen', obj.welcomeSeen);
+  if (typeof obj.introCompleted === 'boolean') addBoolean('intro_completed', obj.introCompleted);
+  if (typeof obj.skipped === 'boolean') addBoolean('skipped', obj.skipped);
+
+  if (typeof obj.lastStep === 'string' && obj.lastStep.trim()) {
+    params.push(obj.lastStep.trim().slice(0, MAX_ONBOARDING_STEP_LENGTH));
+    assignments.push(`last_step = $${params.length}`);
+  } else if (obj.lastStep === null) {
+    params.push(null);
+    assignments.push(`last_step = $${params.length}`);
+  }
+
+  params.push(userId);
+  const result = await query(
+    `UPDATE user_onboarding SET ${assignments.join(', ')} WHERE user_id = $${params.length} RETURNING *`,
+    params
+  );
+  return mapOnboardingRow(result.rows[0]);
 }
 
 // ===== SESSION OPERATIONS (P2-SESSIONS) =====
@@ -1753,12 +1931,18 @@ export interface NotebookEntry {
   title: string;
   content: string;
   sourceSnapshot: unknown;
+  /** M5: optional perspective provenance (null unless captured from an experience). */
+  perspectiveExperienceId?: string | null;
+  /** M7: optional link to an accepted knowledge memory item / authored clue. */
+  discoveryMemoryId?: string | null;
+  discoveryClueKey?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
 const NOTEBOOK_COLUMNS = `id, investigation_id, user_id, entry_type, artifact_id, specialist_id,
-  concept, title, content, source_snapshot, created_at, updated_at`;
+  concept, title, content, source_snapshot, perspective_experience_id,
+  discovery_memory_id, discovery_clue_key, created_at, updated_at`;
 
 export async function createNotebookEntry(
   investigationId: string,
@@ -1771,12 +1955,16 @@ export async function createNotebookEntry(
     artifactId?: string | null;
     specialistId?: string | null;
     sourceSnapshot?: Record<string, unknown>;
+    perspectiveExperienceId?: string | null;
+    discoveryMemoryId?: string | null;
+    discoveryClueKey?: string | null;
   }
 ): Promise<NotebookEntry> {
   const result = await query(
     `INSERT INTO notebook_entries
-       (investigation_id, user_id, entry_type, artifact_id, specialist_id, concept, title, content, source_snapshot)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb) RETURNING ${NOTEBOOK_COLUMNS}`,
+       (investigation_id, user_id, entry_type, artifact_id, specialist_id, concept, title, content, source_snapshot,
+        perspective_experience_id, discovery_memory_id, discovery_clue_key)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11, $12) RETURNING ${NOTEBOOK_COLUMNS}`,
     [
       investigationId,
       userId,
@@ -1787,6 +1975,9 @@ export async function createNotebookEntry(
       data.title ?? '',
       data.content ?? '',
       JSON.stringify(data.sourceSnapshot ?? {}),
+      data.perspectiveExperienceId ?? null,
+      data.discoveryMemoryId ?? null,
+      data.discoveryClueKey ?? null,
     ]
   );
   return mapRow<NotebookEntry>(result.rows[0]);
@@ -1817,6 +2008,8 @@ export async function updateNotebookEntry(
     artifactId?: string | null;
     specialistId?: string | null;
     sourceSnapshot?: Record<string, unknown>;
+    discoveryMemoryId?: string | null;
+    discoveryClueKey?: string | null;
   }
 ): Promise<NotebookEntry | null> {
   const columns: string[] = [];
@@ -1834,6 +2027,8 @@ export async function updateNotebookEntry(
   if (data.artifactId !== undefined) add('artifact_id', data.artifactId);
   if (data.specialistId !== undefined) add('specialist_id', data.specialistId);
   if (data.sourceSnapshot !== undefined) add('source_snapshot', JSON.stringify(data.sourceSnapshot));
+  if (data.discoveryMemoryId !== undefined) add('discovery_memory_id', data.discoveryMemoryId);
+  if (data.discoveryClueKey !== undefined) add('discovery_clue_key', data.discoveryClueKey);
 
   const params = [entryId, investigationId, userId];
   if (columns.length === 0) {
@@ -1884,6 +2079,9 @@ export interface RealityClaim {
   notes: string;
   sourceJournalEntryId: string | null;
   sourceNotebookEntryId: string | null;
+  /** M5: optional perspective provenance (null unless created from an experience). */
+  sourcePerspectiveExperienceId?: string | null;
+  sourcePerspectiveReflectionId?: string | null;
   isTutorial: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -1929,6 +2127,7 @@ export interface LinkTargetResolution {
 
 const CLAIM_COLUMNS = `id, investigation_id, user_id, title, description, claim_category,
   confidence, notes, source_journal_entry_id, source_notebook_entry_id,
+  source_perspective_experience_id, source_perspective_reflection_id,
   is_tutorial, created_at, updated_at`;
 const HYPOTHESIS_COLUMNS = `id, investigation_id, user_id, name, explanation, status, confidence,
   missing_information, alternative_explanations, player_notes, is_tutorial, created_at, updated_at`;
@@ -1965,6 +2164,8 @@ export interface CreateClaimData {
   notes?: string;
   sourceJournalEntryId?: string | null;
   sourceNotebookEntryId?: string | null;
+  sourcePerspectiveExperienceId?: string | null;
+  sourcePerspectiveReflectionId?: string | null;
   isTutorial?: boolean;
 }
 
@@ -1976,13 +2177,15 @@ export async function createClaim(
   const result = await query(
     `INSERT INTO investigation_claims
        (investigation_id, user_id, title, description, claim_category, confidence,
-        notes, source_journal_entry_id, source_notebook_entry_id, is_tutorial)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        notes, source_journal_entry_id, source_notebook_entry_id,
+        source_perspective_experience_id, source_perspective_reflection_id, is_tutorial)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      RETURNING ${CLAIM_COLUMNS}`,
     [
       investigationId, userId, data.title, data.description ?? '', data.claimCategory,
       data.confidence ?? 'insufficient_information', data.notes ?? '',
       data.sourceJournalEntryId ?? null, data.sourceNotebookEntryId ?? null,
+      data.sourcePerspectiveExperienceId ?? null, data.sourcePerspectiveReflectionId ?? null,
       data.isTutorial === true,
     ]
   );
@@ -2407,4 +2610,1146 @@ export async function deleteTutorialRealityExamples(
       removedHypotheses: hypotheses.rowCount ?? 0,
     };
   });
+}
+
+// ===========================================================================
+// M5 Perspective Engine (migration 009) — authored content, player reflections
+// and advisory suggestion state. Educational/advisory only: NOTHING in this
+// section reads canonical_truth or touches verdict, progression or evidence
+// release. Reflection/suggestion rows are scoped by user_id (and
+// investigation_id where applicable). No foreign keys, matching the baseline.
+// ===========================================================================
+
+const PERSPECTIVE_FRAMEWORK_COLUMNS = `id, framework_key, name, intellectual_domain, summary,
+  core_questions, key_concepts, method_of_reasoning, limitations, common_misconceptions,
+  internal_differences, relevant_disciplines, display_order, status, created_at, updated_at`;
+
+const PERSPECTIVE_EXPERIENCE_COLUMNS = `id, experience_key, title, framework_key, format, knowledge_class,
+  perspective_class, scope_note, tradition_scope, intellectual_purpose, primary_question,
+  introduction, intellectual_background, main_idea, detailed_explanation, sections, historical_context,
+  epistemic_breakdown, key_concepts, supporting_sources, limitations, counterarguments,
+  common_misconceptions, reflection_questions, activities, recommendation_tags,
+  related_experience_keys, related_specialist_keys, related_artifact_keys, related_case_titles,
+  estimated_minutes, difficulty, display_order, status, created_at, updated_at`;
+
+const PERSPECTIVE_REFLECTION_COLUMNS = `id, experience_id, experience_key, user_id, investigation_id,
+  prompt_index, prompt, reflection_kind, response, created_at, updated_at`;
+
+const PERSPECTIVE_SUGGESTION_COLUMNS = `id, investigation_id, user_id, experience_key, reason_code,
+  state_fingerprint, status, created_at, updated_at`;
+
+export interface PerspectiveFramework {
+  id: string;
+  frameworkKey: string;
+  name: string;
+  intellectualDomain: string;
+  summary: string;
+  coreQuestions: unknown;
+  keyConcepts: unknown;
+  methodOfReasoning: string;
+  limitations: unknown;
+  commonMisconceptions: unknown;
+  internalDifferences: unknown;
+  relevantDisciplines: unknown;
+  displayOrder: number;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PerspectiveExperience {
+  id: string;
+  experienceKey: string;
+  title: string;
+  frameworkKey: string;
+  format: string;
+  knowledgeClass: string;
+  perspectiveClass: string;
+  scopeNote: string;
+  traditionScope: string;
+  intellectualPurpose: string;
+  primaryQuestion: string;
+  introduction: string;
+  intellectualBackground: string;
+  mainIdea: string;
+  detailedExplanation: string;
+  sections: unknown;
+  historicalContext: string;
+  epistemicBreakdown: unknown;
+  keyConcepts: unknown;
+  supportingSources: unknown;
+  limitations: unknown;
+  counterarguments: unknown;
+  commonMisconceptions: unknown;
+  reflectionQuestions: unknown;
+  activities: unknown;
+  recommendationTags: unknown;
+  relatedExperienceKeys: unknown;
+  relatedSpecialistKeys: unknown;
+  relatedArtifactKeys: unknown;
+  relatedCaseTitles: unknown;
+  estimatedMinutes: number;
+  difficulty: string;
+  displayOrder: number;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PerspectiveReflection {
+  id: string;
+  experienceId: string;
+  experienceKey: string;
+  userId: string;
+  investigationId: string | null;
+  promptIndex: number;
+  prompt: string;
+  reflectionKind: string;
+  response: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PerspectiveSuggestionState {
+  id: string;
+  investigationId: string;
+  userId: string;
+  experienceKey: string;
+  reasonCode: string;
+  stateFingerprint: string;
+  status: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export async function getPerspectiveFrameworks(status?: string): Promise<PerspectiveFramework[]> {
+  const result = status
+    ? await query(
+        `SELECT ${PERSPECTIVE_FRAMEWORK_COLUMNS} FROM perspective_frameworks
+          WHERE status = $1 ORDER BY display_order, framework_key`,
+        [status]
+      )
+    : await query(
+        `SELECT ${PERSPECTIVE_FRAMEWORK_COLUMNS} FROM perspective_frameworks
+          WHERE status = 'published' ORDER BY display_order, framework_key`
+      );
+  return mapRows<PerspectiveFramework>(result.rows);
+}
+
+export async function getPerspectiveFrameworkByKey(frameworkKey: string): Promise<PerspectiveFramework | null> {
+  const result = await query(
+    `SELECT ${PERSPECTIVE_FRAMEWORK_COLUMNS} FROM perspective_frameworks WHERE framework_key = $1`,
+    [frameworkKey]
+  );
+  return result.rows[0] ? mapRow<PerspectiveFramework>(result.rows[0]) : null;
+}
+
+export interface PerspectiveExperienceFilters {
+  frameworkKey?: string | undefined;
+  format?: string | undefined;
+  q?: string | undefined;
+  status?: string | undefined;
+  limit?: number | undefined;
+}
+
+export async function getPerspectiveExperiences(
+  filters: PerspectiveExperienceFilters = {}
+): Promise<PerspectiveExperience[]> {
+  const clauses: string[] = [];
+  const values: any[] = [];
+  if (filters.frameworkKey !== undefined) {
+    values.push(filters.frameworkKey);
+    clauses.push(`framework_key = $${values.length}`);
+  }
+  if (filters.format !== undefined) {
+    values.push(filters.format);
+    clauses.push(`format = $${values.length}`);
+  }
+  const status = filters.status ?? 'published';
+  values.push(status);
+  clauses.push(`status = $${values.length}`);
+  if (typeof filters.q === 'string' && filters.q.trim().length > 0) {
+    // Search only player-facing text columns. The bound is a parameter, never
+    // concatenated, and '%'/'_' in the query are treated as literals.
+    const needle = `%${filters.q.trim().replace(/[\\%_]/g, '\\$&')}%`;
+    values.push(needle);
+    clauses.push(`(title ILIKE $${values.length} ESCAPE '\\' OR primary_question ILIKE $${values.length} ESCAPE '\\' OR main_idea ILIKE $${values.length} ESCAPE '\\' OR scope_note ILIKE $${values.length} ESCAPE '\\')`);
+  }
+  let sql = `SELECT ${PERSPECTIVE_EXPERIENCE_COLUMNS} FROM perspective_experiences
+          WHERE ${clauses.join(' AND ')} ORDER BY display_order, experience_key`;
+  if (Number.isFinite(filters.limit)) {
+    const limit = Math.max(0, Math.min(Math.trunc(filters.limit as number), 200));
+    values.push(limit);
+    sql += ` LIMIT $${values.length}`;
+  }
+  const result = await query(sql, values);
+  return mapRows<PerspectiveExperience>(result.rows);
+}
+
+export async function getPerspectiveExperienceByKey(experienceKey: string): Promise<PerspectiveExperience | null> {
+  const result = await query(
+    `SELECT ${PERSPECTIVE_EXPERIENCE_COLUMNS} FROM perspective_experiences WHERE experience_key = $1`,
+    [experienceKey]
+  );
+  return result.rows[0] ? mapRow<PerspectiveExperience>(result.rows[0]) : null;
+}
+
+/** Resolve an experience by its stable UUID (used by notebook/claim provenance). */
+export async function getPerspectiveExperienceById(id: string): Promise<PerspectiveExperience | null> {
+  const result = await query(
+    `SELECT ${PERSPECTIVE_EXPERIENCE_COLUMNS} FROM perspective_experiences WHERE id = $1`,
+    [id]
+  );
+  return result.rows[0] ? mapRow<PerspectiveExperience>(result.rows[0]) : null;
+}
+
+export interface CreatePerspectiveReflectionData {
+  experienceId: string;
+  experienceKey: string;
+  userId: string;
+  investigationId?: string | null;
+  promptIndex?: number | undefined;
+  prompt?: string | undefined;
+  reflectionKind: string;
+  response: string;
+}
+
+export async function createPerspectiveReflection(
+  data: CreatePerspectiveReflectionData
+): Promise<PerspectiveReflection> {
+  const result = await query(
+    `INSERT INTO perspective_reflections
+       (experience_id, experience_key, user_id, investigation_id, prompt_index, prompt, reflection_kind, response)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     RETURNING ${PERSPECTIVE_REFLECTION_COLUMNS}`,
+    [
+      data.experienceId,
+      data.experienceKey,
+      data.userId,
+      data.investigationId ?? null,
+      data.promptIndex ?? 0,
+      data.prompt ?? '',
+      data.reflectionKind,
+      data.response,
+    ]
+  );
+  return mapRow<PerspectiveReflection>(result.rows[0]);
+}
+
+export async function getPerspectiveReflections(
+  userId: string,
+  experienceKey?: string,
+  investigationId?: string
+): Promise<PerspectiveReflection[]> {
+  const clauses: string[] = ['user_id = $1'];
+  const values: any[] = [userId];
+  if (experienceKey !== undefined) {
+    values.push(experienceKey);
+    clauses.push(`experience_key = $${values.length}`);
+  }
+  if (investigationId !== undefined) {
+    values.push(investigationId);
+    clauses.push(`investigation_id = $${values.length}`);
+  }
+  const result = await query(
+    `SELECT ${PERSPECTIVE_REFLECTION_COLUMNS} FROM perspective_reflections
+      WHERE ${clauses.join(' AND ')} ORDER BY created_at DESC`,
+    values
+  );
+  return mapRows<PerspectiveReflection>(result.rows);
+}
+
+/** Fetch a single reflection by id. Ownership is checked by the caller (or the
+ *  scoped update/delete helpers below); this helper is read-only. */
+export async function getPerspectiveReflectionById(id: string): Promise<PerspectiveReflection | null> {
+  const result = await query(
+    `SELECT ${PERSPECTIVE_REFLECTION_COLUMNS} FROM perspective_reflections WHERE id = $1`,
+    [id]
+  );
+  return result.rows[0] ? mapRow<PerspectiveReflection>(result.rows[0]) : null;
+}
+
+export async function updatePerspectiveReflection(
+  id: string,
+  userId: string,
+  data: { response?: string; reflectionKind?: string }
+): Promise<PerspectiveReflection | null> {
+  const columns: string[] = [];
+  const values: any[] = [];
+  let next = 1;
+  const add = (column: string, value: unknown): void => {
+    columns.push(`${column} = $${next}`);
+    values.push(value);
+    next += 1;
+  };
+  if (data.response !== undefined) add('response', data.response);
+  if (data.reflectionKind !== undefined) add('reflection_kind', data.reflectionKind);
+  if (columns.length === 0) {
+    const current = await query(
+      `SELECT ${PERSPECTIVE_REFLECTION_COLUMNS} FROM perspective_reflections WHERE id = $1 AND user_id = $2`,
+      [id, userId]
+    );
+    return current.rows[0] ? mapRow<PerspectiveReflection>(current.rows[0]) : null;
+  }
+  values.push(id, userId);
+  const result = await query(
+    `UPDATE perspective_reflections SET ${columns.join(', ')}, updated_at = NOW()
+      WHERE id = $${next} AND user_id = $${next + 1}
+      RETURNING ${PERSPECTIVE_REFLECTION_COLUMNS}`,
+    values
+  );
+  return result.rows[0] ? mapRow<PerspectiveReflection>(result.rows[0]) : null;
+}
+
+export async function deletePerspectiveReflection(id: string, userId: string): Promise<boolean> {
+  const result = await query(
+    `DELETE FROM perspective_reflections WHERE id = $1 AND user_id = $2 RETURNING id`,
+    [id, userId]
+  );
+  return result.rows.length > 0;
+}
+
+export async function getPerspectiveSuggestionState(
+  investigationId: string,
+  userId: string,
+  experienceKey: string
+): Promise<PerspectiveSuggestionState | null> {
+  const result = await query(
+    `SELECT ${PERSPECTIVE_SUGGESTION_COLUMNS} FROM perspective_suggestion_state
+      WHERE investigation_id = $1 AND user_id = $2 AND experience_key = $3`,
+    [investigationId, userId, experienceKey]
+  );
+  return result.rows[0] ? mapRow<PerspectiveSuggestionState>(result.rows[0]) : null;
+}
+
+export async function getPerspectiveSuggestionStates(
+  investigationId: string,
+  userId: string
+): Promise<PerspectiveSuggestionState[]> {
+  const result = await query(
+    `SELECT ${PERSPECTIVE_SUGGESTION_COLUMNS} FROM perspective_suggestion_state
+      WHERE investigation_id = $1 AND user_id = $2 ORDER BY experience_key`,
+    [investigationId, userId]
+  );
+  return mapRows<PerspectiveSuggestionState>(result.rows);
+}
+
+export async function upsertPerspectiveSuggestionState(data: {
+  investigationId: string;
+  userId: string;
+  experienceKey: string;
+  reasonCode: string;
+  stateFingerprint: string;
+  status: string;
+}): Promise<PerspectiveSuggestionState> {
+  const result = await query(
+    `INSERT INTO perspective_suggestion_state
+       (investigation_id, user_id, experience_key, reason_code, state_fingerprint, status)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (investigation_id, user_id, experience_key) DO UPDATE SET
+       reason_code = EXCLUDED.reason_code,
+       state_fingerprint = EXCLUDED.state_fingerprint,
+       status = EXCLUDED.status,
+       updated_at = NOW()
+     RETURNING ${PERSPECTIVE_SUGGESTION_COLUMNS}`,
+    [
+      data.investigationId,
+      data.userId,
+      data.experienceKey,
+      data.reasonCode,
+      data.stateFingerprint,
+      data.status,
+    ]
+  );
+  return mapRow<PerspectiveSuggestionState>(result.rows[0]);
+}
+
+// ===========================================================================
+// M7 Real-World Discovery & Knowledge Retention (migration 011).
+//
+// DUMB + SAFE BY DESIGN: every query below is explicitly column-projected,
+// parameterised, and scoped by investigation_id AND/OR user_id. No query in
+// this section reads canonical_truth, hidden evidence or release conditions,
+// and none writes to evidence_discoveries. Acceptance, unlock creation and
+// scheduling orchestration live in src/discovery-service.ts.
+// ===========================================================================
+
+export interface DiscoveryClueState {
+  id: string;
+  investigationId: string;
+  userId: string;
+  caseId: string;
+  clueKey: string;
+  state: string;
+  surfacedAt: Date | null;
+  researchStartedAt: Date | null;
+  acceptedAt: Date | null;
+  lastSubmittedAt: Date | null;
+  attemptCount: number;
+  sourceContext: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const DISCOVERY_CLUE_STATE_COLUMNS = `id, investigation_id, user_id, case_id, clue_key, state,
+  surfaced_at, research_started_at, accepted_at, last_submitted_at, attempt_count,
+  source_context, created_at, updated_at`;
+
+export async function getDiscoveryClueStates(
+  investigationId: string,
+  userId: string,
+): Promise<DiscoveryClueState[]> {
+  const result = await query(
+    `SELECT ${DISCOVERY_CLUE_STATE_COLUMNS} FROM investigation_discovery_clue_states
+      WHERE investigation_id = $1 AND user_id = $2
+      ORDER BY clue_key ASC`,
+    [investigationId, userId],
+  );
+  return mapRows<DiscoveryClueState>(result.rows);
+}
+
+export async function getDiscoveryClueState(
+  investigationId: string,
+  userId: string,
+  clueKey: string,
+): Promise<DiscoveryClueState | null> {
+  const result = await query(
+    `SELECT ${DISCOVERY_CLUE_STATE_COLUMNS} FROM investigation_discovery_clue_states
+      WHERE investigation_id = $1 AND user_id = $2 AND clue_key = $3 LIMIT 1`,
+    [investigationId, userId, clueKey],
+  );
+  return result.rows[0] ? mapRow<DiscoveryClueState>(result.rows[0]) : null;
+}
+
+export async function upsertDiscoveryClueState(data: {
+  investigationId: string;
+  userId: string;
+  caseId: string;
+  clueKey: string;
+  state: 'noticed' | 'researching' | 'submitted' | 'accepted' | 'dormant';
+  surfacedAt?: Date | string | null;
+  researchStartedAt?: Date | string | null;
+  acceptedAt?: Date | string | null;
+  lastSubmittedAt?: Date | string | null;
+  attemptCount?: number;
+  sourceContext?: Record<string, unknown>;
+}): Promise<DiscoveryClueState> {
+  const result = await query(
+    `INSERT INTO investigation_discovery_clue_states
+       (investigation_id, user_id, case_id, clue_key, state, surfaced_at, research_started_at,
+        accepted_at, last_submitted_at, attempt_count, source_context)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
+     ON CONFLICT (investigation_id, clue_key) DO UPDATE SET
+       state = EXCLUDED.state,
+       surfaced_at = COALESCE(investigation_discovery_clue_states.surfaced_at, EXCLUDED.surfaced_at),
+       research_started_at = COALESCE(investigation_discovery_clue_states.research_started_at, EXCLUDED.research_started_at),
+       accepted_at = COALESCE(investigation_discovery_clue_states.accepted_at, EXCLUDED.accepted_at),
+       last_submitted_at = COALESCE(EXCLUDED.last_submitted_at, investigation_discovery_clue_states.last_submitted_at),
+       attempt_count = GREATEST(investigation_discovery_clue_states.attempt_count, EXCLUDED.attempt_count),
+       source_context = CASE
+         WHEN EXCLUDED.source_context = '{}'::jsonb THEN investigation_discovery_clue_states.source_context
+         ELSE EXCLUDED.source_context END,
+       updated_at = NOW()
+     RETURNING ${DISCOVERY_CLUE_STATE_COLUMNS}`,
+    [
+      data.investigationId,
+      data.userId,
+      data.caseId,
+      data.clueKey,
+      data.state,
+      data.surfacedAt ?? null,
+      data.researchStartedAt ?? null,
+      data.acceptedAt ?? null,
+      data.lastSubmittedAt ?? null,
+      Math.max(0, Math.floor(data.attemptCount ?? 0)),
+      JSON.stringify(data.sourceContext ?? {}),
+    ],
+  );
+  return mapRow<DiscoveryClueState>(result.rows[0]);
+}
+
+export interface DiscoverySubmission {
+  id: string;
+  investigationId: string;
+  userId: string;
+  clueKey: string;
+  memoryItemId: string | null;
+  explanation: string;
+  subjectIdentification: string;
+  connectionExplanation: string;
+  uncertainty: string;
+  sourceRefs: unknown;
+  confidence: string | null;
+  classification: string;
+  accepted: boolean;
+  score: number | string;
+  llmUsed: boolean;
+  createdAt: Date;
+}
+
+const DISCOVERY_SUBMISSION_COLUMNS = `id, investigation_id, user_id, clue_key, memory_item_id,
+  explanation, subject_identification, connection_explanation, uncertainty, source_refs,
+  confidence, classification, accepted, score, llm_used, created_at`;
+
+export async function createDiscoverySubmission(data: {
+  investigationId: string;
+  userId: string;
+  clueKey: string;
+  memoryItemId?: string | null;
+  explanation: string;
+  subjectIdentification: string;
+  connectionExplanation: string;
+  uncertainty: string;
+  sourceRefs: readonly string[];
+  confidence: string | null;
+  /** INTERNAL ONLY: reason codes / advisory data. Public DTOs never copy it. */
+  evaluation: Record<string, unknown>;
+  classification: string;
+  accepted: boolean;
+  score: number;
+  llmUsed: boolean;
+}): Promise<DiscoverySubmission> {
+  const result = await query(
+    `INSERT INTO discovery_submissions
+       (investigation_id, user_id, clue_key, memory_item_id, explanation, subject_identification,
+        connection_explanation, uncertainty, source_refs, confidence, evaluation, classification,
+        accepted, score, llm_used)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10, $11::jsonb, $12, $13, $14, $15)
+     RETURNING ${DISCOVERY_SUBMISSION_COLUMNS}`,
+    [
+      data.investigationId,
+      data.userId,
+      data.clueKey,
+      data.memoryItemId ?? null,
+      data.explanation,
+      data.subjectIdentification,
+      data.connectionExplanation,
+      data.uncertainty,
+      JSON.stringify(data.sourceRefs),
+      data.confidence,
+      JSON.stringify(data.evaluation),
+      data.classification,
+      data.accepted,
+      data.score,
+      data.llmUsed,
+    ],
+  );
+  return mapRow<DiscoverySubmission>(result.rows[0]);
+}
+
+export async function listDiscoverySubmissions(
+  investigationId: string,
+  userId: string,
+  clueKey?: string,
+): Promise<DiscoverySubmission[]> {
+  const params: any[] = [investigationId, userId];
+  let filter = '';
+  if (clueKey !== undefined) {
+    params.push(clueKey);
+    filter = ' AND clue_key = $3';
+  }
+  const result = await query(
+    `SELECT ${DISCOVERY_SUBMISSION_COLUMNS} FROM discovery_submissions
+      WHERE investigation_id = $1 AND user_id = $2${filter}
+      ORDER BY created_at DESC, id DESC`,
+    params,
+  );
+  return mapRows<DiscoverySubmission>(result.rows);
+}
+
+export interface KnowledgeMemoryItem {
+  id: string;
+  userId: string;
+  subjectKey: string;
+  subjectLabel: string;
+  referenceCategory: string;
+  knowledgeStatus: string;
+  concepts: unknown;
+  correctedUnderstanding: string;
+  originalExplanation: string;
+  latestExplanation: string;
+  authoredSources: unknown;
+  playerSources: unknown;
+  firstCaseId: string | null;
+  firstInvestigationId: string | null;
+  firstClueKey: string | null;
+  firstDiscoveredAt: Date;
+  lastRecallAt: Date | null;
+  lastSuccessfulRecallAt: Date | null;
+  nextDueAt: Date | null;
+  masteryStatus: string;
+  successfulRecalls: number;
+  failedRecalls: number;
+  unresolvedQuestions: unknown;
+  followUpApplications: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const KNOWLEDGE_MEMORY_ITEM_COLUMNS = `id, user_id, subject_key, subject_label, reference_category,
+  knowledge_status, concepts, corrected_understanding, original_explanation, latest_explanation,
+  authored_sources, player_sources, first_case_id, first_investigation_id, first_clue_key,
+  first_discovered_at, last_recall_at, last_successful_recall_at, next_due_at, mastery_status,
+  successful_recalls, failed_recalls, unresolved_questions, follow_up_applications, created_at, updated_at`;
+
+export async function getKnowledgeMemoryItemBySubject(
+  userId: string,
+  subjectKey: string,
+): Promise<KnowledgeMemoryItem | null> {
+  const result = await query(
+    `SELECT ${KNOWLEDGE_MEMORY_ITEM_COLUMNS} FROM knowledge_memory_items
+      WHERE user_id = $1 AND subject_key = $2 LIMIT 1`,
+    [userId, subjectKey],
+  );
+  return result.rows[0] ? mapRow<KnowledgeMemoryItem>(result.rows[0]) : null;
+}
+
+export async function getKnowledgeMemoryItemById(
+  id: string,
+  userId: string,
+): Promise<KnowledgeMemoryItem | null> {
+  const result = await query(
+    `SELECT ${KNOWLEDGE_MEMORY_ITEM_COLUMNS} FROM knowledge_memory_items
+      WHERE id = $1 AND user_id = $2 LIMIT 1`,
+    [id, userId],
+  );
+  return result.rows[0] ? mapRow<KnowledgeMemoryItem>(result.rows[0]) : null;
+}
+
+export async function listKnowledgeMemoryItems(userId: string): Promise<KnowledgeMemoryItem[]> {
+  const result = await query(
+    `SELECT ${KNOWLEDGE_MEMORY_ITEM_COLUMNS} FROM knowledge_memory_items
+      WHERE user_id = $1
+      ORDER BY next_due_at ASC NULLS FIRST, created_at DESC`,
+    [userId],
+  );
+  return mapRows<KnowledgeMemoryItem>(result.rows);
+}
+
+/** Create on first acceptance; refresh safe descriptive fields thereafter. */
+export async function upsertKnowledgeMemoryItem(data: {
+  userId: string;
+  subjectKey: string;
+  subjectLabel: string;
+  referenceCategory: string;
+  knowledgeStatus: string;
+  concepts: readonly string[];
+  correctedUnderstanding: string;
+  originalExplanation: string;
+  latestExplanation: string;
+  authoredSources: readonly string[];
+  playerSources: readonly string[];
+  caseId: string;
+  investigationId: string;
+  clueKey: string;
+  nextDueAt: string | null;
+}): Promise<KnowledgeMemoryItem> {
+  const result = await query(
+    `INSERT INTO knowledge_memory_items
+       (user_id, subject_key, subject_label, reference_category, knowledge_status, concepts,
+        corrected_understanding, original_explanation, latest_explanation, authored_sources,
+        player_sources, first_case_id, first_investigation_id, first_clue_key, next_due_at)
+     VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13, $14, $15)
+     ON CONFLICT (user_id, subject_key) DO UPDATE SET
+       subject_label = EXCLUDED.subject_label,
+       reference_category = EXCLUDED.reference_category,
+       knowledge_status = EXCLUDED.knowledge_status,
+       concepts = EXCLUDED.concepts,
+       corrected_understanding = EXCLUDED.corrected_understanding,
+       latest_explanation = EXCLUDED.latest_explanation,
+       authored_sources = EXCLUDED.authored_sources,
+       player_sources = EXCLUDED.player_sources,
+       follow_up_applications = CASE
+         WHEN knowledge_memory_items.follow_up_applications @> to_jsonb(ARRAY[EXCLUDED.first_clue_key])
+           THEN knowledge_memory_items.follow_up_applications
+         ELSE knowledge_memory_items.follow_up_applications || to_jsonb(ARRAY[EXCLUDED.first_clue_key]) END,
+       updated_at = NOW()
+     RETURNING ${KNOWLEDGE_MEMORY_ITEM_COLUMNS}`,
+    [
+      data.userId,
+      data.subjectKey,
+      data.subjectLabel,
+      data.referenceCategory,
+      data.knowledgeStatus,
+      JSON.stringify(data.concepts),
+      data.correctedUnderstanding,
+      data.originalExplanation,
+      data.latestExplanation,
+      JSON.stringify(data.authoredSources),
+      JSON.stringify(data.playerSources),
+      data.caseId,
+      data.investigationId,
+      data.clueKey,
+      data.nextDueAt,
+    ],
+  );
+  return mapRow<KnowledgeMemoryItem>(result.rows[0]);
+}
+
+export async function updateKnowledgeMemoryRecall(
+  id: string,
+  userId: string,
+  data: {
+    lastRecallAt: string;
+    lastSuccessfulRecallAt: string | null;
+    nextDueAt: string;
+    masteryStatus: string;
+    successfulRecalls: number;
+    failedRecalls: number;
+  },
+): Promise<KnowledgeMemoryItem | null> {
+  const result = await query(
+    `UPDATE knowledge_memory_items SET
+       last_recall_at = $3,
+       last_successful_recall_at = COALESCE($4, last_successful_recall_at),
+       next_due_at = $5,
+       mastery_status = $6,
+       successful_recalls = $7,
+       failed_recalls = $8,
+       updated_at = NOW()
+     WHERE id = $1 AND user_id = $2
+     RETURNING ${KNOWLEDGE_MEMORY_ITEM_COLUMNS}`,
+    [
+      id,
+      userId,
+      data.lastRecallAt,
+      data.lastSuccessfulRecallAt,
+      data.nextDueAt,
+      data.masteryStatus,
+      data.successfulRecalls,
+      data.failedRecalls,
+    ],
+  );
+  return result.rows[0] ? mapRow<KnowledgeMemoryItem>(result.rows[0]) : null;
+}
+
+export interface KnowledgeMemoryCase {
+  id: string;
+  memoryItemId: string;
+  userId: string;
+  investigationId: string;
+  caseId: string;
+  clueKey: string;
+  applicationContext: string;
+  createdAt: Date;
+}
+
+const KNOWLEDGE_MEMORY_CASE_COLUMNS = `id, memory_item_id, user_id, investigation_id, case_id,
+  clue_key, application_context, created_at`;
+
+export async function upsertKnowledgeMemoryCase(data: {
+  memoryItemId: string;
+  userId: string;
+  investigationId: string;
+  caseId: string;
+  clueKey: string;
+  applicationContext: string;
+}): Promise<KnowledgeMemoryCase> {
+  const result = await query(
+    `INSERT INTO knowledge_memory_cases
+       (memory_item_id, user_id, investigation_id, case_id, clue_key, application_context)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (user_id, investigation_id, clue_key) DO UPDATE SET
+       memory_item_id = EXCLUDED.memory_item_id,
+       application_context = EXCLUDED.application_context
+     RETURNING ${KNOWLEDGE_MEMORY_CASE_COLUMNS}`,
+    [
+      data.memoryItemId,
+      data.userId,
+      data.investigationId,
+      data.caseId,
+      data.clueKey,
+      data.applicationContext,
+    ],
+  );
+  return mapRow<KnowledgeMemoryCase>(result.rows[0]);
+}
+
+export async function listKnowledgeMemoryCases(
+  memoryItemId: string,
+  userId: string,
+): Promise<KnowledgeMemoryCase[]> {
+  const result = await query(
+    `SELECT ${KNOWLEDGE_MEMORY_CASE_COLUMNS} FROM knowledge_memory_cases
+      WHERE memory_item_id = $1 AND user_id = $2
+      ORDER BY created_at DESC`,
+    [memoryItemId, userId],
+  );
+  return mapRows<KnowledgeMemoryCase>(result.rows);
+}
+
+export interface KnowledgeMemoryLink {
+  id: string;
+  userId: string;
+  fromMemoryId: string;
+  toMemoryId: string;
+  fromSubjectKey: string;
+  toSubjectKey: string;
+  pairKey: string;
+  relationship: string;
+  rationale: string;
+  createdAt: Date;
+}
+
+const KNOWLEDGE_MEMORY_LINK_COLUMNS = `id, user_id, from_memory_id, to_memory_id, from_subject_key,
+  to_subject_key, pair_key, relationship, rationale, created_at`;
+
+export async function upsertKnowledgeMemoryLink(data: {
+  userId: string;
+  fromMemoryId: string;
+  toMemoryId: string;
+  fromSubjectKey: string;
+  toSubjectKey: string;
+  pairKey: string;
+  relationship: string;
+  rationale: string;
+}): Promise<KnowledgeMemoryLink> {
+  const result = await query(
+    `INSERT INTO knowledge_memory_links
+       (user_id, from_memory_id, to_memory_id, from_subject_key, to_subject_key, pair_key, relationship, rationale)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (user_id, pair_key) DO UPDATE SET
+       relationship = EXCLUDED.relationship,
+       rationale = EXCLUDED.rationale,
+       from_memory_id = EXCLUDED.from_memory_id,
+       to_memory_id = EXCLUDED.to_memory_id
+     RETURNING ${KNOWLEDGE_MEMORY_LINK_COLUMNS}`,
+    [
+      data.userId,
+      data.fromMemoryId,
+      data.toMemoryId,
+      data.fromSubjectKey,
+      data.toSubjectKey,
+      data.pairKey,
+      data.relationship,
+      data.rationale,
+    ],
+  );
+  return mapRow<KnowledgeMemoryLink>(result.rows[0]);
+}
+
+export async function listKnowledgeMemoryLinks(
+  userId: string,
+  memoryItemId?: string,
+): Promise<KnowledgeMemoryLink[]> {
+  const params: any[] = [userId];
+  let filter = '';
+  if (memoryItemId !== undefined) {
+    params.push(memoryItemId);
+    filter = ' AND (from_memory_id = $2 OR to_memory_id = $2)';
+  }
+  const result = await query(
+    `SELECT ${KNOWLEDGE_MEMORY_LINK_COLUMNS} FROM knowledge_memory_links
+      WHERE user_id = $1${filter}
+      ORDER BY created_at DESC`,
+    params,
+  );
+  return mapRows<KnowledgeMemoryLink>(result.rows);
+}
+
+export interface KnowledgeRecallEvent {
+  id: string;
+  userId: string;
+  memoryItemId: string;
+  investigationId: string | null;
+  clueKey: string | null;
+  recallKind: string;
+  prompt: string;
+  response: string;
+  outcome: string;
+  scheduledFor: Date | null;
+  answeredAt: Date | null;
+  intervalDays: number | null;
+  nextDueAt: Date | null;
+  createdAt: Date;
+}
+
+const KNOWLEDGE_RECALL_EVENT_COLUMNS = `id, user_id, memory_item_id, investigation_id, clue_key,
+  recall_kind, prompt, response, outcome, scheduled_for, answered_at, interval_days,
+  next_due_at, created_at`;
+
+export async function createKnowledgeRecallEvent(data: {
+  userId: string;
+  memoryItemId: string;
+  investigationId?: string | null;
+  clueKey?: string | null;
+  recallKind: string;
+  prompt: string;
+  response: string;
+  outcome: 'success' | 'partial' | 'missed';
+  scheduledFor?: string | null;
+  answeredAt?: string | null;
+  intervalDays: number;
+  nextDueAt: string;
+}): Promise<KnowledgeRecallEvent> {
+  const result = await query(
+    `INSERT INTO knowledge_recall_events
+       (user_id, memory_item_id, investigation_id, clue_key, recall_kind, prompt, response,
+        outcome, scheduled_for, answered_at, interval_days, next_due_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+     RETURNING ${KNOWLEDGE_RECALL_EVENT_COLUMNS}`,
+    [
+      data.userId,
+      data.memoryItemId,
+      data.investigationId ?? null,
+      data.clueKey ?? null,
+      data.recallKind,
+      data.prompt,
+      data.response,
+      data.outcome,
+      data.scheduledFor ?? null,
+      data.answeredAt ?? null,
+      data.intervalDays,
+      data.nextDueAt,
+    ],
+  );
+  return mapRow<KnowledgeRecallEvent>(result.rows[0]);
+}
+
+export async function listKnowledgeRecallEvents(
+  memoryItemId: string,
+  userId: string,
+): Promise<KnowledgeRecallEvent[]> {
+  const result = await query(
+    `SELECT ${KNOWLEDGE_RECALL_EVENT_COLUMNS} FROM knowledge_recall_events
+      WHERE memory_item_id = $1 AND user_id = $2
+      ORDER BY created_at DESC, id DESC`,
+    [memoryItemId, userId],
+  );
+  return mapRows<KnowledgeRecallEvent>(result.rows);
+}
+
+export interface DiscoveryUnlock {
+  id: string;
+  investigationId: string;
+  userId: string;
+  clueKey: string;
+  unlockKey: string;
+  kind: string;
+  targetRef: string;
+  payload: unknown;
+  appliedAt: Date | null;
+  createdAt: Date;
+}
+
+const DISCOVERY_UNLOCK_COLUMNS = `id, investigation_id, user_id, clue_key, unlock_key, kind,
+  target_ref, payload, applied_at, created_at`;
+
+export async function getDiscoveryUnlocks(
+  investigationId: string,
+  userId: string,
+): Promise<DiscoveryUnlock[]> {
+  const result = await query(
+    `SELECT ${DISCOVERY_UNLOCK_COLUMNS} FROM investigation_discovery_unlocks
+      WHERE investigation_id = $1 AND user_id = $2
+      ORDER BY clue_key ASC, created_at ASC`,
+    [investigationId, userId],
+  );
+  return mapRows<DiscoveryUnlock>(result.rows);
+}
+
+export async function getDiscoveryUnlock(
+  investigationId: string,
+  userId: string,
+  unlockKey: string,
+): Promise<DiscoveryUnlock | null> {
+  const result = await query(
+    `SELECT ${DISCOVERY_UNLOCK_COLUMNS} FROM investigation_discovery_unlocks
+      WHERE investigation_id = $1 AND user_id = $2 AND unlock_key = $3 LIMIT 1`,
+    [investigationId, userId, unlockKey],
+  );
+  return result.rows[0] ? mapRow<DiscoveryUnlock>(result.rows[0]) : null;
+}
+
+/** Idempotent: a repeated accepted submission never duplicates unlock rows. */
+export async function createDiscoveryUnlockIfMissing(data: {
+  investigationId: string;
+  userId: string;
+  clueKey: string;
+  unlockKey: string;
+  kind: string;
+  targetRef: string;
+  payload: Record<string, unknown>;
+}): Promise<DiscoveryUnlock> {
+  const inserted = await query(
+    `INSERT INTO investigation_discovery_unlocks
+       (investigation_id, user_id, clue_key, unlock_key, kind, target_ref, payload)
+     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)
+     ON CONFLICT (investigation_id, clue_key, unlock_key) DO NOTHING
+     RETURNING ${DISCOVERY_UNLOCK_COLUMNS}`,
+    [
+      data.investigationId,
+      data.userId,
+      data.clueKey,
+      data.unlockKey,
+      data.kind,
+      data.targetRef,
+      JSON.stringify(data.payload),
+    ],
+  );
+  if (inserted.rows[0]) return mapRow<DiscoveryUnlock>(inserted.rows[0]);
+  const existing = await getDiscoveryUnlock(data.investigationId, data.userId, data.unlockKey);
+  if (!existing) throw new Error('[M7] unlock insert succeeded without a readable row');
+  return existing;
+}
+
+/** Conditional update makes action application idempotent and race-safe. */
+export async function markDiscoveryActionUnlockApplied(
+  id: string,
+  investigationId: string,
+  userId: string,
+  appliedAt: string,
+): Promise<boolean> {
+  const result = await query(
+    `UPDATE investigation_discovery_unlocks SET applied_at = $4
+      WHERE id = $1 AND investigation_id = $2 AND user_id = $3 AND applied_at IS NULL
+      RETURNING id`,
+    [id, investigationId, userId, appliedAt],
+  );
+  return result.rows.length > 0;
+}
+
+// ---------------------------------------------------------------------------
+// M8-6: personal progress aggregates (read-only, session-user scoped).
+//
+// These helpers are deliberately just COUNT/GROUP BY over data the player
+// already owns. They never read canonical_truth, hidden evidence, evaluation
+// reason codes, or another user's rows. The route/service owns the explicit
+// allowlisted DTO; keeping the SQL here preserves the existing data-layer
+// boundary (routes never build their own queries).
+// ---------------------------------------------------------------------------
+
+export interface InvestigationStatusCount {
+  status: string;
+  count: number;
+  cases: number;
+}
+
+/** Per-status investigation counts + distinct cases played by this user. */
+export async function getInvestigationStatusCounts(userId: string): Promise<InvestigationStatusCount[]> {
+  const result = await query(
+    `SELECT status,
+            COUNT(*)::int AS count,
+            COUNT(DISTINCT case_id)::int AS cases
+       FROM investigations
+      WHERE user_id = $1
+      GROUP BY status`,
+    [userId],
+  );
+  return result.rows.map((r: any) => ({
+    status: String(r.status ?? 'unknown'),
+    count: Number(r.count) || 0,
+    cases: Number(r.cases) || 0,
+  }));
+}
+
+/** Case ids this user has started (used only to exclude suggestions). */
+export async function getPlayedCaseIds(userId: string): Promise<string[]> {
+  const result = await query(
+    `SELECT DISTINCT case_id
+       FROM investigations
+      WHERE user_id = $1 AND case_id IS NOT NULL`,
+    [userId],
+  );
+  return result.rows.map((r: any) => String(r.case_id));
+}
+
+/** Server-awarded achievement counts, scoped through owned investigations. */
+export async function getAchievementTypeCounts(userId: string): Promise<Array<{ type: string; count: number }>> {
+  const result = await query(
+    `SELECT ca.achievement_type AS type, COUNT(*)::int AS count
+       FROM case_achievements ca
+       JOIN investigations i ON i.id = ca.investigation_id
+      WHERE i.user_id = $1
+      GROUP BY ca.achievement_type`,
+    [userId],
+  );
+  return result.rows.map((r: any) => ({
+    type: String(r.type ?? 'unknown'),
+    count: Number(r.count) || 0,
+  }));
+}
+
+/** Discovery acceptance + cross-case knowledge reuse counts. */
+export async function getDiscoveryProgressCounts(userId: string): Promise<{
+  acceptedSubmissions: number;
+  acceptedClues: number;
+  crossCaseApplications: number;
+  totalApplications: number;
+}> {
+  const result = await query(
+    `SELECT
+       (SELECT COUNT(*)::int FROM discovery_submissions
+          WHERE user_id = $1 AND accepted = true) AS accepted_submissions,
+       (SELECT COUNT(DISTINCT clue_key)::int FROM discovery_submissions
+          WHERE user_id = $1 AND accepted = true) AS accepted_clues,
+       (SELECT COUNT(*)::int
+          FROM knowledge_memory_cases kmc
+          JOIN knowledge_memory_items kmi ON kmi.id = kmc.memory_item_id
+         WHERE kmc.user_id = $1
+           AND kmc.case_id IS DISTINCT FROM kmi.first_case_id) AS cross_case_applications,
+       (SELECT COUNT(*)::int FROM knowledge_memory_cases
+          WHERE user_id = $1) AS total_applications`,
+    [userId],
+  );
+  const row = result.rows[0] ?? {};
+  return {
+    acceptedSubmissions: Number(row.accepted_submissions) || 0,
+    acceptedClues: Number(row.accepted_clues) || 0,
+    crossCaseApplications: Number(row.cross_case_applications) || 0,
+    totalApplications: Number(row.total_applications) || 0,
+  };
+}
+
+/** Honest "recent activity" window. No last-visit signal is assumed. */
+export async function getRecentProgressActivity(userId: string): Promise<{
+  newMemoryItems: number;
+  completedCases: number;
+  acceptedDiscoveries: number;
+  newNotifications: number;
+}> {
+  const result = await query(
+    `SELECT
+       (SELECT COUNT(*)::int FROM knowledge_memory_items
+          WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '7 days') AS new_memory_items,
+       (SELECT COUNT(*)::int FROM investigations
+          WHERE user_id = $1 AND status = 'completed'
+            AND completion_timestamp >= NOW() - INTERVAL '7 days') AS completed_cases,
+       (SELECT COUNT(*)::int FROM discovery_submissions
+          WHERE user_id = $1 AND accepted = true
+            AND created_at >= NOW() - INTERVAL '7 days') AS accepted_discoveries,
+       (SELECT COUNT(*)::int FROM notifications
+          WHERE user_id = $1 AND created_at >= NOW() - INTERVAL '7 days') AS new_notifications`,
+    [userId],
+  );
+  const row = result.rows[0] ?? {};
+  return {
+    newMemoryItems: Number(row.new_memory_items) || 0,
+    completedCases: Number(row.completed_cases) || 0,
+    acceptedDiscoveries: Number(row.accepted_discoveries) || 0,
+    newNotifications: Number(row.new_notifications) || 0,
+  };
+}
+
+/** Deterministic case suggestions: unplayed published cases, safe fields only. */
+export async function getUnplayedCaseSuggestions(
+  excludeCaseIds: readonly string[],
+  limit: number,
+): Promise<Array<{ id: string; title: string; genre: string | null; difficulty: string | null; duration: string | null }>> {
+  const result = await query(
+    `SELECT id, title, genre, difficulty, duration
+       FROM cases
+      WHERE COALESCE(publication_status, 'published') = 'published'
+        AND NOT (id = ANY($1::uuid[]))
+      ORDER BY title ASC
+      LIMIT $2`,
+    [[...excludeCaseIds], Math.max(1, Math.min(6, limit))],
+  );
+  return result.rows.map((r: any) => ({
+    id: String(r.id),
+    title: String(r.title ?? ''),
+    genre: r.genre === null || r.genre === undefined ? null : String(r.genre),
+    difficulty: r.difficulty === null || r.difficulty === undefined ? null : String(r.difficulty),
+    duration: r.duration === null || r.duration === undefined ? null : String(r.duration),
+  }));
 }

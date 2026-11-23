@@ -981,3 +981,142 @@ CREATE INDEX idx_reality_map_links_target
 COMMENT ON TABLE public.investigation_claims IS 'M4. Player-authored Reality Map claims. Player notes only; never used by verdict, progression or evidence release.';
 COMMENT ON TABLE public.investigation_hypotheses IS 'M4. Player-authored hypotheses. Player notes only; never used by verdict, progression or evidence release.';
 COMMENT ON TABLE public.reality_map_links IS 'M4. Player-authored links to visible material. Player notes only; never used by verdict, progression or evidence release.';
+
+
+-- =============================================================================
+-- M5 Perspective Engine (migration 009) - authored frameworks/experiences and
+-- player reflections/suggestion state. Mirrors migrations/009_m5_perspective_engine.sql.
+-- Educational/advisory only; never canonical truth, verdict or progression.
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS public.perspective_frameworks (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    framework_key text NOT NULL,
+    name text NOT NULL,
+    intellectual_domain text NOT NULL DEFAULT '',
+    summary text NOT NULL DEFAULT '',
+    core_questions jsonb DEFAULT '[]'::jsonb,
+    key_concepts jsonb DEFAULT '[]'::jsonb,
+    method_of_reasoning text NOT NULL DEFAULT '',
+    limitations jsonb DEFAULT '[]'::jsonb,
+    common_misconceptions jsonb DEFAULT '[]'::jsonb,
+    internal_differences jsonb DEFAULT '[]'::jsonb,
+    relevant_disciplines jsonb DEFAULT '[]'::jsonb,
+    display_order integer DEFAULT 0,
+    status text NOT NULL DEFAULT 'published' CHECK (status IN ('draft', 'published', 'retired')),
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT perspective_frameworks_pkey PRIMARY KEY (id),
+    CONSTRAINT perspective_frameworks_framework_key_key UNIQUE (framework_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_perspective_frameworks_status_order
+    ON public.perspective_frameworks USING btree (status, display_order);
+
+CREATE TABLE IF NOT EXISTS public.perspective_experiences (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    experience_key text NOT NULL,
+    title text NOT NULL DEFAULT '',
+    framework_key text NOT NULL,
+    format text NOT NULL CHECK (format IN (
+        'philosophical_parable', 'thought_experiment', 'ethical_dilemma',
+        'psychological_demonstration', 'historical_episode', 'scientific_controversy',
+        'spiritual_teaching', 'competing_arguments', 'mistaken_assumption', 'real_world_case'
+    )),
+    knowledge_class text NOT NULL CHECK (knowledge_class IN (
+        'established_scientific', 'contested_scientific', 'historical', 'legal',
+        'philosophical', 'religious_spiritual', 'fictional_in_world'
+    )),
+    perspective_class text NOT NULL DEFAULT 'framework_primer',
+    scope_note text NOT NULL DEFAULT '',
+    tradition_scope text NOT NULL DEFAULT '',
+    intellectual_purpose text NOT NULL DEFAULT '',
+    primary_question text NOT NULL DEFAULT '',
+    introduction text NOT NULL DEFAULT '',
+    intellectual_background text NOT NULL DEFAULT '',
+    main_idea text NOT NULL DEFAULT '',
+    detailed_explanation text NOT NULL DEFAULT '',
+    sections jsonb DEFAULT '[]'::jsonb,
+    historical_context text NOT NULL DEFAULT '',
+    epistemic_breakdown jsonb DEFAULT '{}'::jsonb,
+    key_concepts jsonb DEFAULT '[]'::jsonb,
+    supporting_sources jsonb DEFAULT '[]'::jsonb,
+    limitations jsonb DEFAULT '[]'::jsonb,
+    counterarguments jsonb DEFAULT '[]'::jsonb,
+    common_misconceptions jsonb DEFAULT '[]'::jsonb,
+    reflection_questions jsonb DEFAULT '[]'::jsonb,
+    activities jsonb DEFAULT '[]'::jsonb,
+    recommendation_tags jsonb DEFAULT '[]'::jsonb,
+    related_experience_keys jsonb DEFAULT '[]'::jsonb,
+    related_specialist_keys jsonb DEFAULT '[]'::jsonb,
+    related_artifact_keys jsonb DEFAULT '[]'::jsonb,
+    related_case_titles jsonb DEFAULT '[]'::jsonb,
+    estimated_minutes integer DEFAULT 10,
+    difficulty text NOT NULL DEFAULT 'introductory' CHECK (difficulty IN ('introductory', 'intermediate', 'advanced')),
+    display_order integer DEFAULT 0,
+    status text NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'published', 'retired')),
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT perspective_experiences_pkey PRIMARY KEY (id),
+    CONSTRAINT perspective_experiences_experience_key_key UNIQUE (experience_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_perspective_experiences_framework
+    ON public.perspective_experiences USING btree (framework_key);
+CREATE INDEX IF NOT EXISTS idx_perspective_experiences_status_order
+    ON public.perspective_experiences USING btree (status, display_order);
+
+CREATE TABLE IF NOT EXISTS public.perspective_reflections (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    experience_id uuid NOT NULL,
+    experience_key text NOT NULL DEFAULT '',
+    user_id uuid NOT NULL,
+    investigation_id uuid,
+    prompt_index integer DEFAULT 0,
+    prompt text NOT NULL DEFAULT '',
+    reflection_kind text NOT NULL DEFAULT 'reflection' CHECK (reflection_kind IN (
+        'reflection', 'argument_for', 'argument_against', 'assumption',
+        'open_question', 'alternative_interpretation', 'disagreement',
+        'hypothesis_reconsideration'
+    )),
+    response text NOT NULL,
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT perspective_reflections_pkey PRIMARY KEY (id),
+    CONSTRAINT perspective_reflections_response_nonempty CHECK (length(btrim(response)) > 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_perspective_reflections_user_experience
+    ON public.perspective_reflections USING btree (user_id, experience_key, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_perspective_reflections_investigation_user
+    ON public.perspective_reflections USING btree (investigation_id, user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS public.perspective_suggestion_state (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    investigation_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    experience_key text NOT NULL,
+    reason_code text NOT NULL DEFAULT '',
+    state_fingerprint text NOT NULL DEFAULT '',
+    status text NOT NULL DEFAULT 'opened' CHECK (status IN ('dismissed', 'opened', 'saved')),
+    created_at timestamp without time zone DEFAULT now(),
+    updated_at timestamp without time zone DEFAULT now(),
+    CONSTRAINT perspective_suggestion_state_pkey PRIMARY KEY (id),
+    CONSTRAINT perspective_suggestion_state_investigation_user_experience_key
+        UNIQUE (investigation_id, user_id, experience_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_perspective_suggestion_state_user
+    ON public.perspective_suggestion_state USING btree (user_id, investigation_id);
+
+ALTER TABLE public.investigation_claims
+    ADD COLUMN IF NOT EXISTS source_perspective_experience_id uuid,
+    ADD COLUMN IF NOT EXISTS source_perspective_reflection_id uuid;
+
+ALTER TABLE public.notebook_entries
+    ADD COLUMN IF NOT EXISTS perspective_experience_id uuid;
+
+COMMENT ON TABLE public.perspective_frameworks IS 'M5. Authored intellectual lenses. Educational content only; never canonical truth or verdict input.';
+COMMENT ON TABLE public.perspective_experiences IS 'M5. Authored teaching modules. Educational/advisory only; never stores canonical truth.';
+COMMENT ON TABLE public.perspective_reflections IS 'M5. Player-authored reflections. Player notes only.';
+COMMENT ON TABLE public.perspective_suggestion_state IS 'M5. Advisory suggestion UI state only.';

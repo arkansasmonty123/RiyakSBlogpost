@@ -1,19 +1,23 @@
 {
   "version": 1,
-  "updated_at": "2026-11-23T09:15:00Z",
+  "updated_at": "2026-11-24T04:45:00Z",
   "status": "idle",
   "objective": "Deliver PRD MVP for THE INVESTIGATION (project-investigation) with autonomous orchestration.",
-  "current_milestone": "Milestone 4 complete: Reality Map & Investigative Reasoning Engine",
+  "current_milestone": "M8 complete: Deployment & Beta Readiness",
   "active_task_id": null,
   "active_agent": null,
-  "last_completed_task_id": "M4-REALITY-MAP",
-  "next_action": "Await next milestone direction. Optional: Playwright UI/a11y pass on request, expand reality-map prompts/tutorials, production hardening.",
+  "last_completed_task_id": "M8-WAVE7-S1",
+  "next_action": "M8 complete; report delivered; beta gating operational; no public deploy. Await next milestone direction.",
   "model_policy": {
     "active_model": "opencode/iceman-free",
     "fallback_models": [
       "opencode/hy4-flash-free"
     ],
-    "last_model_error": null,
+    "last_model_error": {
+      "at": "2026-11-23T20:45:00Z",
+      "task": "M8-AUDIT",
+      "error": "Architect subagent hit free usage limit"
+    },
     "waiting_for_model_capacity": false,
     "wait_reason": null,
     "policy_file": "project-management/MODEL-POLICY.md"
@@ -290,17 +294,340 @@
       "status": "done",
       "result_summary": "Full verification: typecheck PASS, db:schema:verify PASS (28/28,296), smoke-db PASS, reality-map:validate PASS, knowledge:validate PASS, case:validate PASS, frontend build PASS, test:http 88/88 PASS.",
       "next_action": null
+    },
+    {
+      "task_id": "M5-AUDIT",
+      "title": "Audit and plan Milestone 5 Perspective Engine",
+      "agent": "orchestrator+architect",
+      "status": "done",
+      "result_summary": "Inspected PRD, M3 provenance/knowledge schema, specialists/notebook/Reality Map, frontend routes/tabs, tests. M5 scope confirmed additive.",
+      "next_action": null
+    },
+    {
+      "task_id": "M5-PLAN",
+      "title": "Architect M5 Perspective Engine plan",
+      "agent": "architect",
+      "status": "done",
+      "result_summary": "Architect produced M5 plan: migration 009, 7 frameworks, 12 experiences, pure recommendations, advisory suggestions, RM/notebook/specialist integration, independent exploration, validators/tests.",
+      "next_action": null
+    },
+    {
+      "task_id": "M5-FOUNDATION",
+      "title": "M5 foundation migration/types/registry/seed wiring",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Migration 009, 7 frameworks, pure perspective modules, DB functions, seed/validate/schema/CI wiring. Verified by subagent: typecheck PASS, db:schema:verify PASS (32/371), perspectives:validate PASS (2 warnings, 0 experiences), smoke-db PASS, test:http 88/88 PASS, frontend build PASS, npm test PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "M5-RESEARCH",
+      "title": "M5 source research/verification",
+      "agent": "researcher",
+      "status": "done",
+      "result_summary": "Researcher subagent model-limited; orchestrator compiled conservative bibliographic notes in project-management/M5-SOURCE-NOTES.md (12 topics, pending_review defaults, no fabricated URLs/quotes).",
+      "next_action": "Use during M5-CONTENT authoring; human/researcher can verify URLs later."
+    },
+    {
+      "task_id": "M5-CONTENT",
+      "title": "Author 12 perspective experiences",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "7 spec frameworks aligned; 12 substantive experiences authored with conservative pending_review provenance; discovery/case-bridges/recommendations/specialist-context updated; seed/validate hardened. Verified: typecheck PASS, db:seed:perspectives PASS (7/12), perspectives:validate PASS, smoke-db PASS, test:http 102/102 PASS, frontend build PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "M5-API",
+      "title": "M5 backend API and integrations",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Perspective routes/reflections/suggestions/chat-notebook-claim bridges added; smoke-http +14 (102/102). Also cleaned stale framework rows/rate_limits from local smoke churn. typecheck PASS, db:schema:verify PASS (32/371), perspectives:validate PASS, frontend build PASS, npm test PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "M5-UI",
+      "title": "M5 frontend exploration and integration",
+      "agent": "ui-ux-frontend",
+      "status": "done",
+      "result_summary": "Perspectives library/detail routes, nav, investigation Perspectives tab, suggestions/reflections, RM/notebook/specialist bridges, a11y/responsive. typecheck PASS, frontend build PASS, test:http 102/102 PASS, perspectives:validate PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "M5-VERIFY",
+      "title": "M5 full verification and report",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Full verification PASS: typecheck, test:smoke, db:schema:verify (32/371), case:validate, knowledge:validate, reality-map:validate, perspectives:validate, frontend build, test:http 102/102.",
+      "next_action": null
+    },
+    {
+      "task_id": "M5.5-PLAYTEST",
+      "title": "Playtest 3 investigations and intellectual loop",
+      "agent": "user-tester",
+      "status": "in_progress",
+      "result_summary": null,
+      "next_action": "Run exploratory playtests with Playwright evidence."
+    },
+    {
+      "task_id": "M5.5-FIXES-1",
+      "title": "Fix demonstrated M5.5 friction",
+      "agent": "builder/orchestrator",
+      "status": "done",
+      "result_summary": "Fixed F1 auth redirect home; F2/F3 reflection API contract+promptIndex null+defensive handling; F4 specialist bridge case-filtered; F5 smoke fixture cleanup in smoke-http; F6 investigative actions marked performed/disabled. Verified: typecheck PASS, smoke-db PASS, case:validate PASS, knowledge:validate PASS, reality-map:validate PASS, perspectives:validate PASS, frontend build PASS.",
+      "next_action": "Re-test on fresh stack; address F7-F12."
+    },
+    {
+      "task_id": "M6-AUDIT",
+      "title": "Audit and plan M6 Living Investigations",
+      "agent": "orchestrator+architect",
+      "status": "done",
+      "result_summary": "Architect plan received (additive migration 010, living-world engine, 3 showcase packages, inbox/notifications, activity UI, deterministic catch-up, safety/validation/tests). Foundation files created: migration 010, verify-schema updated, CI/package scripts wired, living-world types/safety/dto created.",
+      "next_action": "Execute M6 build waves."
+    },
+    {
+      "task_id": "M6-BUILD-CORE",
+      "title": "Build M6 living-world engine and case-event packages",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Engine/oracle, 3 case-event packages, registry, seed/validate/test-living scripts created. Verified: typecheck PASS, db:seed:case-events PASS, case-events:validate PASS, test:living PASS (21), db:schema:verify PASS (36/36,427). No server/db/frontend edits yet.",
+      "next_action": "Integrate into server/db/frontend/tests."
+    },
+    {
+      "task_id": "M6-INTEGRATE",
+      "title": "Wire M6 into server/db/scheduler",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Wired M6 into server.ts: imports, init on investigation create, catch-up on active/read, activity/refresh/seen/narrate endpoints, notifications inbox/read endpoints, living-world scheduler sweep. Typecheck PASS.",
+      "next_action": "Verify with UI+tests."
+    },
+    {
+      "task_id": "M6-UI-TEST",
+      "title": "M6 frontend activity UI and smoke tests",
+      "agent": "ui-ux-frontend+builder",
+      "status": "done",
+      "result_summary": "UI activity tab/panel/inbox added (ui-ux-frontend). Smoke-http M6 block added (builder) and stale M5 reflection contract assertions corrected to current server contract. Full verification green.",
+      "next_action": "Finalize report."
+    },
+    {
+      "task_id": "M6-COMPLETE",
+      "title": "M6 verification and report",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "M6 Living Investigations delivered additively. test:http 110/110 PASS; typecheck PASS; frontend build PASS; db:schema:verify PASS (36/36,427); case-events:validate PASS; test:living PASS (21); all existing validators PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "M7-AUDIT",
+      "title": "Audit and plan M7 Real-World Discovery",
+      "agent": "orchestrator+architect",
+      "status": "done",
+      "result_summary": "Architect plan delivered for M7 Real-World Discovery & Knowledge Retention Engine: additive migration 011, typed discovery-clue packages, deterministic+bounded-LLM evaluation, pre-authored unlocks, knowledge memory graph/spaced retrieval, research journal/notebook integration, 3 showcase packages (6 clues), full test plan.",
+      "next_action": "Execute M7 in additive waves."
+    },
+    {
+      "task_id": "M7-1-FOUNDATION",
+      "title": "M7 foundation migration/types/engine skeleton",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Migration 011, 8 tables + notebook cols, verify-schema 44/44 537 cols, discovery-clues pure modules, 3 packages/6 clues, seed/validate/test-discovery scripts, CI/package wiring. Verified: typecheck PASS, schema PASS, seed PASS, validate PASS, test:discovery PASS (59), npm test PASS (110/110).",
+      "next_action": "Build backend/API."
+    },
+    {
+      "task_id": "M7-2-CONTENT",
+      "title": "M7 showcase discovery packages",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "6 authored clues in 3 showcase packages, citations pending_review, no URLs, leakage guards; validated.",
+      "next_action": null
+    },
+    {
+      "task_id": "M7-3-BACKEND",
+      "title": "M7 discovery service, routes, LLM wiring, smoke tests",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Discovery service/db helpers/routes/LLM helper/notebook integration/unlock apply/M7 smoke tests complete. 119/119 test:http, full npm test PASS. No canonical leakage, deterministic acceptance, action unlock via recordInvestigationAction only.",
+      "next_action": "Build frontend."
+    },
+    {
+      "task_id": "M7-4-FRONTEND",
+      "title": "M7 discoveries/journal frontend",
+      "agent": "ui-ux-frontend",
+      "status": "done",
+      "result_summary": "Discoveries tab/panel, submission/eval/unlock UI, recall, /knowledge journal page, notebook discovery provenance, api/types, CSS. typecheck PASS, frontend build PASS.",
+      "next_action": "Full verification."
+    },
+    {
+      "task_id": "M7-5-VERIFY",
+      "title": "M7 full verification and report",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Full npm test PASS (119/119 test:http, 0 failed); frontend build PASS; schema verify 44/44 537 cols; all validators PASS. M7 complete.",
+      "next_action": null
+    },
+    {
+      "task_id": "M7-COMPLETE",
+      "title": "M7 verification and report",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "M7 delivered additively. Migration 011, discovery-clue engine, 3 packages/6 clues, deterministic+bounded LLM eval, pre-authored unlocks, memory graph/spaced recall, journal/notebook integration, discoveries UI, 119/119 tests.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-AUDIT",
+      "title": "Audit and plan M8 product completion",
+      "agent": "orchestrator+architect",
+      "status": "done",
+      "result_summary": "Architect M8 plan received (grounded in repo, 7 waves, additive, no deploy before W6 security/reliability gates). Orchestrator-launched Wave 1 slice 1 already in progress; continue under this plan.",
+      "next_action": "Execute Wave 1."
+    },
+    {
+      "task_id": "M8-WAVE1",
+      "title": "Wave 1 onboarding/first experience",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "W1 gate met (with human-playtest caveat): welcome/skip/resume/persistent progress, case guidance, interactive checklist with realistic examples, progressive tips (evidence/suspects/chat/RM/Perspectives/Field Research), replay guide, external research/memory clarification. 124/124 test:http.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE1-S1",
+      "title": "Wave 1 slice 1 onboarding foundation",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Additive onboarding foundation delivered and verified.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE1-S2",
+      "title": "Wave 1 slice 2 interactive tutorial and replay",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Interactive 6-step checklist, replay guide, evidence/suspects/chat tips, research-memory copy clarification, tutorialState allowlist extended. Verified: typecheck PASS, frontend build PASS, db:schema:verify PASS (45/45,546), test:http PASS (124/124), Playwright 375/1440 checks PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE2",
+      "title": "Wave 2 unified investigation UX and immersion",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "W2 gate met with caveats: InvestigationHQ (know/changed/attention/next actions), specialist immersion/continuity cues, no new tabs; deeper relationship simulation and tab consolidation deferred as low-risk polish. 124/124 test:http.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE2-S1",
+      "title": "Wave 2 slice 1 investigation HQ/status cues",
+      "agent": "ui-ux-frontend",
+      "status": "done",
+      "result_summary": "InvestigationHQ component added above tabs: progress/knowledge counts, what-changed/needs-attention cues with tab jumps, deterministic next-action guidance. Replaced old StatsPanel. Verified: typecheck PASS, frontend build PASS, test:http 124/124 PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE2-S2",
+      "title": "Wave 2 slice 2 specialist immersion and continuity",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Specialist identity/voice/limits/bias cues strengthened in prompts and UI; continuity note from visible conversation history; disagreement framing; deterministic fallback preserved. Verified: typecheck PASS, frontend build PASS, test:http 124/124 PASS, knowledge:validate PASS, Playwright checks PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE3",
+      "title": "Wave 3 case quality audit and framework",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "W3 gate met with caveats: quality framework+audit report delivered, 25 cases audited, 6 refinement candidates selected, systemic spoiler leak fixed (0/25). Deeper narrative refinement for selected candidates remains follow-up.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE3-S1",
+      "title": "Wave 3 case quality scoring framework and audit",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Read-only case:quality framework + M8-CASE-QUALITY-AUDIT.md/json. 25 cases audited: avg 22.4/42, 1 publication-ready benchmark (Midnight Heist 41/42), 2 needs-refinement, 22 draft. Systemic issue: 24/25 leak culprit name in player-facing objectives/briefing. 6 refinement candidates selected. case:validate PASS, case:quality PASS, typecheck PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE3-S2",
+      "title": "Wave 3 systemic spoiler leak fix and candidate refinement",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Fixed systemic culprit-name leakage in player-facing objectives for 24/25 cases; seed source updated; canonical truth checksum unchanged. case:quality avg 24.4/42, 0/25 leaks. Verified: typecheck PASS, case:validate PASS, case:quality PASS, test:http 124/124 PASS, npm test PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE4",
+      "title": "Wave 4 AI quality and cost optimization",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "W4 gate met with caveats: instrumentation, configurable bounds, guardrails, optional one-shot failover, cost notes delivered; deterministic fallback/USE_LLM=false preserved. Repetition/contradiction detection and request dedupe remain light follow-ups.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE4-S1",
+      "title": "Wave 4 slice 1 LLM grounding/instrumentation/failover hardening",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Additive LLM hardening: llm-guardrails, shared provider failover/bounds/validation, structured metrics logging, server prompt-cap/guarded generateAIResponse, .env.example, test-llm-controls, M8-AI-COST-NOTES.md. Verified: typecheck PASS, test:http 124/124 PASS, test:discovery PASS, test:llm-controls PASS, npm test EXIT=0.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE5",
+      "title": "Wave 5 long-term engagement and personal progression",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "W5 gate met: personal progression/profile reuses existing systems; meaningful milestones/return summary/suggestions; no gimmicks. 127/127 test:http.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE5-S1",
+      "title": "Wave 5 slice 1 profile/progress/return summary",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "/api/me/progress + /progress page added. Aggregates history/knowledge/memory/milestones/7-day return summary/deterministic suggestions. No XP/streaks, no schema changes, ownership-safe. Verified: typecheck PASS, frontend build PASS, test:http 127/127 PASS, npm test PASS, Playwright 375/1440 light/dark/reduced-motion PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE6",
+      "title": "Wave 6 security reliability performance gate",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "W6 gate PASS WITH CONDITIONS: no critical/high unresolved. Security medium findings addressed/documented; reliability regression green (127/127). Operator config required before deploy (NODE_ENV+TLS, tight rate limits, FRONTEND_URL/ALLOWED_ORIGINS, CSRF check enabled, failover key).",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE6-S1",
+      "title": "W6 security hardening fixes and docs",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Body limit 1mb configurable, explicit helmet CSP, lightweight Origin/Referer CSRF guard (missing Origin allowed), startup env warnings, .env.example/README hardening docs, npm audit documented. Verified: typecheck PASS, smoke-db PASS, test:http 127/127 PASS, npm test EXIT 0.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE7",
+      "title": "Wave 7 deployment and beta readiness",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "W7 beta-readiness complete; all M8 waves delivered. No public deploy. Beta gating operational for operator sign-off.",
+      "next_action": null
+    },
+    {
+      "task_id": "M8-WAVE7-S1",
+      "title": "W7 beta readiness artifacts and endpoints",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Deployment/runbook docs, health/readiness endpoint, privacy/terms/feedback pages, auth-scoped user export/delete (two-step confirm), optional beta-access-code gate default-off, smoke tests (133 total). Verified: typecheck PASS, frontend build PASS, test:http 133/133 PASS, Playwright PASS. M8 complete.",
+      "next_action": null
     }
   ],
   "recovery": {
-    "last_checkpoint": "2026-11-23T09:15:00Z",
+    "last_checkpoint": "2026-11-24T04:45:00Z",
     "resume_instructions": "Read ORCHESTRATION-STATE.json, ORCHESTRATION-LOG.md, RECOVERY.md, DEV-STATUS.md, TASKS.md, BUGS.md, MODEL-POLICY.md; validate state against repo; continue from next_action.",
     "open_blockers": [],
     "validation_notes": [
       "2026-11-23: 25 published cases seeded; case:validate PASS (25 cases, 202 evidence, 25 canonical truth rows).",
       "2026-11-23: smoke-http fixture fixed to select The Midnight Heist by title; test:http 57/57 PASS after seeding.",
       "2026-11-23: AI infra pluggable (Gemini/OpenAI-compatible/local + deterministic fallback); no keys hardcoded.",
-      "Remaining external/infra: production deployment, real push infra, higher-quality AI model keys/runtime - require user infra/credentials."
+      "Remaining external/infra: production deployment, real push infra, higher-quality AI model keys/runtime - require user infra/credentials.",
+      "2026-11-23 M8-W1: 124/124 test:http, schema 45/45 546 cols, frontend build PASS. W1 builder noted pre-existing fresh-bootstrap FK ordering issue in 000_baseline.sql/ci-schema.sql (sessions FK before users PK) worked around locally; CI bootstrap should be verified/fixed if affected.",
+      "2026-11-24: Scrutinizer subagent incorrectly marked M8-WAVE6 done/ready for deployment in ORCHESTRATION-STATE; corrected by orchestrator. W6 conditions remain open; W7 not started.",
+      "2026-11-24: M8 complete with all 7 waves delivered. 133/133 test:http, schema 45/45 546 cols, typecheck PASS. W6 conditions documented in M8-W6-GATE-REPORT.md. W7 docs/endpoints operational. No public deployment authorized."
     ]
   }
 }

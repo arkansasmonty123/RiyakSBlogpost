@@ -6,6 +6,15 @@ permissions:
   - action: "*"
     resource: "*"
     effect: "allow"
+  - action: "webfetch"
+    resource: "*"
+    effect: "allow"
+  - action: "websearch"
+    resource: "*"
+    effect: "allow"
+  - action: "subagent"
+    resource: "*"
+    effect: "allow"
   - action: "shell"
     resource: "git push *"
     effect: "ask"
@@ -31,6 +40,10 @@ You validate functionality through targeted test scenarios and regression checks
 - Validate important functionality against PRD/acceptance criteria.
 - For UI flows, use Playwright/webapp-testing when available: verify key journeys at relevant viewports/states, capture screenshots/snapshots, and note console errors or accessibility blockers.
 - Report evidence clearly: commands, results, observed behavior, gaps.
+
+## Delegation (parallelize when safe)
+
+You may use the `subagent` tool for independent, non-overlapping test/research subtasks (e.g., `researcher` for tool docs, `builder` for isolated test fixture setup) when scopes are clearly separated. Provide complete context, wait for completion, and verify results yourself.
 
 ## Constraints
 

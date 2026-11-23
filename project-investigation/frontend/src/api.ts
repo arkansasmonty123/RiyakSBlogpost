@@ -354,6 +354,9 @@ export interface PublicNotebookEntry {
   title: string;
   content: string;
   sourceSnapshot: NotebookSourceSnapshot;
+  // M7 discovery provenance (present when saved from a discovery/memory context).
+  discoveryMemoryId?: string | null;
+  discoveryClueKey?: string | null;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -416,6 +419,7 @@ export interface Checkpoint {
 export interface InvestigationActionView {
   action: string;
   label: string;
+  performed?: boolean;
 }
 
 export interface CheckpointState {
@@ -529,6 +533,61 @@ export interface Achievement {
   investigationId?: string;
   achievementType: string;
   unlockedAt?: string;
+}
+
+// --- M8-6 personal progress ------------------------------------------------
+// Private, player-safe summary derived from the signed-in user's own activity.
+// No XP/levels/streaks/leaderboards and no canonical or hidden case data.
+
+export interface ProgressMilestone {
+  key: string;
+  label: string;
+  description: string;
+  achieved: boolean;
+}
+
+export interface ProgressSuggestion {
+  caseId: string;
+  title: string;
+  genre: string | null;
+  difficulty: string | null;
+  duration: string | null;
+  reason: string;
+}
+
+export interface ProgressDTO {
+  generatedAt: string;
+  disclaimer: string;
+  investigations: {
+    completed: number;
+    abandoned: number;
+    active: number;
+    paused: number;
+    total: number;
+    distinctCasesPlayed: number;
+  };
+  knowledge: {
+    discoveriesAccepted: number;
+    memoryItems: number;
+    mastery: { new: number; developing: number; proficient: number; mastered: number };
+    dueRecall: number;
+    crossCaseApplications: number;
+    successfulRecalls: number;
+  };
+  openThreads: {
+    unresolvedQuestions: number;
+    followUpApplications: number;
+    samples: string[];
+  };
+  milestones: ProgressMilestone[];
+  recentActivity: {
+    windowDays: number;
+    newMemoryItems: number;
+    completedCases: number;
+    acceptedDiscoveries: number;
+    newNotifications: number;
+  };
+  suggestions: ProgressSuggestion[];
 }
 
 // --- Reality Map (M4) --------------------------------------------------------
@@ -737,6 +796,477 @@ export interface RealityTutorialResponse {
   links: RealityLink[];
 }
 
+// --- Perspective Engine (M5) -------------------------------------------------
+// Advisory, player-owned perspective content. Perspectives are never evidence,
+// never affect verdicts, never reveal canonical truth, and never auto-modify
+// Reality Map claims/confidence. All endpoints are auth-gated.
+
+export type PerspectiveFormat =
+  | 'philosophical_parable'
+  | 'thought_experiment'
+  | 'ethical_dilemma'
+  | 'psychological_demonstration'
+  | 'historical_episode'
+  | 'scientific_controversy'
+  | 'spiritual_teaching'
+  | 'competing_arguments'
+  | 'mistaken_assumption'
+  | 'real_world_case';
+
+export type PerspectiveClass =
+  | 'framework_primer'
+  | 'case_bridge'
+  | 'challenge'
+  | 'reflection'
+  | 'counterexample'
+  | 'comparison';
+
+export type PerspectiveKnowledgeClass =
+  | 'established_scientific'
+  | 'contested_scientific'
+  | 'historical'
+  | 'legal'
+  | 'philosophical'
+  | 'religious_spiritual'
+  | 'fictional_in_world';
+
+export type PerspectiveDifficulty = 'introductory' | 'intermediate' | 'advanced';
+
+export type PerspectiveReflectionKind =
+  | 'reflection'
+  | 'argument_for'
+  | 'argument_against'
+  | 'assumption'
+  | 'open_question'
+  | 'alternative_interpretation'
+  | 'disagreement'
+  | 'hypothesis_reconsideration';
+
+export type PerspectiveSuggestionState = 'dismissed' | 'opened' | 'saved';
+
+export interface PerspectiveFramework {
+  id: string;
+  frameworkKey: string;
+  name: string;
+  intellectualDomain: string;
+  summary: string;
+  coreQuestions: string[];
+  keyConcepts: string[];
+  methodOfReasoning: string;
+  limitations: string[];
+  commonMisconceptions: string[];
+  internalDifferences: string[];
+  relevantDisciplines: string[];
+  displayOrder: number;
+  status: string;
+}
+
+export interface PerspectiveSource {
+  label: string;
+  author?: string;
+  title?: string;
+  url?: string | null;
+  sourceType?: SourceType | null;
+  verificationStatus?: VerificationStatus | string;
+  sourceVerified?: boolean;
+  notes?: string;
+  verificationNotes?: string;
+  quote?: string;
+}
+
+export interface PerspectiveExperienceSummary {
+  experienceKey: string;
+  title: string;
+  frameworkKey: string;
+  format: PerspectiveFormat | string;
+  knowledgeClass: PerspectiveKnowledgeClass | string;
+  perspectiveClass: PerspectiveClass | string;
+  scopeNote: string;
+  traditionScope: string;
+  intellectualPurpose: string;
+  primaryQuestion: string;
+  keyConcepts: string[];
+  estimatedMinutes: number;
+  difficulty: PerspectiveDifficulty | string;
+  displayOrder: number;
+  status: string;
+  relatedExperienceKeys: string[];
+  relatedCaseTitles: string[];
+}
+
+export interface PerspectiveExperienceDetail extends PerspectiveExperienceSummary {
+  introduction: string;
+  intellectualBackground: string;
+  mainIdea: string;
+  detailedExplanation: string;
+  sections: Array<{ heading: string; body: string }>;
+  historicalContext: string;
+  epistemicBreakdown: Record<string, string>;
+  supportingSources: PerspectiveSource[];
+  limitations: string[];
+  counterarguments: string[];
+  commonMisconceptions: string[];
+  reflectionQuestions: string[];
+  activities: string[];
+  recommendationTags: string[];
+  relatedSpecialistKeys: string[];
+  relatedArtifactKeys: string[];
+  framework: PerspectiveFramework | null;
+  advisory: true;
+  isEvidence: false;
+  affectsVerdict: false;
+  disclaimer: string;
+}
+
+export interface PerspectiveDiscovery {
+  advisory: true;
+  disclaimer: string;
+  summary: string;
+  openingQuestions: Array<{ frameworkKey: string; frameworkName: string; question: string }>;
+  featured: Array<{
+    experienceKey: string;
+    title: string;
+    frameworkKey: string;
+    perspectiveClass: PerspectiveClass | string;
+    primaryQuestion: string;
+    scopeNote: string;
+    estimatedMinutes: number;
+  }>;
+  connections: Array<{
+    bridgeKey: string;
+    kind: string;
+    label: string;
+    note: string;
+    frameworkKeys: string[];
+  }>;
+  frameworkCount: number;
+  experienceCount: number;
+}
+
+export interface PerspectiveConnections {
+  advisory: true;
+  disclaimer: string;
+  experienceKey: string;
+  relatedExperiences: PerspectiveExperienceSummary[];
+  sharedConcepts: string[];
+  bridges: PerspectiveDiscovery['connections'];
+}
+
+export interface PerspectiveReflection {
+  id: string;
+  experienceId: string;
+  experienceKey: string;
+  userId: string;
+  investigationId: string | null;
+  promptIndex: number | null;
+  prompt: string;
+  reflectionKind: PerspectiveReflectionKind | string;
+  response: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface PerspectiveSuggestion {
+  experienceKey: string;
+  title: string;
+  frameworkKey: string;
+  reasonCodes: string[];
+  reasonText: string;
+  stateFingerprint: string;
+  state: PerspectiveSuggestionState | string | null;
+  advisory: true;
+  isEvidence: false;
+  affectsVerdict: false;
+}
+
+// --- Living Investigations / Activity (M6) ------------------------------------
+// Player-safe activity feed. All fields are server-projected DTOs; no canonical
+// truth, hidden evidence conditions, or future secret triggers are exposed.
+
+export interface SafeActivityChange {
+  kind: 'development' | 'flag' | 'lead' | 'action' | 'disagreement' | 'suspect_behavior' | 'opportunity_missed';
+  label: string;
+  evidenceId?: string;
+  action?: string;
+  specialistKey?: string;
+}
+
+export interface SafeActivityEvent {
+  id: string;
+  eventKey: string;
+  category: string;
+  status: string;
+  significance: 'high' | 'normal' | 'low';
+  groupKey: string | null;
+  title: string;
+  summary: string;
+  detail: string;
+  whyItMatters: string;
+  requiresResponse: boolean;
+  responseOptions: Array<{ kind: string; label: string }>;
+  actor: { kind: string; displayName: string; specialistKey?: string | null };
+  occurredAt: string | null;
+  eligibleAt?: string | null;
+  changes: SafeActivityChange[];
+  relatedArtifactKeys: string[];
+  provenanceLabel: string;
+}
+
+export interface ActivityGroup {
+  groupKey: string;
+  title: string;
+  significance: 'high' | 'normal' | 'low';
+  items: SafeActivityEvent[];
+}
+
+export interface CatchUpSummary {
+  from: string | null;
+  to: string;
+  summary: string;
+  highlights: string[];
+  unresolvedCount: number;
+  newCount: number;
+}
+
+export interface UpcomingTeaser {
+  title: string;
+  certainty: 'tentative';
+  category: string;
+  significance: 'high' | 'normal' | 'low';
+}
+
+export interface OutstandingDisagreement {
+  eventId: string;
+  topic: string;
+  specialistAKey: string;
+  specialistBKey: string;
+  positionA: string;
+  positionB: string;
+  uncertaintyNote: string;
+  occurredAt: string | null;
+}
+
+export interface ActivitySnapshot {
+  sinceLastVisit: CatchUpSummary;
+  groups: ActivityGroup[];
+  counts: { total: number; unread: number; high: number; byCategory: Record<string, number> };
+  outstandingDisagreements: OutstandingDisagreement[];
+  pendingResponse: SafeActivityEvent[];
+  upcoming: UpcomingTeaser[];
+  hasMore: boolean;
+  nextEligibleAt: string | null;
+}
+
+export interface LivingWorldResult {
+  resolved: SafeActivityEvent[];
+  expired: SafeActivityEvent[];
+  evidenceChanges: Array<{ evidenceId: string; source: string; description: string; trigger: string }>;
+  hasMore: boolean;
+  nextEligibleAt: string | null;
+  counts: { resolved: number; expired: number; materialized: number; notifications: number };
+}
+
+export interface NotificationItem {
+  id: string;
+  investigationId: string | null;
+  eventId: string | null;
+  category: string;
+  priority: 'high' | 'normal' | 'low';
+  groupKey: string | null;
+  title: string;
+  body: string;
+  status: 'unread' | 'read' | 'archived';
+  createdAt: string | null;
+  readAt: string | null;
+}
+
+export interface NotificationsResponse {
+  unreadCount: number;
+  items: NotificationItem[];
+}
+
+// --- Real-World Discovery & Knowledge Retention (M7) -------------------------
+// Player-safe discovery/research DTOs. No canonical truth, no hidden evidence,
+// no scoring internals beyond the safe evaluation summary returned by the server.
+
+export interface SafeCitationDTO {
+  label: string;
+  bibliographyRef: string;
+  sourceUrl: string | null;
+  sourceVerified: boolean;
+  verificationStatus: string;
+}
+
+export interface SafeUnlockDTO {
+  key: string;
+  kind: string;
+  targetRef: string;
+  label: string;
+  detail: string;
+}
+
+export interface SafeDiscoveryClueDTO {
+  key: string;
+  subjectKey: string;
+  subjectLabel: string;
+  referenceCategory: string;
+  difficulty: string;
+  knowledgeStatus: string;
+  title: string;
+  prompt: string;
+  context: string;
+  citations: SafeCitationDTO[];
+  unlocks: SafeUnlockDTO[];
+  evidenceRefs: string[];
+  specialistKeys: string[];
+  accepted: boolean;
+  correctedUnderstanding: string | null;
+}
+
+export interface SafeEvaluationDTO {
+  classification: string;
+  accepted: boolean;
+  score: number;
+  confidence: string | null;
+  llmUsed: boolean;
+  memoryItemId: string | null;
+}
+
+export interface SafeSubmissionDTO {
+  id: string;
+  clueKey: string;
+  explanation: string;
+  subjectIdentification: string;
+  connectionExplanation: string;
+  uncertainty: string;
+  sourceRefs: string[];
+  evaluation: SafeEvaluationDTO;
+  createdAt: string | null;
+}
+
+export interface SafeMemoryItemDTO {
+  id: string;
+  subjectKey: string;
+  subjectLabel: string;
+  referenceCategory: string;
+  knowledgeStatus: string;
+  concepts: string[];
+  correctedUnderstanding: string;
+  latestExplanation: string;
+  firstClueKey: string | null;
+  firstDiscoveredAt: string | null;
+  lastRecallAt: string | null;
+  nextDueAt: string | null;
+  masteryStatus: string;
+  successfulRecalls: number;
+  failedRecalls: number;
+  unresolvedQuestions: string[];
+  followUpApplications: string[];
+  authoredSources: SafeCitationDTO[];
+}
+
+export interface SafeDiscoveryStateDTO {
+  clueKey: string;
+  state: string;
+  attemptCount: number;
+  surfacedAt: string | null;
+  researchStartedAt: string | null;
+  acceptedAt: string | null;
+  lastSubmittedAt: string | null;
+}
+
+export interface SafeDiscoveryUnlockRowDTO {
+  id: string;
+  clueKey: string;
+  unlockKey: string;
+  kind: string;
+  targetRef: string;
+  label: string;
+  detail: string;
+  applied: boolean;
+  action: string | null;
+}
+
+export interface DiscoveryRecallPromptDTO {
+  memoryId: string;
+  subjectLabel: string;
+  kind: string;
+  prompt: string;
+  nextDueAt: string | null;
+}
+
+export interface DiscoverySpecialistNoticeDTO {
+  clueKey: string;
+  unlockKey: string;
+  specialistKey: string;
+  prompt: string;
+}
+
+export interface DiscoverySnapshotDTO {
+  available: boolean;
+  packageKey: string | null;
+  version: string | null;
+  summary: string | null;
+  caseTitle: string | null;
+  disclaimer: string;
+  clues: SafeDiscoveryClueDTO[];
+  newClueKeys: string[];
+  states: SafeDiscoveryStateDTO[];
+  memories: SafeMemoryItemDTO[];
+  unlocks: SafeDiscoveryUnlockRowDTO[];
+  recallPrompts: DiscoveryRecallPromptDTO[];
+  specialistNotices: DiscoverySpecialistNoticeDTO[];
+}
+
+export interface DiscoveryClueDetailDTO {
+  clue: SafeDiscoveryClueDTO;
+  state: SafeDiscoveryStateDTO | null;
+  submissions: SafeSubmissionDTO[];
+  unlocks: SafeDiscoveryUnlockRowDTO[];
+  memory: SafeMemoryItemDTO | null;
+  disclaimer: string;
+}
+
+export interface DiscoverySubmitResultDTO {
+  submission: SafeSubmissionDTO | null;
+  accepted: boolean;
+  classification: string;
+  correctedUnderstanding: string | null;
+  memoryItemId: string | null;
+  unlocks: SafeDiscoveryUnlockRowDTO[];
+  duplicate: boolean;
+  state: SafeDiscoveryStateDTO;
+  disclaimer: string;
+}
+
+export interface DiscoveryUnlockApplyResultDTO {
+  unlock: SafeDiscoveryUnlockRowDTO;
+  applied: boolean;
+  alreadyApplied: boolean;
+  progression: unknown | null;
+  disclaimer: string;
+}
+
+export interface KnowledgeJournalDTO {
+  items: SafeMemoryItemDTO[];
+  duePrompts: DiscoveryRecallPromptDTO[];
+  disclaimer: string;
+}
+
+export interface KnowledgeJournalSubjectDTO {
+  memory: SafeMemoryItemDTO;
+  applications: Array<{ investigationId: string; caseId: string; clueKey: string; applicationContext: string; createdAt: string | null }>;
+  links: Array<{ fromSubjectKey: string; toSubjectKey: string; relationship: string; rationale: string }>;
+  recallHistory: Array<{ id: string; recallKind: string; outcome: string; answeredAt: string | null; nextDueAt: string | null; intervalDays: number | null }>;
+  disclaimer: string;
+}
+
+export interface KnowledgeRecallResultDTO {
+  memory: SafeMemoryItemDTO;
+  recall: { id: string; recallKind: string; outcome: string; answeredAt: string | null; nextDueAt: string | null; intervalDays: number | null };
+  disclaimer: string;
+}
+
 // --- Post-resolution solution (PROD-009) -------------------------------------
 // This is the safe, server-projected DTO returned only for COMPLETED, owned
 // investigations. It deliberately contains no hidden_events/internal fields.
@@ -801,6 +1331,68 @@ export interface JournalInput {
   isConfirmed?: boolean;
 }
 
+// --- Onboarding (M8 Wave 1) -----------------------------------------------------
+// Player-owned first-experience progress. Auth-gated; the server derives the
+// user from the session and never returns canonical/hidden data here.
+export interface OnboardingTutorialState {
+  // Contextual tab tips (slice 1).
+  reality?: boolean;
+  perspectives?: boolean;
+  fieldResearch?: boolean;
+  // Contextual tab tips (slice 2).
+  evidenceTip?: boolean;
+  suspectsTip?: boolean;
+  chatTip?: boolean;
+  // First-investigation interactive checklist (slice 2).
+  guideCompleted?: boolean;
+  stepBriefing?: boolean;
+  stepEvidence?: boolean;
+  stepChat?: boolean;
+  stepClaims?: boolean;
+  stepFieldResearch?: boolean;
+  stepVerdict?: boolean;
+}
+
+export interface OnboardingState {
+  welcomeSeen: boolean;
+  introCompleted: boolean;
+  skipped: boolean;
+  lastStep: string | null;
+  tutorialState: OnboardingTutorialState;
+  /** True when the intro was finished OR skipped; the overlay stays hidden. */
+  completed: boolean;
+}
+
+export interface OnboardingPatch {
+  welcomeSeen?: boolean;
+  introCompleted?: boolean;
+  skipped?: boolean;
+  lastStep?: string | null;
+  tutorialState?: OnboardingTutorialState;
+}
+
+// --- M8-W7 beta readiness (config, export, deletion) ----------------------------
+
+/** Public, non-sensitive runtime config exposed by GET /api/config. */
+export interface PublicConfig {
+  feedbackUrl: string;
+  betaAccessRequired: boolean;
+  version: string;
+}
+
+/** Shape of the player-data export. Player-authored fields only. */
+export interface AccountExportDTO {
+  exportedAt: string;
+  formatVersion: number;
+  notice: string;
+  profile: { id: string; email: string; createdAt: string | null; updatedAt: string | null };
+  onboarding: Record<string, unknown> | null;
+  investigations: Array<Record<string, unknown>>;
+  notebook: Array<Record<string, unknown>>;
+  knowledge: Record<string, Array<Record<string, unknown>>>;
+  notifications: Array<Record<string, unknown>>;
+}
+
 // --- Endpoints ------------------------------------------------------------------
 
 export const api = {
@@ -851,6 +1443,15 @@ export const api = {
       body: JSON.stringify(patch),
     }),
 
+  // M8 Wave 1: per-user onboarding progress (auth-gated, safe DTO).
+  getOnboarding: () => request<OnboardingState>('/api/me/onboarding'),
+
+  updateOnboarding: (patch: OnboardingPatch) =>
+    request<OnboardingState>('/api/me/onboarding', {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+
   getActiveInvestigation: () => request<Investigation>('/api/investigations/active'),
 
   getInvestigation: (id: string) =>
@@ -883,6 +1484,10 @@ export const api = {
 
   getArchive: () => request<ArchiveItem[]>('/api/investigations/archive'),
 
+  // M8-6: private progress/return summary. Auth-gated, session-scoped and
+  // derived only from this player's own activity (no canonical/hidden data).
+  getProgress: () => request<ProgressDTO>('/api/me/progress'),
+
   discoverEvidence: (id: string, evidenceId: string) =>
     post<Investigation>(`/api/investigations/${encodeURIComponent(id)}/discover-evidence`, {
       evidenceId,
@@ -901,6 +1506,7 @@ export const api = {
       intent?: KnowledgeIntent;
       depth?: KnowledgeDepth;
       targetSpecialistKey?: string;
+      perspectiveKey?: string;
     }
   ) =>
     post<ChatMessage>(`/api/investigations/${encodeURIComponent(id)}/chat`, {
@@ -909,6 +1515,7 @@ export const api = {
       ...(opts?.intent ? { intent: opts.intent } : {}),
       ...(opts?.depth ? { depth: opts.depth } : {}),
       ...(opts?.targetSpecialistKey ? { targetSpecialistKey: opts.targetSpecialistKey } : {}),
+      ...(opts?.perspectiveKey ? { perspectiveKey: opts.perspectiveKey } : {}),
     }),
 
   getJournal: (id: string) =>
@@ -968,6 +1575,8 @@ export const api = {
       content?: string;
       artifactId?: string | null;
       specialistId?: string | null;
+      perspectiveExperienceId?: string | null;
+      perspectiveKey?: string | null;
     }
   ) => post<PublicNotebookEntry>(`/api/investigations/${encodeURIComponent(id)}/notebook`, entry),
 
@@ -1023,6 +1632,8 @@ export const api = {
       notes?: string;
       sourceJournalEntryId?: string | null;
       sourceNotebookEntryId?: string | null;
+      sourcePerspectiveExperienceKey?: string | null;
+      sourcePerspectiveReflectionId?: string | null;
     }
   ) =>
     post<RealityClaim>(
@@ -1147,6 +1758,222 @@ export const api = {
       `/api/investigations/${encodeURIComponent(investigationId)}/reality-map/tutorial-examples`,
       { method: 'DELETE' }
     ),
+
+  // --- Perspective Engine (M5) -----------------------------------------------
+  // Advisory exploration content. Never evidence, never affects verdict, never
+  // reveals canonical truth. The server enforces auth and ownership.
+
+  getPerspectiveFrameworks: () =>
+    request<{
+      advisory: true;
+      isEvidence: false;
+      affectsVerdict: false;
+      disclaimer: string;
+      count: number;
+      frameworks: PerspectiveFramework[];
+    }>('/api/perspectives/frameworks'),
+
+  discoverPerspectives: () =>
+    request<PerspectiveDiscovery>('/api/perspectives/discover'),
+
+  getPerspectives: (params?: { framework?: string; format?: string; q?: string }) => {
+    const search = new URLSearchParams();
+    if (params?.framework) search.set('framework', params.framework);
+    if (params?.format) search.set('format', params.format);
+    if (params?.q) search.set('q', params.q);
+    const qs = search.toString();
+    return request<{
+      advisory: true;
+      disclaimer: string;
+      count: number;
+      experiences: PerspectiveExperienceSummary[];
+    }>(`/api/perspectives${qs ? `?${qs}` : ''}`);
+  },
+
+  getPerspective: (experienceKey: string) =>
+    request<PerspectiveExperienceDetail>(
+      `/api/perspectives/${encodeURIComponent(experienceKey)}`
+    ),
+
+  getPerspectiveConnections: (experienceKey: string) =>
+    request<PerspectiveConnections>(
+      `/api/perspectives/${encodeURIComponent(experienceKey)}/connections`
+    ),
+
+  getPerspectiveReflections: (params?: { experienceKey?: string; investigationId?: string }) => {
+    const search = new URLSearchParams();
+    if (params?.experienceKey) search.set('experienceKey', params.experienceKey);
+    if (params?.investigationId) search.set('investigationId', params.investigationId);
+    const qs = search.toString();
+    return request<{
+      advisory: true;
+      disclaimer: string;
+      count: number;
+      reflections: PerspectiveReflection[];
+    }>(`/api/perspectives/reflections${qs ? `?${qs}` : ''}`);
+  },
+
+  createPerspectiveReflection: (
+    experienceKey: string,
+    body: {
+      response: string;
+      promptIndex?: number | null;
+      prompt?: string;
+      reflectionKind?: PerspectiveReflectionKind | string;
+      investigationId?: string | null;
+    }
+  ) =>
+    post<{ advisory: true; disclaimer: string; reflection: PerspectiveReflection }>(
+      `/api/perspectives/${encodeURIComponent(experienceKey)}/reflections`,
+      body
+    ),
+
+  updatePerspectiveReflection: (
+    id: string,
+    patch: { response?: string; reflectionKind?: PerspectiveReflectionKind | string }
+  ) =>
+    request<{ advisory: true; disclaimer: string; reflection: PerspectiveReflection }>(
+      `/api/perspectives/reflections/${encodeURIComponent(id)}`,
+      { method: 'PATCH', body: JSON.stringify(patch) }
+    ),
+
+  deletePerspectiveReflection: (id: string) =>
+    request<{ ok: boolean }>(`/api/perspectives/reflections/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    }),
+
+  getPerspectiveSuggestions: (investigationId: string) =>
+    request<{
+      advisory: true;
+      isEvidence: false;
+      affectsVerdict: false;
+      disclaimer: string;
+      engagement: 'none' | 'active';
+      count: number;
+      suggestions: PerspectiveSuggestion[];
+    }>(`/api/investigations/${encodeURIComponent(investigationId)}/perspectives/suggestions`),
+
+  dismissPerspectiveSuggestion: (
+    investigationId: string,
+    experienceKey: string,
+    body?: { reasonCode?: string; fingerprint?: string }
+  ) =>
+    post<{ ok: boolean; state: unknown }>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/perspectives/suggestions/${encodeURIComponent(experienceKey)}/dismiss`,
+      body ?? {}
+    ),
+
+  // --- Living Investigations / Activity (M6) ---------------------------------
+  getActivity: (investigationId: string, opts?: { limit?: number; cursor?: string }) => {
+    const search = new URLSearchParams();
+    if (typeof opts?.limit === 'number') search.set('limit', String(opts.limit));
+    if (opts?.cursor) search.set('cursor', opts.cursor);
+    const qs = search.toString();
+    return request<ActivitySnapshot>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/activity${qs ? `?${qs}` : ''}`
+    );
+  },
+
+  refreshActivity: (investigationId: string, body?: { max?: number }) =>
+    post<LivingWorldResult>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/activity/refresh`,
+      body ?? {}
+    ),
+
+  markActivitySeen: (
+    investigationId: string,
+    body: { eventIds?: string[]; through?: string }
+  ) =>
+    post<{ ok: true; unreadCount: number }>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/activity/seen`,
+      body
+    ),
+
+  getActivityEvent: (investigationId: string, eventId: string) =>
+    request<{ event: SafeActivityEvent }>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/activity/events/${encodeURIComponent(eventId)}`
+    ),
+
+  narrateActivityEvent: (investigationId: string, eventId: string) =>
+    post<{ narration: string; disclaimer: string; source: string }>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/activity/events/${encodeURIComponent(eventId)}/narrate`,
+      {}
+    ),
+
+  getNotifications: (opts?: { status?: 'unread' | 'all'; limit?: number }) => {
+    const search = new URLSearchParams();
+    if (opts?.status) search.set('status', opts.status);
+    if (typeof opts?.limit === 'number') search.set('limit', String(opts.limit));
+    const qs = search.toString();
+    return request<NotificationsResponse>(`/api/notifications${qs ? `?${qs}` : ''}`);
+  },
+
+  markNotificationsRead: (body: { ids?: string[] } | { all: true; investigationId?: string }) =>
+    post<{ ok: true; unreadCount: number }>('/api/notifications/read', body),
+
+  // --- Real-World Discovery & Knowledge Retention (M7) -----------------------
+  getDiscoveries: (investigationId: string) =>
+    request<DiscoverySnapshotDTO>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/discoveries`
+    ),
+
+  getDiscoveryClue: (investigationId: string, clueKey: string) =>
+    request<DiscoveryClueDetailDTO>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/discoveries/${encodeURIComponent(clueKey)}`
+    ),
+
+  startDiscovery: (investigationId: string, clueKey: string) =>
+    post<SafeDiscoveryStateDTO | { state?: string }>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/discoveries/${encodeURIComponent(clueKey)}/start`,
+      {}
+    ),
+
+  submitDiscovery: (
+    investigationId: string,
+    clueKey: string,
+    body: {
+      explanation: string;
+      subjectIdentification?: string;
+      connectionExplanation?: string;
+      uncertainty?: string;
+      sourceRefs?: string[];
+      confidence?: string;
+    }
+  ) =>
+    post<DiscoverySubmitResultDTO>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/discoveries/${encodeURIComponent(clueKey)}/submissions`,
+      body
+    ),
+
+  applyDiscoveryUnlock: (investigationId: string, clueKey: string, unlockKey: string) =>
+    post<DiscoveryUnlockApplyResultDTO>(
+      `/api/investigations/${encodeURIComponent(investigationId)}/discoveries/${encodeURIComponent(clueKey)}/unlocks/${encodeURIComponent(unlockKey)}/apply`,
+      {}
+    ),
+
+  getKnowledgeJournal: () =>
+    request<KnowledgeJournalDTO>('/api/knowledge/journal'),
+
+  getKnowledgeJournalSubject: (subjectKey: string) =>
+    request<KnowledgeJournalSubjectDTO>(
+      `/api/knowledge/journal/${encodeURIComponent(subjectKey)}`
+    ),
+
+  submitKnowledgeRecall: (
+    memoryId: string,
+    body: { response: string; recallKind?: string; investigationId?: string; clueKey?: string }
+  ) =>
+    post<KnowledgeRecallResultDTO>(
+      `/api/knowledge/recall/${encodeURIComponent(memoryId)}`,
+      body
+    ),
+
+  // --- M8-W7 beta readiness ----------------------------------------------------
+  getPublicConfig: () => request<PublicConfig>('/api/config'),
+
+  exportAccountData: () => request<AccountExportDTO>('/api/me/export'),
+
+  deleteAccount: () => post<{ ok: boolean; message: string }>('/api/me/delete', { confirm: 'DELETE' }),
 };
 
 /** Convert an unknown error into a short, user-facing message. */
