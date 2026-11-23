@@ -1619,5 +1619,6 @@ export function createInitialSave(): SaveGame {
     reviewRounds: [],
     caseTheory: { claims: [] },
     auditLog: [],
+    aiReviews: [],
   };
 }

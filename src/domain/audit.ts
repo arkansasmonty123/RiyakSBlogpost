@@ -19,6 +19,7 @@ export const AUDIT_EVENT_KINDS: readonly AuditEventType[] = [
   'evidence-challenged',
   'custody-recorded',
   'source-intake',
+  'senior-review-ai',
   'final-brief',
 ];
 

@@ -1,10 +1,13 @@
+import { containsCanonicalTruth } from '@/domain/ai/guards';
 import { sanitizeAuditLog } from '@/domain/audit';
 import { MAX_DRAFT_CHARS, MAX_DRAFT_VERSIONS } from '@/domain/draft';
 import { validateSourceProvenance } from '@/domain/legalSources';
 import { trimNotebook } from '@/domain/notebook';
 import { isValidViewpoint } from '@/domain/scenes';
 import { createInitialSave } from '@/domain/seed';
+import { MAX_AI_REVIEW_RECORDS } from '@/domain/types';
 import type {
+  AiReviewRecord,
   Assignment,
   CaseFile,
   Character,
@@ -18,6 +21,9 @@ import type {
 
 export const SAVE_KEY = 'the-bar-save-v2';
 export const LEGACY_KEY = 'the-bar-save-v1';
+
+const MAX_AI_REVIEW_SUMMARY_CHARS = 400;
+const MAX_AI_REVIEW_STRING_CHARS = 200;
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -183,6 +189,54 @@ function mergeDraft(base: DraftState, parsed: unknown): DraftState {
   };
 }
 
+/**
+ * AI-review records are untrusted stored metadata. Keep only known, bounded, player-safe
+ * fields and drop anything carrying canonical-truth markers. Older saves have no such field.
+ */
+export function sanitizeAiReviews(value: unknown): AiReviewRecord[] {
+  if (!Array.isArray(value)) return [];
+  const clean: AiReviewRecord[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const item = raw as Partial<AiReviewRecord>;
+    if (typeof item.id !== 'string' || !item.id.trim()) continue;
+    if (typeof item.assignmentId !== 'string' || typeof item.requestId !== 'string') continue;
+    if (typeof item.day !== 'number' || !Number.isFinite(item.day)) continue;
+    if (typeof item.round !== 'number' || !Number.isFinite(item.round)) continue;
+    if (item.deterministicStatus !== 'accepted' && item.deterministicStatus !== 'needs_revision') continue;
+    if (item.gatewayStatus !== 'accepted' && item.gatewayStatus !== 'rejected') continue;
+    if (typeof item.summary !== 'string' || typeof item.aiAssisted !== 'boolean') continue;
+    const summary = item.summary.trim().slice(0, MAX_AI_REVIEW_SUMMARY_CHARS);
+    if (!summary || containsCanonicalTruth(summary)) continue;
+    const safeStrings = (rawIds: unknown): string[] =>
+      Array.isArray(rawIds)
+        ? rawIds
+            .filter((id): id is string => typeof id === 'string')
+            .slice(0, MAX_AI_REVIEW_RECORDS)
+            .map((id) => id.trim().slice(0, MAX_AI_REVIEW_STRING_CHARS))
+            .filter(Boolean)
+        : [];
+    const citedSources = safeStrings(item.citedSources);
+    const warnings = safeStrings(item.warnings);
+    if (citedSources.some(containsCanonicalTruth) || warnings.some(containsCanonicalTruth)) continue;
+    clean.push({
+      id: item.id.trim().slice(0, MAX_AI_REVIEW_STRING_CHARS),
+      day: Math.floor(item.day),
+      assignmentId: item.assignmentId.trim().slice(0, MAX_AI_REVIEW_STRING_CHARS),
+      round: Math.floor(item.round),
+      requestId: item.requestId.trim().slice(0, MAX_AI_REVIEW_STRING_CHARS),
+      deterministicStatus: item.deterministicStatus,
+      aiAssisted: item.aiAssisted,
+      gatewayStatus: item.gatewayStatus,
+      summary,
+      citedSources,
+      warnings,
+    });
+    if (clean.length >= MAX_AI_REVIEW_RECORDS) break;
+  }
+  return clean;
+}
+
 /** Merge/sanitize untrusted persisted data into a complete SaveGame. Never trusts canonical truth. */
 export function hydrateSave(parsed: unknown): SaveGame {
   try {
@@ -248,6 +302,8 @@ export function hydrateSave(parsed: unknown): SaveGame {
       },
       // Audit log is absent in older saves; sanitize untrusted stored entries on load.
       auditLog: sanitizeAuditLog(value.auditLog),
+      // AI-review history is additive and absent in older saves; default to none.
+      aiReviews: sanitizeAiReviews(value.aiReviews),
     };
   } catch {
     return createInitialSave();

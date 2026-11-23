@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { SceneArt } from '@/app/SceneArt';
 import { createResetUiState, emptySourceForm, EXPLICIT_SAVE_NOTICE, RESET_CONFIRMATION } from '@/app/sessionUi';
 import type { SaveStatus, SourceFormState } from '@/app/sessionUi';
-import { config, isLocalAiPanelEnabled } from '@/config/env';
+import { config, isAiSeniorReviewEnabled, isLocalAiPanelEnabled } from '@/config/env';
 import { createInitialSave } from '@/domain/seed';
 import { DEFAULT_GAME_SLOT, type GameRepository, type SaveOptions } from '@/storage/gameRepository';
 import { getGameRepository } from '@/storage/getGameRepository';
@@ -54,10 +54,13 @@ import { loadDraftVersion, MAX_DRAFT_CHARS, saveDraftVersion, setCurrentDraft } 
 import { submitDraftForFeedback } from '@/domain/draftSubmission';
 import type { DraftSubmissionResult } from '@/domain/draftSubmission';
 import { MAX_AI_PROMPT_CHARS } from '@/domain/ai/guards';
+import { createAiGateway } from '@/domain/ai/gateway';
 import { retrieveApprovedInternalSummaries } from '@/domain/ai/retrieval';
 import type { RetrievedSource } from '@/domain/ai/retrieval';
+import { citableSourceIds, submitSeniorReviewWithAi } from '@/domain/ai/seniorReview';
 import { askLocalLlm, LOCAL_AI_PROVIDER_LABEL } from '@/services/localLlm';
 import type { LocalLlmResult } from '@/services/localLlm';
+import { createLlamaServerProvider } from '@/services/ai/llamaServerProvider';
 import {
   addTheoryClaim,
   getTheorySupport,
@@ -364,6 +367,9 @@ function GameApp({
   const [save, setSave] = useState<SaveGame>(initialSave);
   // Experimental local-AI lab (Phase 6 foundations). Env-aware, never a hosted provider.
   const localAiEnabled = isLocalAiPanelEnabled();
+  // Track C first milestone: opt-in AI-assisted senior review. Off unless both flags are set;
+  // no model is called until the player also explicitly requests it on a submit event.
+  const aiSeniorReviewEnabled = isAiSeniorReviewEnabled() && localAiEnabled;
   // Single source of truth for initial UI values; reset reuses the same blueprint.
   const freshUi = createResetUiState(save);
   const [panel, setPanel] = useState<Panel>(initialPanel);
@@ -402,8 +408,14 @@ function GameApp({
   const [aiIncludeInternalSummaries, setAiIncludeInternalSummaries] = useState(freshUi.aiIncludeInternalSummaries);
   const [aiSources, setAiSources] = useState<RetrievedSource[]>(freshUi.aiSources);
   const [aiLoading, setAiLoading] = useState(false);
+  // Track C senior-review assist: transient, opt-in, and never authoritative.
+  const [aiAssistSeniorReview, setAiAssistSeniorReview] = useState(freshUi.aiAssistSeniorReview);
+  const [aiReviewBusy, setAiReviewBusy] = useState(false);
+  const [aiReviewNotice, setAiReviewNotice] = useState(freshUi.aiReviewNotice);
+  const [aiReviewSources, setAiReviewSources] = useState<RetrievedSource[]>(freshUi.aiReviewSources);
   // Discard a late local-AI response if the user reset (or asked again) while it was in flight.
   const aiRequestId = useRef(0);
+  const aiSeniorReviewAbort = useRef<AbortController | null>(null);
   // Async adapters can settle out of order: serialize writes and ignore stale save status.
   // The localStorage path stays synchronous and bypasses this queue entirely.
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
@@ -620,6 +632,8 @@ function GameApp({
     setSaveNotice(fresh.saveNotice);
     setSaveConflict(false);
     aiRequestId.current += 1;
+    aiSeniorReviewAbort.current?.abort();
+    aiSeniorReviewAbort.current = null;
     setAiPrompt(fresh.aiPrompt);
     setAiResponse(fresh.aiResponse);
     setAiWarnings(fresh.aiWarnings);
@@ -627,6 +641,10 @@ function GameApp({
     setAiIncludeInternalSummaries(fresh.aiIncludeInternalSummaries);
     setAiSources(fresh.aiSources);
     setAiLoading(false);
+    setAiAssistSeniorReview(fresh.aiAssistSeniorReview);
+    setAiReviewBusy(false);
+    setAiReviewNotice(fresh.aiReviewNotice);
+    setAiReviewSources(fresh.aiReviewSources);
   }
 
   /**
@@ -925,6 +943,51 @@ function GameApp({
     }
     setDialogue(`Adv. Meera Kulkarni: "${result.feedback}"`);
     if (result.status === 'accepted') setPanel('notebook');
+  }
+
+  /**
+   * Explicit, opt-in AI-assisted senior review. One model call per click, cancellable, and
+   * always committed through the same deterministic writer: an accepted proposal may enrich
+   * dialogue and a provenance-labelled save record, but cannot change the review outcome.
+   */
+  async function doAiSeniorReview() {
+    if (aiReviewBusy) return;
+    const requestId = ++aiRequestId.current;
+    aiSeniorReviewAbort.current?.abort();
+    const controller = new AbortController();
+    aiSeniorReviewAbort.current = controller;
+    setAiReviewBusy(true);
+    setAiReviewNotice('');
+    setAiReviewSources([]);
+    // Work on a clone: the async orchestration mutates it, then one update commits it.
+    const working = structuredClone(save);
+    const gateway = createAiGateway({
+      provider: createLlamaServerProvider(),
+      enabled: true,
+      verifiedSourceIds: citableSourceIds(save),
+    });
+    try {
+      const outcome = await submitSeniorReviewWithAi(working, 'a7', reviewSummary, {
+        gateway,
+        signal: controller.signal,
+      });
+      if (requestId !== aiRequestId.current) return;
+      update(() => working);
+      setAiReviewSources(outcome.retrievedSources);
+      setAiReviewNotice(outcome.notice);
+      setDialogue(`Adv. Meera Kulkarni: "${outcome.dialogue}"`);
+      if (outcome.deterministic.status === 'accepted') setPanel('notebook');
+    } catch {
+      // The gateway never throws, but any transport surprise must still yield the plain path.
+      if (requestId !== aiRequestId.current) return;
+      doSeniorReview();
+      setAiReviewNotice('AI-assisted review failed; deterministic senior feedback was used.');
+    } finally {
+      if (requestId === aiRequestId.current) {
+        setAiReviewBusy(false);
+        aiSeniorReviewAbort.current = null;
+      }
+    }
   }
 
   function doFinalBrief() {
@@ -2417,6 +2480,11 @@ function GameApp({
 
               <div className="bg-bar-panel2 p-3 rounded border border-white/5">
                 <div className="text-bar-gold text-xs mb-2">Senior review & revision (Day 9)</div>
+                <p className="text-[11px] text-bar-muted mb-2">
+                  {a7
+                    ? `Assignment: ${a7.title}. ${a7.description}`
+                    : 'Research assignment: senior review of your case brief.'}
+                </p>
                 {a7?.status === 'reviewed' ? (
                   <p className="text-xs">{a7.feedback}</p>
                 ) : a7 && isAssignmentUnlocked(a7, save) ? (
@@ -2428,14 +2496,52 @@ function GameApp({
                       onChange={(e) => setReviewSummary(e.target.value)}
                       placeholder="Summarise the issue, evidence reviewed, sources used and your conclusion (at least 40 characters)."
                     />
-                    <button
-                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit"
-                      onClick={doSeniorReview}
-                    >
-                      {save.reviewRounds.some((r) => r.assignmentId === 'a7' && r.status === 'needs_revision')
-                        ? 'Revise & resubmit'
-                        : 'Submit to senior'}
-                    </button>
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <button
+                        className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit"
+                        onClick={doSeniorReview}
+                      >
+                        {save.reviewRounds.some((r) => r.assignmentId === 'a7' && r.status === 'needs_revision')
+                          ? 'Revise & resubmit'
+                          : 'Submit to senior'}
+                      </button>
+                      {aiSeniorReviewEnabled && (
+                        <>
+                          <label className="flex items-start gap-2 text-[11px] text-bar-muted">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={aiAssistSeniorReview}
+                              onChange={(e) => setAiAssistSeniorReview(e.target.checked)}
+                              aria-describedby="ai-senior-review-hint"
+                            />
+                            <span id="ai-senior-review-hint">
+                              Request AI-assisted feedback (experimental, non-authoritative)
+                            </span>
+                          </label>
+                          {aiAssistSeniorReview && (
+                            <button
+                              type="button"
+                              className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit disabled:opacity-50 disabled:cursor-not-allowed"
+                              onClick={() => void doAiSeniorReview()}
+                              disabled={aiReviewBusy || !reviewSummary.trim()}
+                              aria-describedby="ai-senior-review-hint"
+                            >
+                              {aiReviewBusy ? 'Reviewing with local model…' : 'Submit with AI-assisted feedback'}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    <p role="status" aria-live="polite" className="text-[11px] text-amber-200">
+                      {aiReviewNotice}
+                    </p>
+                    {aiReviewBusy && (
+                      <p role="status" aria-live="polite" className="text-[11px] text-bar-muted">
+                        Retrieving approved internal summaries and waiting for the local model…
+                      </p>
+                    )}
+                    <RetrievedSourcesNotice sources={aiReviewSources} />
                   </div>
                 ) : (
                   <p className="text-xs text-bar-muted">Unlocks on Day 9 after prior work is reviewed.</p>
@@ -2448,6 +2554,19 @@ function GameApp({
                         Round {r.round} — {r.status}:
                       </span>{' '}
                       {r.feedback}
+                    </div>
+                  ))}
+                {save.aiReviews
+                  .filter((record) => record.assignmentId === 'a7')
+                  .map((record) => (
+                    <div key={record.id} className="text-[11px] mt-2 border-t border-white/5 pt-2 text-bar-muted">
+                      <span className="text-bar-gold">
+                        AI-assisted evaluation (round {record.round}, {record.gatewayStatus}
+                        {record.aiAssisted ? ', unverified' : ''}):
+                      </span>{' '}
+                      {record.summary || 'No proposal text was accepted.'}
+                      {record.citedSources.length > 0 && <> Cited ids: {record.citedSources.join(', ')}.</>}{' '}
+                      Deterministic outcome: {record.deterministicStatus}.
                     </div>
                   ))}
               </div>

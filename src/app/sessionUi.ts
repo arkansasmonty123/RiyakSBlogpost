@@ -84,6 +84,12 @@ export interface ResetUiState {
   aiIncludeInternalSummaries: boolean;
   /** Provenance of the internal sources used for the most recent answer. */
   aiSources: RetrievedSource[];
+  /** Opt-in checkbox for the Track C AI-assisted senior review. */
+  aiAssistSeniorReview: boolean;
+  /** Outcome/status line for the last AI-assisted senior review. */
+  aiReviewNotice: string;
+  /** Approved internal summaries retrieved for the last AI-assisted senior review. */
+  aiReviewSources: RetrievedSource[];
 }
 
 /**
@@ -125,5 +131,8 @@ export function createResetUiState(save: SaveGame): ResetUiState {
     aiError: '',
     aiIncludeInternalSummaries: false,
     aiSources: [],
+    aiAssistSeniorReview: false,
+    aiReviewNotice: '',
+    aiReviewSources: [],
   };
 }

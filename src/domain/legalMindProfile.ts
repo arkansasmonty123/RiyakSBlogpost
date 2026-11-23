@@ -177,6 +177,16 @@ export function buildLegalMindProfile(save: SaveGame): LegalMindProfile {
         action: 'You referred to verified law and source notes in your brief.',
         nextStep: 'Refer only to verified, labelled sources in the written brief.',
       },
+      {
+        // Derived from a recorded action, never from an AI assertion: the player opted into a
+        // structured review, checked its cited sources and brought the assignment to acceptance.
+        present:
+          save.aiReviews.some((record) => record.aiAssisted && record.citedSources.length > 0) &&
+          save.reviewRounds.some((r) => r.assignmentId === 'a7' && r.status === 'accepted'),
+        action:
+          'You sought structured senior feedback on a research note, checked its cited sources and revised the work to acceptance.',
+        nextStep: 'Request structured feedback on a research note and verify every cited source before resubmitting.',
+      },
     ]),
     assess('procedure', 'Procedure', [
       {

@@ -33,6 +33,11 @@ export interface EnvSource {
   VITE_RUNTIME_AI_API_KEY?: string;
   /** Experimental local-AI lab: set to "false" to hide the panel. Never a secret. */
   VITE_ENABLE_LOCAL_AI?: string;
+  /**
+   * Track C first milestone: opt-in AI-assisted senior review. Off by default; even with the
+   * local model running, no gameplay path calls a model until this is explicitly "true".
+   */
+  VITE_ENABLE_AI_SENIOR_REVIEW?: string;
   /** Persistence adapter: "local" (default) or "sqlite-api" (ADR-001, requires db server). */
   VITE_STORAGE_MODE?: string;
 }
@@ -98,6 +103,16 @@ export const config: AppConfig = loadConfig().config;
  */
 export function isLocalAiPanelEnabled(source: EnvSource = defaultEnvSource()): boolean {
   return readString(source.VITE_ENABLE_LOCAL_AI).toLowerCase() !== 'false';
+}
+
+/**
+ * Track C milestone gate. Disabled by default at the feature layer (the gateway is also
+ * disabled by default): gameplay never invokes a model unless the user opts in with
+ * `VITE_ENABLE_AI_SENIOR_REVIEW=true` AND explicitly requests an AI-assisted review. This
+ * never enables a hosted provider or bundles a model; it only unlocks the opt-in control.
+ */
+export function isAiSeniorReviewEnabled(source: EnvSource = defaultEnvSource()): boolean {
+  return readString(source.VITE_ENABLE_AI_SENIOR_REVIEW).toLowerCase() === 'true';
 }
 
 /**

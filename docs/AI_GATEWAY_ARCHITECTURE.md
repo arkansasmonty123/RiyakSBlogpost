@@ -198,6 +198,27 @@ Rules: unknown fields rejected; `refs` must resolve to player-visible ids; `cite
 - Adversarial inputs (injection, canonical-truth probe, fabricated citation) are blocked by an automated test, not by prompt wording.
 - No new dependency added; all validation deterministic and unit-tested.
 
+### 5.4 Implementation status (Track C first milestone)
+
+Implemented behind a **second, off-by-default flag** `VITE_ENABLE_AI_SENIOR_REVIEW=true` (in
+addition to the Local AI Lab flag and an explicit per-submit opt-in):
+
+- `src/domain/ai/seniorReview.ts` projects player-visible state into `senior-mentor`, runs the
+  existing deterministic RAG-lite retrieval over approved internal summaries, invokes the
+  gateway on that one submit event, and always calls the deterministic `submitSeniorReview`
+  writer first. An accepted proposal may only enrich the senior dialogue and a provenance-
+  labelled `AiReviewRecord` in the save; it never changes assignment status, flags, reputation
+  or unlocks.
+- `SaveGame.aiReviews` is additive (version 2, no schema bump): sanitized on hydrate, capped,
+  and written through `toPersistedSave` via the existing spread projection. A `senior-review-ai`
+  audit event records that the opt-in action happened.
+- `buildLegalMindProfile` gains one signal derived strictly from the recorded action (sought
+  structured feedback, checked cited ids, revised to acceptance) — the six dimensions and
+  their no-aggregate-score contract are unchanged.
+- With AI disabled/offline/cancelled the gateway returns `degraded` and the path is
+  behaviourally identical to the plain deterministic review: no provider call, no AI record.
+- Coverage: `src/tests/aiSeniorReview.test.ts` plus updated config / panel reset assertions.
+
 ---
 
 ## 6. Implemented now vs deferred
@@ -209,6 +230,7 @@ Rules: unknown fields rejected; `refs` must resolve to player-visible ids; `cite
 - Deterministic RAG-lite over approved internal summaries only (`src/domain/ai/retrieval.ts`).
 - Service orchestrator with bounded sizes, timeout, cancellation, non-authoritative labelling (`src/services/localLlm.ts`).
 - Local AI Lab panel (opt-out via `VITE_ENABLE_LOCAL_AI=false`), explicit-click only.
+- First-milestone wiring: `AiGateway` invoked for the opt-in `senior-mentor` role with the four gates, a bounded save record and adversarial tests (§5.4).
 - Deterministic senior review, draft submission, citation gate, provenance validation, canonical-truth no-leak projection.
 - Persistence seam (localStorage default; SQLite opt-in) with canonical truth stripped on write.
 - Test coverage: `ai_guard`, `ai_provider`, `ai_redteam`, `ai_retrieval`, `local_ai_service`, `local_ai_panel` suites.

@@ -71,6 +71,9 @@ describe('Local AI Lab panel', () => {
     expect(fresh.aiError).toBe('');
     expect(fresh.aiIncludeInternalSummaries).toBe(false);
     expect(fresh.aiSources).toEqual([]);
+    expect(fresh.aiAssistSeniorReview).toBe(false);
+    expect(fresh.aiReviewNotice).toBe('');
+    expect(fresh.aiReviewSources).toEqual([]);
   });
 
   it('shows the local provider, request status and the opt-in summaries toggle', () => {

@@ -1,3 +1,6 @@
+/** Bounded AI-review history kept in a save; the domain owns the cap and storage reuses it. */
+export const MAX_AI_REVIEW_RECORDS = 20;
+
 export type CareerStage =
   'newcomer' | 'intern' | 'junior_advocate' | 'independent_advocate' | 'established_practitioner' | 'senior';
 
@@ -273,6 +276,7 @@ export type AuditEventType =
   | 'evidence-challenged'
   | 'custody-recorded'
   | 'source-intake'
+  | 'senior-review-ai'
   | 'final-brief';
 
 /**
@@ -331,4 +335,29 @@ export interface SaveGame {
   caseTheory: CaseTheory;
   /** Bounded, append-only trail of important player actions. Never canonical truth. */
   auditLog: AuditEvent[];
+  /**
+   * Provenance-labelled records of opt-in AI-assisted senior reviews. Written only after the
+   * structured proposal passed every deterministic gate; AI text here is feedback metadata,
+   * never a game fact, legal authority or canonical truth.
+   */
+  aiReviews: AiReviewRecord[];
+}
+
+/**
+ * A bounded record that an AI-assisted review was requested and what the deterministic gates
+ * decided. `deterministicStatus` is written by `submitSeniorReview` and can never be changed
+ * by a model proposal; `aiAssisted` is true only when an accepted proposal enriched feedback.
+ */
+export interface AiReviewRecord {
+  id: string;
+  day: number;
+  assignmentId: string;
+  round: number;
+  requestId: string;
+  deterministicStatus: ReviewRound['status'];
+  aiAssisted: boolean;
+  gatewayStatus: 'accepted' | 'rejected';
+  summary: string;
+  citedSources: string[];
+  warnings: string[];
 }
