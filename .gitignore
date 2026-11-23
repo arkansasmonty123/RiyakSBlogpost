@@ -66,7 +66,6 @@ __pycache__/
 .bash_logout
 
 # Other local projects / unrelated
-project-courtroom/
 _bmad/
 _bmad-output/
 .github-copilot/
@@ -77,3 +76,24 @@ project-investigation/frontend/ui-screenshots/
 .playwright-mcp/
 .gitconfig
 .npmrc
+
+# Local tool state / caches (never project source)
+.cce/
+.planning/
+.serena/
+.playwright-mcp/
+
+# SQLite / DB sidecar files
+*.db-shm
+*.db-wal
+*.sqlite-shm
+*.sqlite-wal
+*.db-journal
+
+# Tool runtime locks and ports
+.index.lock
+.prune.lock
+serve.port
+
+# Downloaded web artifacts accidentally saved into the workspace
+RiyakSBlogpost_backend at main*
