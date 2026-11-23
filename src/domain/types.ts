@@ -361,3 +361,158 @@ export interface AiReviewRecord {
   citedSources: string[];
   warnings: string[];
 }
+
+/** How a legal provision / rule takes effect. */
+export type ApplicableLawSection =
+  'statutory_provision' | 'case_precedent' | 'procedural_rule' | 'contract_principle' | 'other';
+
+export interface ApplicableLaw {
+  id: string;
+  section: ApplicableLawSection;
+  description: string;
+  sourceId?: string; // links to a verified LegalSource
+  effectiveFrom?: string; // ISO date
+  effectiveTo?: string; // ISO date, if repealed
+}
+
+/** A strategic approach the player can adopt — player-legible, not canonical. */
+export type StrategicApproach =
+  'confrontational' | 'diplomatic' | 'technical' | 'investigative' | 'negotiatorial' | 'other';
+
+export interface StrategicApproachRecord {
+  id: string;
+  approach: StrategicApproach;
+  description: string;
+  expectedOutcome: string;
+  riskLevel: 'low' | 'medium' | 'high';
+}
+
+/** Possible case consequences — player-legible outcomes. */
+export type ConsequenceType =
+  'sentence_reduction' | 'client_loss' | 'reputation_gain' | 'network_expansion' | 'professional_discipline' | 'other';
+
+export interface ConsequenceRecord {
+  id: string;
+  type: ConsequenceType;
+  description: string;
+  triggerConditions: string[];
+  probability: number; // 0–100 player-legible
+  alreadyTriggered: boolean;
+}
+
+/** Player-legible assessment of an item's authenticity — never canonical truth.
+ *  The player can discover clues about authenticity through investigation,
+ *  but the actual authenticity is determined by the deterministic case truth. */
+export type EvidenceAuthenticity = 'authenticated' | 'unauthenticated' | 'disputed' | 'unknown';
+
+export interface EvidenceAuthenticityRecord {
+  id: string;
+  authenticity: EvidenceAuthenticity;
+  assessedBy?: string;
+  assessedAt?: string;
+  rationale?: string;
+}
+
+/** A player-legible hidden motive — separate from canonical truth. */
+export type HiddenMotive =
+  'financial_gain' | 'power_concealment' | 'personal_vengeance' | 'protect_another' | 'unknown';
+
+export interface HiddenMotiveRecord {
+  id: string;
+  motive: HiddenMotive;
+  associatedParty: string;
+  plausibility: number; // 0–100 player-legible score, NOT canonical
+  notes?: string;
+}
+
+/** Player-legible unresolved case ambiguity. */
+export type AmbiguityType =
+  'conflicting_statements' | 'open_interpretation' | 'missing_evidence' | 'procedural_gap' | 'unknown';
+
+export interface UnresolvedAmbiguity {
+  id: string;
+  type: AmbiguityType;
+  description: string;
+  relatedEvidenceIds: string[];
+  playerAssessment?: string;
+}
+
+/** Extended case file with player-legible intelligence layers.
+ *  canonicalTruth remains authoritative game data, never written from storage. */
+export interface ExtendedCaseFile {
+  id: string;
+  title: string;
+  status: 'active' | 'closed';
+  // canonical truth — rehydrated from deterministic seed on load, never from storage
+  canonicalTruth: CaseTruth;
+  // player-visible projections (never the canonical truth itself)
+  playerKnowledge: string[];
+  allegations: string[];
+  admissibleMaterial: string[];
+  unresolvedAmbiguities: UnresolvedAmbiguity[];
+  // evidence with authenticity tracking
+  evidence: EvidenceItemWithAuth[];
+  // hidden motives per party (player-legible)
+  hiddenMotives: HiddenMotiveRecord[];
+  // applicable law framework
+  applicableLaw: ApplicableLaw[];
+  // strategic approaches available to the player
+  strategicApproaches: StrategicApproachRecord[];
+  // possible consequences (some may be triggered during gameplay)
+  consequences: ConsequenceRecord[];
+}
+
+/** Evidence item with authenticity tracking — player can discover/authenticate,
+ *  but actual authenticity is part of case truth, not directly settable. */
+export interface EvidenceItemWithAuth extends EvidenceItem {
+  authenticity: EvidenceAuthenticity;
+  authenticityRationale?: string;
+}
+
+/** Extended assignment with intelligence-layer fields. */
+export interface ExtendedAssignment {
+  id: string;
+  day: number;
+  title: string;
+  description: string;
+  status: AssignmentStatus;
+  requiredEvidenceIds: string[];
+  requiredSourceIds: string[];
+  requiredNotebookKinds?: NotebookEntry['kind'][];
+  requiredFlags?: string[];
+  requiresRevisionLoop?: boolean;
+  feedback?: string;
+  intelligence?: {
+    hiddenMotiveHints: string[];
+    anticipatedApproaches: StrategicApproach[];
+    keyAmbiguities: string[];
+  };
+}
+
+/** Player-legible case theory claim with intelligence links. */
+export interface ExtendedTheoryClaim {
+  id: string;
+  day: number;
+  text: string;
+  status: TheoryStatus;
+  evidenceIds: string[];
+  authenticityNotes?: string; // player-legible, not canonical
+  linkedHiddenMotiveIds: string[];
+}
+
+/** Player-legible review round with intelligence context. */
+export interface ExtendedReviewRound {
+  id: string;
+  day: number;
+  assignmentId: string;
+  round: number;
+  status: 'needs_revision' | 'accepted';
+  feedback: string;
+  strengths: string[];
+  gaps: string[];
+  intelligence?: {
+    hiddenMotiveConsiderations: string[];
+    approachEffectiveness: StrategicApproach;
+    ambiguityGaps: string[];
+  };
+}
