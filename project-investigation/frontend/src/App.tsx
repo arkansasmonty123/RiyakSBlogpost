@@ -1,13 +1,7 @@
-/**
- * Main Application Component
- * Routes between case list and investigation room.
- * Unauthenticated visitors get a minimal login/register form backed by the
- * real POST /api/login and POST /api/register endpoints.
- */
-
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Link, Navigate, NavLink, Route, Routes, useNavigate } from 'react-router-dom';
+import { api } from './api';
 import { CaseListPage } from './pages/CaseListPage';
 import { InvestigationRoomPage } from './pages/InvestigationRoomPage';
 import { ArchivePage } from './pages/ArchivePage';
@@ -15,11 +9,10 @@ import { PerspectiveLibraryPage } from './pages/PerspectiveLibraryPage';
 import { PerspectiveExperiencePage } from './pages/PerspectiveExperiencePage';
 import { KnowledgeJournalPage } from './pages/KnowledgeJournalPage';
 import { ProgressPage } from './pages/ProgressPage';
-import { useSession } from './hooks/useSession';
-import { useOnboarding } from './hooks/useOnboarding';
-import { OnboardingOverlay } from './components/OnboardingOverlay';
 import { LegalPage } from './pages/LegalPage';
-import { api } from './api';
+import { SessionProvider, useSession } from './ui/session';
+import { useOnboarding } from './ui/useOnboarding';
+import { OnboardingOverlay } from './ui/OnboardingOverlay';
 
 type AuthAction = (email: string, password: string, betaAccessCode?: string) => Promise<unknown>;
 
@@ -29,14 +22,16 @@ interface AuthFormProps {
   betaAccessRequired: boolean;
 }
 
-const AuthForm = ({ login, register, betaAccessRequired }: AuthFormProps) => {
+function AuthForm({ login, register, betaAccessRequired }: AuthFormProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [betaAccessCode, setBetaAccessCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const emailRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  const errorId = 'auth-error';
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -50,110 +45,140 @@ const AuthForm = ({ login, register, betaAccessRequired }: AuthFormProps) => {
       }
       navigate('/', { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Authentication failed');
+      setError(err instanceof Error ? err.message : 'We could not complete that request.');
+      emailRef.current?.focus();
     } finally {
       setBusy(false);
     }
   };
 
+  const isRegister = mode === 'register';
+
   return (
     <div className="auth-page page-enter">
-      <div className="auth-form">
-        <p className="auth-form__eyebrow">THE INVESTIGATION</p>
-        <h2>{mode === 'login' ? 'Return to the case' : 'Begin your investigation'}</h2>
+      <section className="auth-form" aria-labelledby="auth-title">
+        <h1 id="auth-title">{isRegister ? 'Open your case desk' : 'Welcome back'}</h1>
         <p className="auth-form__intro">
-          {mode === 'login'
-            ? 'Sign in to continue where you left off.'
-            : 'Create an account to track evidence, theories, and verdicts.'}
+          {isRegister
+            ? 'An account keeps your briefings, notes, and verdicts together, so you can leave a case and pick it up later.'
+            : 'Sign in to pick up your notes and the investigation you left open.'}
         </p>
-        <form onSubmit={handleSubmit} noValidate={false}>
-          <label htmlFor="auth-email">
-            Email
+        <form onSubmit={handleSubmit}>
+          <div className="field">
+            <label htmlFor="auth-email">Email address</label>
             <input
+              ref={emailRef}
               id="auth-email"
               type="email"
               name="email"
+              inputMode="email"
               autoComplete="email"
-              placeholder="investigator@example.com"
+              spellCheck={false}
+              placeholder="you@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? errorId : undefined}
               required
             />
-          </label>
-          <label htmlFor="auth-password">
-            Password
+          </div>
+          <div className="field">
+            <label htmlFor="auth-password">Password</label>
             <input
               id="auth-password"
               type="password"
               name="password"
-              autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-              placeholder="Password"
+              autoComplete={isRegister ? 'new-password' : 'current-password'}
+              spellCheck={false}
+              placeholder="At least 8 characters"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              aria-invalid={error ? true : undefined}
+              aria-describedby={error ? errorId : undefined}
               required
             />
-          </label>
-          {mode === 'register' && betaAccessRequired && (
-            <label htmlFor="auth-beta-code">
-              Beta access code
+          </div>
+          {isRegister && betaAccessRequired && (
+            <div className="field">
+              <label htmlFor="auth-beta-code">Invitation code</label>
               <input
                 id="auth-beta-code"
                 type="text"
                 name="betaAccessCode"
                 autoComplete="off"
-                placeholder="Enter your invitation code"
+                spellCheck={false}
+                placeholder="The code in your invitation"
                 value={betaAccessCode}
                 onChange={(e) => setBetaAccessCode(e.target.value)}
                 required
               />
-            </label>
+            </div>
           )}
-          <button type="submit" disabled={busy}>
-            {busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}
+          <button type="submit" className="btn btn-primary" disabled={busy}>
+            {busy
+              ? isRegister ? 'Creating account…' : 'Signing in…'
+              : isRegister ? 'Create account' : 'Sign in'}
           </button>
         </form>
-        {error && <p className="error" role="alert">{error}</p>}
-        <button
-          type="button"
-          className="link-button"
-          onClick={() => {
-            setMode((current) => (current === 'login' ? 'register' : 'login'));
-            setError(null);
-          }}
-        >
-          {mode === 'login' ? 'Need an account? Register' : 'Have an account? Sign in'}
-        </button>
-      </div>
+        {error && <p className="error" id={errorId} role="alert">{error}</p>}
+        <p className="auth-form__switch">
+          {isRegister ? 'Already have a desk? ' : 'New here? '}
+          <button
+            type="button"
+            className="link-button"
+            onClick={() => {
+              setMode(isRegister ? 'login' : 'register');
+              setError(null);
+            }}
+          >
+            {isRegister ? 'Sign in' : 'Create an account'}
+          </button>
+        </p>
+      </section>
     </div>
   );
-};
+}
 
-const App = () => {
-  const { session, login, register, logout } = useSession();
-  // M8 Wave 1: first-run guide. Onboarding is cosmetic and best-effort - a
-  // failed load simply means no guide is shown, and the user is never blocked.
-  const { state: onboarding, loading: onboardingLoading, patch: patchOnboarding } =
-    useOnboarding(session.status === 'authenticated');
-  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+function navClass({ isActive }: { isActive: boolean }) {
+  return isActive ? 'nav-link is-active' : 'nav-link';
+}
 
-  // M8-W7: public runtime config (feedback destination + optional beta gate).
-  // Best-effort and never blocking: defaults keep the footer usable offline.
-  const [feedbackUrl, setFeedbackUrl] = useState('mailto:feedback@example.com');
+function Protected({ children }: { children: ReactNode }) {
+  const { session, login, register } = useSession();
   const [betaAccessRequired, setBetaAccessRequired] = useState(false);
+
   useEffect(() => {
     let active = true;
     void api.getPublicConfig()
-      .then((config) => {
-        if (!active) return;
-        setFeedbackUrl(config.feedbackUrl || 'mailto:feedback@example.com');
-        setBetaAccessRequired(!!config.betaAccessRequired);
-      })
-      .catch(() => { /* non-critical: keep safe defaults */ });
+      .then((config) => { if (active) setBetaAccessRequired(!!config.betaAccessRequired); })
+      .catch(() => { /* safe default */ });
     return () => { active = false; };
   }, []);
 
-  // A new session (different signed-in user) gets a fresh chance to see the
-  // guide; progress itself is remembered server-side via `lastStep`.
+  if (session.status === 'loading') {
+    return <div className="page-state" role="status" aria-live="polite">Opening your desk…</div>;
+  }
+  if (session.status === 'unauthenticated') {
+    return <AuthForm login={login} register={register} betaAccessRequired={betaAccessRequired} />;
+  }
+  return <>{children}</>;
+}
+
+function AppRoutes() {
+  const { session, logout } = useSession();
+  const { state: onboarding, loading: onboardingLoading, patch: patchOnboarding } =
+    useOnboarding(session.status === 'authenticated');
+  const [onboardingDismissed, setOnboardingDismissed] = useState(false);
+  const [feedbackUrl, setFeedbackUrl] = useState('mailto:feedback@example.com');
+
+  useEffect(() => {
+    let active = true;
+    void api.getPublicConfig()
+      .then((config) => { if (active) setFeedbackUrl(config.feedbackUrl || 'mailto:feedback@example.com'); })
+      .catch(() => { /* keep default */ });
+    return () => { active = false; };
+  }, []);
+
   useEffect(() => {
     setOnboardingDismissed(false);
   }, [session.user?.id]);
@@ -165,8 +190,6 @@ const App = () => {
     !onboarding.completed &&
     !onboardingDismissed;
 
-  // Replay the first-experience guide. This only resets cosmetic UI state via
-  // the existing PATCH API (no destructive confirmation, no gameplay impact).
   const replayGuide = async (): Promise<void> => {
     setOnboardingDismissed(false);
     await patchOnboarding({
@@ -178,99 +201,87 @@ const App = () => {
     });
   };
 
-  // Legal pages are public; every other page requires a resolved session.
-  const protectedPage = (node: ReactNode): ReactNode => {
-    if (session.status === 'loading') {
-      return <div className="page-state" role="status">Loading session…</div>;
-    }
-    if (session.status === 'unauthenticated') {
-      return <AuthForm login={login} register={register} betaAccessRequired={betaAccessRequired} />;
-    }
-    return node;
-  };
-
   return (
-    <Router>
-      <div className="app-shell">
-        <div className="ambient-scene" aria-hidden="true">
-          <div className="ambient-scene__wash" />
-          <div className="ambient-scene__orb ambient-scene__orb--a" />
-          <div className="ambient-scene__orb ambient-scene__orb--b" />
-          <div className="ambient-scene__orb ambient-scene__orb--c" />
-          <div className="ambient-scene__grain" />
-        </div>
-        <nav className="app-nav" aria-label="Primary">
-          <div className="nav-left">
-            <Link className="nav-brand" to="/" aria-label="THE INVESTIGATION home">
-              <span className="nav-brand__mark" aria-hidden="true">TI</span>
-              <span>
-                <span className="nav-brand__name">THE INVESTIGATION</span>
-                <span className="nav-brand__tag">Case files</span>
-              </span>
-            </Link>
-          </div>
-          <div className="nav-right">
+    <div className="app-shell">
+      <header className="site-header">
+        <div className="site-header__inner">
+          <Link className="brand" to="/" aria-label="The Investigation, case library">
+            <span className="brand__name">The Investigation</span>
+          </Link>
+
+          <nav className="site-nav" aria-label="Primary">
             {session.status === 'authenticated' ? (
               <>
-                <Link to="/">Case Library</Link>
-                <Link to="/perspectives">Perspectives</Link>
-                <Link to="/knowledge">Knowledge</Link>
-                <Link to="/progress">Progress</Link>
-                <Link to="/archive">Archive</Link>
+                <NavLink to="/" end className={navClass}>Cases</NavLink>
+                <NavLink to="/perspectives" className={navClass}>Perspectives</NavLink>
+                <NavLink to="/knowledge" className={navClass}>Knowledge</NavLink>
+                <NavLink to="/progress" className={navClass}>Progress</NavLink>
+                <NavLink to="/archive" className={navClass}>Archive</NavLink>
                 <button
                   type="button"
                   className="nav-guide-link"
                   onClick={() => void replayGuide()}
-                  title="Replay the first-experience field guide"
                 >
-                  Replay guide
+                  Field guide
                 </button>
-                <div className="nav-user">
-                  <span className="nav-user__email" title={session.user?.email}>
+                <span className="nav-user">
+                  <span className="nav-user__email" title={session.user?.email ?? ''}>
                     {session.user?.email}
                   </span>
-                  <button type="button" onClick={() => void logout()}>Sign out</button>
-                </div>
+                  <button type="button" className="nav-signout" onClick={() => void logout()}>
+                    Sign out
+                  </button>
+                </span>
               </>
-            ) : (
-              <span className="muted">Not signed in</span>
-            )}
-          </div>
-        </nav>
+            ) : null}
+          </nav>
+        </div>
+      </header>
 
-        <main className="app-main">
-          <Routes>
-            <Route path="/privacy" element={<LegalPage kind="privacy" feedbackUrl={feedbackUrl} />} />
-            <Route path="/terms" element={<LegalPage kind="terms" feedbackUrl={feedbackUrl} />} />
-            <Route path="/" element={protectedPage(<CaseListPage />)} />
-            <Route path="/perspectives" element={protectedPage(<PerspectiveLibraryPage />)} />
-            <Route path="/perspectives/:experienceKey" element={protectedPage(<PerspectiveExperiencePage />)} />
-            <Route path="/knowledge" element={protectedPage(<KnowledgeJournalPage />)} />
-            <Route path="/progress" element={protectedPage(<ProgressPage />)} />
-            <Route path="/investigation/:caseId" element={protectedPage(<InvestigationRoomPage />)} />
-            <Route path="/archive" element={protectedPage(<ArchivePage />)} />
-          </Routes>
-        </main>
+      <main id="main-content" className="app-main" tabIndex={-1}>
+        <Routes>
+          <Route path="/privacy" element={<LegalPage kind="privacy" feedbackUrl={feedbackUrl} />} />
+          <Route path="/terms" element={<LegalPage kind="terms" feedbackUrl={feedbackUrl} />} />
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="/register" element={<Navigate to="/" replace />} />
+          <Route path="/" element={<Protected><CaseListPage /></Protected>} />
+          <Route path="/perspectives" element={<Protected><PerspectiveLibraryPage /></Protected>} />
+          <Route path="/perspectives/:experienceKey" element={<Protected><PerspectiveExperiencePage /></Protected>} />
+          <Route path="/knowledge" element={<Protected><KnowledgeJournalPage /></Protected>} />
+          <Route path="/progress" element={<Protected><ProgressPage /></Protected>} />
+          <Route path="/investigation/:caseId" element={<Protected><InvestigationRoomPage /></Protected>} />
+          <Route path="/archive" element={<Protected><ArchivePage /></Protected>} />
+        </Routes>
+      </main>
 
-        <footer className="app-footer" aria-label="Site information">
-          <span>© {new Date().getFullYear()} THE INVESTIGATION · Beta</span>
-          <nav className="app-footer__links" aria-label="Legal and feedback">
+      <footer className="site-footer" aria-label="Site information">
+        <div className="site-footer__inner">
+          <span>The Investigation <span className="site-footer__beta">private beta</span></span>
+          <nav className="site-footer__links" aria-label="Legal and feedback">
             <Link to="/privacy">Privacy</Link>
             <Link to="/terms">Terms</Link>
-            <a href={feedbackUrl} target="_blank" rel="noreferrer">Feedback</a>
+            <a href={feedbackUrl} target="_blank" rel="noreferrer noopener">Send feedback</a>
           </nav>
-        </footer>
+        </div>
+      </footer>
 
-        {showOnboarding && (
-          <OnboardingOverlay
-            state={onboarding}
-            onPatch={patchOnboarding}
-            onDismiss={() => setOnboardingDismissed(true)}
-          />
-        )}
-      </div>
-    </Router>
+      {showOnboarding && (
+        <OnboardingOverlay
+          state={onboarding}
+          onPatch={patchOnboarding}
+          onDismiss={() => setOnboardingDismissed(true)}
+        />
+      )}
+    </div>
   );
-};
+}
 
-export default App;
+export default function App() {
+  return (
+    <SessionProvider>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </SessionProvider>
+  );
+}

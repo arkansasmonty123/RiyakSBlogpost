@@ -1,11 +1,3 @@
-/**
- * useOnboarding
- *
- * Small hook around the auth-gated /api/me/onboarding endpoints. It loads the
- * player's first-experience state, exposes a normalized patch helper, and
- * degrades gracefully when the request fails (onboarding is cosmetic - it must
- * never block gameplay). No canonical/hidden data is involved.
- */
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api';
 import type { OnboardingPatch, OnboardingState } from '../api';
@@ -13,9 +5,7 @@ import type { OnboardingPatch, OnboardingState } from '../api';
 export interface UseOnboardingResult {
   state: OnboardingState | null;
   loading: boolean;
-  /** Re-fetch the server state (e.g. after a login or manual change). */
   refresh: () => Promise<void>;
-  /** Persist an allowlisted patch and update local state from the response. */
   patch: (changes: OnboardingPatch) => Promise<OnboardingState | null>;
 }
 
@@ -32,7 +22,6 @@ export const useOnboarding = (enabled = true): UseOnboardingResult => {
     try {
       setState(await api.getOnboarding());
     } catch {
-      // Onboarding is best-effort: a failure simply means "no guidance shown".
       setState(null);
     } finally {
       setLoading(false);
@@ -49,7 +38,6 @@ export const useOnboarding = (enabled = true): UseOnboardingResult => {
       setState(next);
       return next;
     } catch {
-      // Never let a cosmetic write break the UI; keep the previous state.
       return null;
     }
   }, []);

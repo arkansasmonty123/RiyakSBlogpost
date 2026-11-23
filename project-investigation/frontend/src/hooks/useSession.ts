@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 
-/** Minimal, non-sensitive view of the authenticated user. */
 export interface SessionUser {
   id: string;
   email: string;
@@ -15,12 +14,9 @@ export interface SessionState {
 
 export interface UseSessionResult {
   session: SessionState;
-  /** POST /api/login - establishes the session cookie on success. */
   login: (email: string, password: string) => Promise<SessionUser>;
-  /** POST /api/register - creates the account and establishes the session cookie. */
   register: (email: string, password: string, betaAccessCode?: string) => Promise<SessionUser>;
   logout: () => Promise<void>;
-  /** Re-check /api/me and update session state. */
   refresh: () => Promise<void>;
 }
 
@@ -46,10 +42,6 @@ async function postJson<T>(path: string, body: unknown): Promise<{ ok: boolean; 
   return { ok: res.ok, status: res.status, data };
 }
 
-/**
- * Session hook backed by the real cookie-based auth endpoints.
- * All requests include credentials so the httpOnly session cookie is sent.
- */
 export const useSession = (): UseSessionResult => {
   const [session, setSession] = useState<SessionState>({ user: null, status: 'loading' });
 
@@ -76,27 +68,19 @@ export const useSession = (): UseSessionResult => {
 
   const login = useCallback(async (email: string, password: string): Promise<SessionUser> => {
     const { ok, status, data } = await postJson<AuthResponse>('/api/login', { email, password });
-    if (!ok) {
-      throw new Error(data?.error || `Login failed (${status})`);
-    }
+    if (!ok) throw new Error(data?.error || `Login failed (${status})`);
     const user: SessionUser = { id: String(data?.id ?? ''), email: String(data?.email ?? email) };
     setSession({ user, status: 'authenticated' });
     return user;
   }, []);
 
-  const register = useCallback(async (
-    email: string,
-    password: string,
-    betaAccessCode?: string
-  ): Promise<SessionUser> => {
+  const register = useCallback(async (email: string, password: string, betaAccessCode?: string): Promise<SessionUser> => {
     const { ok, status, data } = await postJson<AuthResponse>('/api/register', {
       email,
       password,
       ...(betaAccessCode ? { betaAccessCode } : {}),
     });
-    if (!ok) {
-      throw new Error(data?.error || `Registration failed (${status})`);
-    }
+    if (!ok) throw new Error(data?.error || `Registration failed (${status})`);
     const user: SessionUser = { id: String(data?.id ?? ''), email: String(data?.email ?? email) };
     setSession({ user, status: 'authenticated' });
     return user;

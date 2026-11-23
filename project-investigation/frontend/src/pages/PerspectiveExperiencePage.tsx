@@ -8,6 +8,7 @@ import type {
   PerspectiveReflection,
   PerspectiveReflectionKind,
 } from '../api';
+import '../features/support/support.css';
 
 function humanize(value: string): string {
   return value.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
@@ -112,15 +113,14 @@ export const PerspectiveExperiencePage = () => {
     }
   }
 
-  if (loading) return <div className="page-state">Loading perspective…</div>;
-  if (error) return <div className="error">Error loading perspective: {error}</div>;
-  if (!experience) return <div className="error">Perspective not found.</div>;
+  if (loading) return <div className="support-page page-enter"><div className="page-state" role="status" aria-live="polite">Loading perspective…</div></div>;
+  if (error) return <div className="support-page page-enter"><div className="error" role="alert">Error loading perspective: {error}</div></div>;
+  if (!experience) return <div className="support-page page-enter"><div className="error" role="alert">Perspective not found.</div></div>;
 
   return (
-    <div className="perspective-detail page-enter">
+    <div className="perspective-detail support-page page-enter">
       <div className="page-heading">
         <div>
-          <p className="auth-form__eyebrow">Perspective Experience</p>
           <h2>{experience.title}</h2>
           <p className="muted">{experience.primaryQuestion}</p>
         </div>
@@ -137,42 +137,39 @@ export const PerspectiveExperiencePage = () => {
       <div className="perspective-detail__layout">
         <article className="perspective-detail__main">
           <section className="detail-card perspective-reading-section">
-            <div className="badges">
-              <span className="badge">{experience.framework?.name || humanize(experience.frameworkKey)}</span>
-              <span className="badge badge--soft">{humanize(experience.format)}</span>
-              <span className="badge badge--soft">{humanize(experience.difficulty)}</span>
-              <span className="badge badge--soft">~{experience.estimatedMinutes} min</span>
-              <span className="badge badge--soft">{humanize(experience.knowledgeClass)}</span>
-            </div>
+            <span className="seal seal--accent">{experience.framework?.name || humanize(experience.frameworkKey)}</span>
+            <p className="perspective-catalog-card__meta">
+              {humanize(experience.format)} · {humanize(experience.difficulty)} · class: {humanize(experience.knowledgeClass)} · ~{experience.estimatedMinutes} min
+            </p>
             {experience.scopeNote && <p className="muted"><strong>Scope:</strong> {experience.scopeNote}</p>}
             {experience.traditionScope && <p className="muted"><strong>Tradition/scope:</strong> {experience.traditionScope}</p>}
             {experience.intellectualPurpose && <p><strong>Why this matters:</strong> {experience.intellectualPurpose}</p>}
           </section>
 
           {experience.introduction && (
-            <section className="detail-card perspective-reading-section">
-              <h3>Introduction</h3>
+            <section className="detail-card perspective-reading-section" aria-labelledby="pe-intro">
+              <h3 id="pe-intro">Introduction</h3>
               <p className="solution-prose">{experience.introduction}</p>
             </section>
           )}
 
           {experience.intellectualBackground && (
-            <section className="detail-card perspective-reading-section">
-              <h3>Intellectual background</h3>
+            <section className="detail-card perspective-reading-section" aria-labelledby="pe-bg">
+              <h3 id="pe-bg">Intellectual background</h3>
               <p className="solution-prose">{experience.intellectualBackground}</p>
             </section>
           )}
 
           {experience.mainIdea && (
-            <section className="detail-card perspective-reading-section">
-              <h3>Main idea</h3>
+            <section className="detail-card perspective-reading-section" aria-labelledby="pe-main">
+              <h3 id="pe-main">Main idea</h3>
               <p className="solution-prose">{experience.mainIdea}</p>
             </section>
           )}
 
           {experience.detailedExplanation && (
-            <section className="detail-card perspective-reading-section">
-              <h3>Detailed explanation</h3>
+            <section className="detail-card perspective-reading-section" aria-labelledby="pe-detail">
+              <h3 id="pe-detail">Detailed explanation</h3>
               <p className="solution-prose">{experience.detailedExplanation}</p>
             </section>
           )}
@@ -185,17 +182,17 @@ export const PerspectiveExperiencePage = () => {
           ))}
 
           {experience.historicalContext && (
-            <section className="detail-card perspective-reading-section">
-              <h3>Historical context</h3>
+            <section className="detail-card perspective-reading-section" aria-labelledby="pe-history">
+              <h3 id="pe-history">Historical context</h3>
               <p className="solution-prose">{experience.historicalContext}</p>
             </section>
           )}
 
           {epistemicEntries.length > 0 && (
-            <section className="detail-card perspective-reading-section" aria-label="Epistemic breakdown">
-              <h3>Epistemic breakdown</h3>
+            <section className="detail-card perspective-reading-section" aria-labelledby="pe-epistemic">
+              <h3 id="pe-epistemic">Epistemic breakdown</h3>
               <p className="muted">What is established, interpreted, contested, or personally held in this perspective.</p>
-              <dl className="disagreement-meta">
+              <dl className="perspective-epistemic">
                 {epistemicEntries.map(([key, value]) => (
                   <Fragment key={key}>
                     <dt>{humanize(key)}</dt>
@@ -207,8 +204,8 @@ export const PerspectiveExperiencePage = () => {
           )}
 
           {(experience.limitations.length > 0 || experience.counterarguments.length > 0 || experience.commonMisconceptions.length > 0) && (
-            <section className="detail-card perspective-reading-section">
-              <h3>Limits and counterpoints</h3>
+            <section className="detail-card perspective-reading-section" aria-labelledby="pe-limits">
+              <h3 id="pe-limits">Limits and counterpoints</h3>
               {experience.limitations.length > 0 && (
                 <>
                   <h4>Limitations</h4>
@@ -231,8 +228,8 @@ export const PerspectiveExperiencePage = () => {
           )}
 
           {experience.reflectionQuestions.length > 0 && (
-            <section className="detail-card perspective-reading-section">
-              <h3>Reflection questions</h3>
+            <section className="detail-card perspective-reading-section" aria-labelledby="pe-questions">
+              <h3 id="pe-questions">Reflection questions</h3>
               <ol className="specialist-list">
                 {experience.reflectionQuestions.map((q, i) => <li key={i}>{q}</li>)}
               </ol>
@@ -240,8 +237,8 @@ export const PerspectiveExperiencePage = () => {
           )}
 
           {experience.activities.length > 0 && (
-            <section className="detail-card perspective-reading-section">
-              <h3>Activities</h3>
+            <section className="detail-card perspective-reading-section" aria-labelledby="pe-activities">
+              <h3 id="pe-activities">Activities</h3>
               <p className="muted">Optional exercises. They are for reflection only and do not affect case progress.</p>
               <div className="card-list">
                 {experience.activities.map((activity, i) => (
@@ -255,8 +252,8 @@ export const PerspectiveExperiencePage = () => {
           )}
 
           {experience.supportingSources.length > 0 && (
-            <section className="detail-card perspective-reading-section" aria-label="Supporting sources">
-              <h3>Supporting sources</h3>
+            <section className="detail-card perspective-reading-section" aria-labelledby="pe-sources">
+              <h3 id="pe-sources">Supporting sources</h3>
               <p className="muted">Sources are shown with verification status. Unverified URLs are never linked.</p>
               <div className="card-list">
                 {experience.supportingSources.map((source, i) => {
@@ -265,7 +262,7 @@ export const PerspectiveExperiencePage = () => {
                     <article key={`${source.label}-${i}`} className="detail-card">
                       <div className="badges">
                         <span className="badge">{humanize(source.sourceType || 'source')}</span>
-                        <span className={source.sourceVerified ? 'badge badge--confirmed' : 'badge badge--warning'}>
+                        <span className={source.sourceVerified ? 'badge badge--correct' : 'badge badge--warning'}>
                           {source.sourceVerified ? 'Verified' : 'Unverified'}
                         </span>
                         {source.verificationStatus && <span className="badge badge--soft">{humanize(String(source.verificationStatus))}</span>}
@@ -312,8 +309,8 @@ export const PerspectiveExperiencePage = () => {
               <label className="field-label">Your response
                 <textarea value={reflectionText} onChange={(e) => setReflectionText(e.target.value)} rows={5} maxLength={4000} required />
               </label>
-              {reflectionError && <div className="error">{reflectionError}</div>}
-              {reflectionNotice && <p className="muted" role="status">{reflectionNotice}</p>}
+              {reflectionError && <div className="error" role="alert">{reflectionError}</div>}
+              {reflectionNotice && <p className="muted" role="status" aria-live="polite">{reflectionNotice}</p>}
               <button type="submit" className="small-button" disabled={savingReflection || !reflectionText.trim()}>
                 {savingReflection ? 'Saving…' : 'Save reflection'}
               </button>
@@ -331,10 +328,8 @@ export const PerspectiveExperiencePage = () => {
               <div className="card-list">
                 {reflections.map((r) => (
                   <article key={r.id} className="detail-card">
-                    <div className="badges">
-                      <span className="badge badge--soft">{humanize(r.reflectionKind)}</span>
-                      {r.investigationId && <span className="badge badge--soft">Case-linked</span>}
-                    </div>
+                    <span className={`seal seal--${r.investigationId ? 'accent' : 'muted'}`}>{humanize(r.reflectionKind)}</span>
+                    {r.investigationId && <p className="muted small-note">Linked to a case</p>}
                     {r.prompt && <p className="muted small-note"><strong>Prompt:</strong> {r.prompt}</p>}
                     <p>{r.response}</p>
                     <div className="button-row">

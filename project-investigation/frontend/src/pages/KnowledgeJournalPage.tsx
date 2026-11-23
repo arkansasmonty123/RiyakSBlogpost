@@ -8,6 +8,7 @@ import type {
   KnowledgeRecallResultDTO,
   SafeMemoryItemDTO,
 } from '../api';
+import '../features/support/support.css';
 
 function humanize(value: string | null | undefined): string {
   return String(value || '')
@@ -52,11 +53,9 @@ function RecallPrompt({
 
   return (
     <article className="detail-card discovery-recall-card">
-      <div className="badges">
-        <span className="badge badge--warning">Due recall</span>
-        <span className="badge badge--soft">{humanize(prompt.kind)}</span>
-      </div>
+      <span className="seal seal--warning">Due recall</span>
       <h4>{prompt.subjectLabel}</h4>
+      <p className="muted small-note">Kind: {humanize(prompt.kind)}</p>
       <p>{prompt.prompt}</p>
       {prompt.nextDueAt && <p className="muted small-note">Due: {formatDate(prompt.nextDueAt)}</p>}
       {!result ? (
@@ -65,10 +64,12 @@ function RecallPrompt({
             Your recall
             <textarea value={response} onChange={(e) => setResponse(e.target.value)} rows={3} maxLength={2000} required />
           </label>
-          {error && <div className="error">{error}</div>}
-          <button type="submit" className="small-button" disabled={busy || !response.trim()}>
-            {busy ? 'Checking…' : 'Submit recall'}
-          </button>
+          {error && <div className="error" role="alert">{error}</div>}
+          <div className="button-row">
+            <button type="submit" className="small-button" disabled={busy || !response.trim()}>
+              {busy ? 'Checking…' : 'Submit recall'}
+            </button>
+          </div>
         </form>
       ) : (
         <div className="discovery-eval discovery-eval--neutral" role="status" aria-live="polite">
@@ -121,13 +122,12 @@ function MemoryCard({
     <article className="detail-card knowledge-memory-card">
       <div className="discovery-clue__header">
         <div>
-          <div className="badges">
-            <span className="badge badge--soft">{humanize(item.masteryStatus)}</span>
-            <span className="badge badge--soft">{humanize(item.knowledgeStatus)}</span>
-            <span className="badge badge--soft">{humanize(item.referenceCategory)}</span>
-          </div>
+          <span className={`seal seal--${item.masteryStatus === 'mastered' ? 'success' : 'accent'}`}>
+            {humanize(item.masteryStatus)}
+          </span>
           <h3>{item.subjectLabel}</h3>
           <p className="muted small-note">{item.correctedUnderstanding}</p>
+          <p className="muted small-note">{humanize(item.referenceCategory)} · {humanize(item.knowledgeStatus)}</p>
         </div>
         <button type="button" className="small-button" onClick={onToggle} aria-expanded={expanded}>
           {expanded ? 'Hide details' : 'View details'}
@@ -144,14 +144,14 @@ function MemoryCard({
         <div className="detail-card">
           <h4>Unresolved questions</h4>
           <ul className="specialist-list">
-            {item.unresolvedQuestions.map((q, i) => <li key={i}>{q}</li>)}
+            {item.unresolvedQuestions.map((q, i) => <li key={`${item.id}-q-${i}`}>{q}</li>)}
           </ul>
         </div>
       )}
 
       {expanded && (
         <div className="knowledge-memory-detail">
-          {detailLoading && <p className="muted" role="status">Loading subject detail…</p>}
+          {detailLoading && <p className="muted" role="status" aria-live="polite">Loading subject detail…</p>}
           {detail && (
             <>
               <div className="detail-card">
@@ -170,7 +170,11 @@ function MemoryCard({
                           </span>
                           <span className="badge badge--soft">{humanize(c.verificationStatus)}</span>
                         </div>
-                        {c.sourceUrl ? <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-link">Open source</a> : <span className="muted small-note">No external URL provided.</span>}
+                        {c.sourceUrl ? (
+                          <a href={c.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-link">Open source</a>
+                        ) : (
+                          <span className="muted small-note">No external URL provided.</span>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -230,10 +234,12 @@ function MemoryCard({
                     Recall response
                     <textarea value={recallResponse} onChange={(e) => setRecallResponse(e.target.value)} rows={3} maxLength={2000} />
                   </label>
-                  {recallError && <div className="error">{recallError}</div>}
-                  <button type="submit" className="small-button" disabled={recallBusy || !recallResponse.trim()}>
-                    {recallBusy ? 'Checking…' : 'Submit recall'}
-                  </button>
+                  {recallError && <div className="error" role="alert">{recallError}</div>}
+                  <div className="button-row">
+                    <button type="submit" className="small-button" disabled={recallBusy || !recallResponse.trim()}>
+                      {recallBusy ? 'Checking…' : 'Submit recall'}
+                    </button>
+                  </div>
                 </form>
                 {recallResult && (
                   <div className="discovery-eval discovery-eval--neutral" role="status" aria-live="polite">
@@ -309,11 +315,11 @@ export const KnowledgeJournalPage = () => {
   }
 
   return (
-    <div className="archive-page page-enter">
+    <div className="archive-page support-page page-enter">
       <div className="page-heading">
         <div>
           <h2>Knowledge Journal</h2>
-          <p className="muted">What you&apos;ve learned from field research across investigations. External knowledge supports your reasoning; it never replaces case evidence.</p>
+          <p className="muted">What you’ve learned from field research across investigations. External knowledge supports your reasoning; it never replaces case evidence.</p>
         </div>
         <Link className="text-link" to="/">Back to case library</Link>
       </div>
@@ -324,7 +330,7 @@ export const KnowledgeJournalPage = () => {
         </div>
       )}
 
-      {loading && <div className="page-state" role="status">Loading knowledge journal…</div>}
+      {loading && <div className="page-state" role="status" aria-live="polite">Loading knowledge journal…</div>}
       {error && <div className="error" role="alert">{error}</div>}
 
       {!loading && !error && duePrompts.length > 0 && (
@@ -349,7 +355,8 @@ export const KnowledgeJournalPage = () => {
           </div>
           {items.length === 0 ? (
             <div className="empty-state">
-              <p>No knowledge memories yet. Complete field research discoveries during investigations to build your journal.</p>
+              <h3>No knowledge memories yet</h3>
+              <p className="muted">Complete field research discoveries during investigations to build your journal.</p>
               <Link className="button-link" to="/">Browse cases</Link>
             </div>
           ) : (
