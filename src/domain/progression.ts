@@ -109,6 +109,7 @@ export function advanceClock(save: SaveGame): { dayChanged: boolean } {
       summary: `Day ${save.clock.day} begins. New office work may be assigned.`,
       participants: ['player'],
     });
+    recordAudit(save, 'day-advanced', `Advanced to Day ${save.clock.day}.`);
   }
   refreshAssignmentUnlocks(save);
   return { dayChanged };

@@ -81,7 +81,8 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
 
     if (method === 'GET' && pathname === '/api/audit') {
       const slotId = url.searchParams.get('slotId') ?? undefined;
-      const limit = Number(url.searchParams.get('limit') ?? '100');
+      const rawLimit = Number(url.searchParams.get('limit') ?? '100');
+      const limit = Number.isFinite(rawLimit) ? Math.max(1, Math.min(500, Math.floor(rawLimit))) : 100;
       return sendJson(res, 200, { ok: true, events: listAuditEvents(getDb(), slotId, limit) });
     }
 

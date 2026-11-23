@@ -317,7 +317,8 @@ export type AuditEventType =
   | 'custody-recorded'
   | 'source-intake'
   | 'senior-review-ai'
-  | 'final-brief';
+  | 'final-brief'
+  | 'day-advanced';
 
 /**
  * A bounded, append-only record that an important action happened. It contains only

@@ -178,6 +178,11 @@ describe('ADR-001 persistence over HTTP (server/api.ts)', () => {
 
     const limited = await requestJson('/api/audit?slotId=slot-audit&limit=1');
     expect(limited.body.events).toHaveLength(1);
+
+    const badLimit = await requestJson('/api/audit?slotId=slot-audit&limit=abc');
+    expect(badLimit.status).toBe(200);
+    expect(badLimit.body.ok).toBe(true);
+    expect(Array.isArray(badLimit.body.events)).toBe(true);
   });
 
   it('a stale expectedSavedAt returns 409 SAVE_CONFLICT and does not overwrite the slot', async () => {

@@ -21,6 +21,7 @@ export const AUDIT_EVENT_KINDS: readonly AuditEventType[] = [
   'source-intake',
   'senior-review-ai',
   'final-brief',
+  'day-advanced',
 ];
 
 const SLOTS: readonly GameClock['slot'][] = ['morning', 'afternoon', 'evening'];
