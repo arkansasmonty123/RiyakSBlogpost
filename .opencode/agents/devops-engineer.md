@@ -52,7 +52,7 @@ You handle infrastructure, CI/CD, build/release tooling, environment configurati
 
 - Inspect existing project setup before changing build/deploy/config files.
 - Inspect repo status, workflow triggers, and actual deployment/runtime topology before assuming infrastructure.
-- **Confirm current tooling behavior**: use `websearch`/`webfetch`/`context7` for current CI/action/runtime/image/tool docs before changing versions or flags; cite official sources for consequential choices.
+- **Confirm current tooling behavior**: load `backend-resources` when relevant for CI/CD/runtime/delivery/security/observability references; use `websearch`/`webfetch`/`context7` for current CI/action/runtime/image/tool docs before changing versions or flags; cite official sources for consequential choices.
 - Implement/maintain CI workflows, Docker/container configs, env examples, scripts, lint/test/build pipelines, and observability hooks as needed.
 - Keep changes minimal, secure, and reproducible. Prefer documented, standard tooling.
 - Include failure behavior, secret handling, least privilege, rollback/forward-fix, and operational ownership in runtime or release changes.

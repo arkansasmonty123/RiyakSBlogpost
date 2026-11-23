@@ -32,18 +32,23 @@ The system is designed so the **Orchestrator** receives objectives, resolves the
 ├── AGENTS.md                       # Persistent project instructions for agents
 ├── SETUP-GUIDE.md                  # This guide
 ├── .opencode/
-│   └── agents/
-│       ├── orchestrator.md
-│       ├── architect.md
-│       ├── builder.md
-│       ├── bug-fixer.md
-│       ├── devops-engineer.md
-│       ├── qa-engineer.md
-│       ├── researcher.md
-│       ├── scrutinizer.md
-│       ├── security-auditor.md
-│       ├── ui-ux-frontend.md
-│       └── user-tester.md
+│   ├── agents/
+│   │   ├── orchestrator.md
+│   │   ├── architect.md
+│   │   ├── builder.md
+│   │   ├── bug-fixer.md
+│   │   ├── devops-engineer.md
+│   │   ├── qa-engineer.md
+│   │   ├── researcher.md
+│   │   ├── scrutinizer.md
+│   │   ├── security-auditor.md
+│   │   ├── ui-ux-frontend.md
+│   │   └── user-tester.md
+│   └── skills/
+│       ├── backend-resources/
+│       ├── context-harness/
+│       ├── stitch-design-mcp/
+│       └── ui-ux-resources/
 └── project-management/
     ├── DEV-STATUS.md               # Human-readable current status
     ├── TASKS.md                    # Task backlog/ownership/evidence
@@ -65,11 +70,11 @@ The system is designed so the **Orchestrator** receives objectives, resolves the
 ## MCP servers & skills
 
 - **MCP servers** (configured in `opencode.jsonc`): `playwright` (local, browser automation), `context7` (remote, docs, no OAuth), `gh_grep` (remote, GitHub code search, no OAuth), `stitch` (remote, Google Stitch AI UI design, `https://stitch.googleapis.com/mcp`; auth via TUI `/mcps` if prompted).
-- **Skills** in `.agents/skills/`: `design-taste-frontend` (Taste Skill), `frontend-design`, `planning-with-files`, `stitch-design-mcp`, `vercel-composition-patterns`, `vercel-react-best-practices`, `webapp-testing`, `web-design-guidelines`. Load with the `skill` tool when relevant.
+- **Skills** (load with the `skill` tool when relevant): `.agents/skills/` has `design-taste-frontend`, `frontend-design`, `planning-with-files`, `stitch-design-mcp`, `vercel-composition-patterns`, `vercel-react-best-practices`, `webapp-testing`, `web-design-guidelines`; `.opencode/skills/` has `backend-resources` (backend/API/DB/auth/security/DevOps catalog), `context-harness` (context/reliability), `ui-ux-resources` (UI/UX/frontend catalog), and `stitch-design-mcp`.
 
 ### Skill and web usage (expected, not optional)
 
-- **Load skills before work**: agents must load matching skills with the `skill` tool at task start (UI: frontend/design-taste/web-design-guidelines/vercel-*/stitch-design-mcp/webapp-testing; planning: planning-with-files). Orchestrator handoffs should name required skills.
+- **Load skills before work**: agents must load matching skills with the `skill` tool at task start (UI: frontend/design-taste/ui-ux-resources/web-design-guidelines/vercel-*/stitch-design-mcp/webapp-testing; backend/API/DB/auth/security/DevOps: backend-resources; planning: planning-with-files; context/reliability: context-harness). Orchestrator handoffs should name required skills.
 - **Use web for current information**: for libraries/frameworks/APIs/CLI flags/security advisories or any claim likely to change, use `websearch`/`webfetch` and `context7` before implementing; include source links/versions in reports. Do not guess stale APIs.
 - **Evidence in reports**: agent reports should include skills loaded and external sources consulted when they influenced decisions.
 

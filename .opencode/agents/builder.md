@@ -52,7 +52,7 @@ You implement features and code changes assigned by the Orchestrator.
 
 - Read the assigned task, acceptance criteria, and relevant PRD/docs/code before changing anything.
 - Inspect `git status --short` and relevant diffs first; treat all pre-existing edits/untracked files as user-owned.
-- **Load relevant skills before coding**: use the `skill` tool when the task matches (UI/frontend: `frontend-design`, `design-taste-frontend`, `ui-ux-resources`, `web-design-guidelines`, `vercel-react-best-practices`, `vercel-composition-patterns`, `stitch-design-mcp`, `webapp-testing`; planning: `planning-with-files`). For unfamiliar or fast-moving libraries/frameworks/APIs, verify current behavior with `websearch`, `webfetch`, or `context7` before implementing; cite sources in the report.
+- **Load relevant skills before coding**: use the `skill` tool when the task matches (UI/frontend: `frontend-design`, `design-taste-frontend`, `ui-ux-resources`, `web-design-guidelines`, `vercel-react-best-practices`, `vercel-composition-patterns`, `stitch-design-mcp`, `webapp-testing`; backend/API/DB/auth/security/DevOps: `backend-resources`; planning: `planning-with-files`). For unfamiliar or fast-moving libraries/frameworks/APIs, verify current behavior with `websearch`, `webfetch`, or `context7` before implementing; cite sources in the report.
 - Follow existing project architecture, naming, style, and patterns.
 - Work only on clearly defined tasks. Do not expand scope silently.
 - Own only the paths assigned in the handoff. If another session changes those paths or files vanish unexpectedly, stop writing and report the conflict; never reset, clean, restore, or overwrite as a shortcut.

@@ -52,7 +52,7 @@ You validate functionality through targeted test scenarios and regression checks
 
 - Read acceptance criteria and inspect the test stack before adding a new framework or broad test harness.
 - Establish the baseline and test only the changed contract/surface first; expand to regression suites when risk warrants it.
-- **Use skills/web for current test practice**: load `webapp-testing` for browser/Playwright flows and `web-design-guidelines` for UI/a11y checks when relevant. Use `websearch`/`webfetch`/`context7` to confirm current tool/framework APIs or CLI flags before guessing.
+- **Use skills/web for current test practice**: load `webapp-testing` for browser/Playwright flows, `web-design-guidelines` for UI/a11y checks, and `backend-resources` for API/DB/backend/security test patterns when relevant. Use `websearch`/`webfetch`/`context7` to confirm current tool/framework APIs or CLI flags before guessing.
 - Create and execute relevant test scenarios for the assigned scope. Run the narrowest useful checks first; filter long output and report key failures with file/line/signal.
 - Verify user journeys, edge cases, error handling, and regression risks.
 - Validate important functionality against PRD/acceptance criteria.

@@ -24,7 +24,21 @@
     "db:seed:discoveries": "tsx scripts/seed-discovery-clues.ts",
     "discovery-clues:validate": "tsx scripts/validate-discovery-clues.ts",
     "test:discovery": "tsx scripts/test-discovery-engine.ts",
-    "test:llm-controls": "tsx scripts/test-llm-controls.ts"
+    "test:llm-controls": "tsx scripts/test-llm-controls.ts",
+    "dev": "vite",
+    "dev-server": "tsx src/app.ts",
+    "build": "npm run typecheck",
+    "test:backend": "npm run typecheck && npm run test:smoke && npm run test:http",
+    "test:frontend": "npm run build --workspace frontend && npm run lint --workspace frontend",
+    "ci": "npm run typecheck && npm run test:smoke && npm run test:http && npm run build --workspace frontend",
+    "lint:frontend": "npm run lint --workspace frontend",
+    "lint": "npm run lint:root && npm run lint:frontend",
+    "dev:frontend": "vite --host 127.0.0.1",
+    "dev:backend": "tsx src/app.ts",
+    "start:backend": "npm run dev-server",
+    "prettier:check": "prettier --check src/**/*.{ts,tsx,css}",
+    "prettier:write": "prettier --write src/**/*.{ts,tsx,css}",
+    "dev:all": "npm run dev:backend --silent & npm run dev:frontend"
   },
   "keywords": [],
   "type": "commonjs",
@@ -53,5 +67,8 @@
     "helmet": "^8.3.0",
     "morgan": "^1.12.1",
     "pg": "^8.23.1"
-  }
+  },
+  "workspaces": [
+    "frontend"
+  ]
 }

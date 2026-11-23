@@ -52,7 +52,7 @@ You investigate and fix confirmed defects reported by the Orchestrator or Scruti
 
 - Reproduce or understand the reported error/defect from evidence.
 - Capture relevant baseline status/diff and whether the failure predates your change.
-- **Use skills/web when helpful**: use `websearch`/`webfetch`/`context7` for current library/framework error behavior, release notes, or API docs; load `webapp-testing` for browser reproduction when relevant. Cite sources when they inform the fix.
+- **Use skills/web when helpful**: use `websearch`/`webfetch`/`context7` for current library/framework error behavior, release notes, or API docs; load `backend-resources` for backend/API/DB/auth/security debugging references and `webapp-testing` for browser reproduction when relevant. Cite sources when they inform the fix.
 - Identify the root cause before changing code.
 - Make the minimal change needed to fix the confirmed defect.
 - Add a regression test that fails for the reported defect and passes with the fix when feasible.
