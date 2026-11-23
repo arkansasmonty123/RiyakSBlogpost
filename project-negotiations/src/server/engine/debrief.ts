@@ -24,7 +24,9 @@ function eventText(caseDef: CaseDefinition, e: NegotiationEvent): { description:
     case 'offer_made':
       return {
         description: `Structured offer made${p.proposerName ? ` by ${String(p.proposerName)}` : ''}.`,
-        impact: p.terms ? `Terms on the table: ${JSON.stringify(p.terms)}.` : 'Opened the bargaining range.',
+        impact: Array.isArray(p.terms) && p.terms.length > 0
+          ? `Terms on the table: ${(p.terms as Array<{ issueId: string; value: number }>).map((t) => termLabel(caseDef, { issueId: t.issueId, value: t.value })).join(', ')}.`
+          : 'Opened the bargaining range.',
       };
     case 'offer_countered':
       return { description: 'A counteroffer was put on the table.', impact: 'Previous offer was superseded.' };

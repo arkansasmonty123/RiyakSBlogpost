@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { CaseSummary, DebriefReport, SessionView } from '@shared/types';
 import { api } from './api';
 import { BriefingView } from './components/BriefingView';
@@ -28,6 +28,9 @@ export function App() {
   const [booting, setBooting] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirmNewSession, setConfirmNewSession] = useState(false);
+  const historyReadyRef = useRef(false);
+  const suppressHistoryRef = useRef(false);
 
   const activeCase = session?.case ?? null;
 
@@ -179,18 +182,71 @@ export function App() {
     setError(null);
   }, []);
 
-  const handleReset = useCallback(() => {
+  const performReset = useCallback(() => {
     localStorage.removeItem(SESSION_KEY);
     setSession(null);
     setDebrief(null);
     setError(null);
     setNotice(null);
+    setConfirmNewSession(false);
     setScreen('cases');
   }, []);
+
+  const handleReset = useCallback(() => {
+    if (session) {
+      setConfirmNewSession(true);
+      return;
+    }
+    performReset();
+  }, [session, performReset]);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'auto' });
   }, [screen, session?.id]);
+
+  useEffect(() => {
+    if (booting) return;
+    const state = { tnt: true, screen };
+    if (!historyReadyRef.current) {
+      window.history.replaceState(state, '', window.location.pathname + window.location.search);
+      historyReadyRef.current = true;
+      return;
+    }
+    if (suppressHistoryRef.current) {
+      suppressHistoryRef.current = false;
+      return;
+    }
+    window.history.pushState(state, '', window.location.pathname + window.location.search);
+  }, [screen, booting]);
+
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      const next = e.state?.tnt ? (e.state.screen as Screen) : 'cases';
+      const valid: Screen[] = ['cases', 'briefing', 'preparation', 'room', 'debrief', 'skills'];
+      if (!valid.includes(next)) return;
+      suppressHistoryRef.current = true;
+      if (['briefing', 'preparation', 'room', 'debrief'].includes(next) && !session) {
+        setScreen('cases');
+        return;
+      }
+      if (next === 'debrief' && session && !debrief && (session.status === 'completed' || session.status === 'abandoned')) {
+        void handleOpenDebrief(session.id);
+        return;
+      }
+      setScreen(next);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [session, debrief, handleOpenDebrief]);
+
+  useEffect(() => {
+    if (!confirmNewSession) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setConfirmNewSession(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [confirmNewSession]);
 
   const title = useMemo(() => {
     switch (screen) {
@@ -207,7 +263,7 @@ export function App() {
     <div className="app-shell">
       <a className="skip-link" href="#main-content">Skip to content</a>
       <header className="topbar">
-        <div className="brand" role="banner">
+        <div className="brand">
           <button type="button" className="brand-mark" onClick={handleLeaveToCases} aria-label="Go to case select">
             <span className="brand-kicker">Simulation</span>
             <span className="brand-title">The Negotiation Table</span>
@@ -215,10 +271,10 @@ export function App() {
           {activeCase && <span className="brand-case">{activeCase.title}</span>}
         </div>
         <nav className="topnav" aria-label="Primary">
-          <button type="button" className={screen === 'cases' ? 'nav-btn active' : 'nav-btn'} onClick={handleLeaveToCases}>Cases</button>
-          <button type="button" className={screen === 'skills' ? 'nav-btn active' : 'nav-btn'} onClick={() => setScreen('skills')}>Skills</button>
+          <button type="button" className={screen === 'cases' ? 'nav-btn active' : 'nav-btn'} aria-current={screen === 'cases' ? 'page' : undefined} onClick={handleLeaveToCases}>Cases</button>
+          <button type="button" className={screen === 'skills' ? 'nav-btn active' : 'nav-btn'} aria-current={screen === 'skills' ? 'page' : undefined} onClick={() => setScreen('skills')}>Skills</button>
           {session && (session.status === 'completed' || session.status === 'abandoned') && (
-            <button type="button" className={screen === 'debrief' ? 'nav-btn active' : 'nav-btn'} onClick={() => void handleOpenDebrief(session.id)}>Debrief</button>
+            <button type="button" className={screen === 'debrief' ? 'nav-btn active' : 'nav-btn'} aria-current={screen === 'debrief' ? 'page' : undefined} onClick={() => void handleOpenDebrief(session.id)}>Debrief</button>
           )}
           {session && session.status !== 'completed' && session.status !== 'abandoned' && (
             <button type="button" className="nav-btn" onClick={() => setScreen(screenForSession(session))}>Resume</button>
@@ -228,11 +284,27 @@ export function App() {
       </header>
 
       <div className="subbar">
-        <div>
-          <p className="eyebrow">{title}</p>
-          {session && <p className="subbar-meta">Session <code>{session.id.slice(0, 8)}</code> · <span className={`status-pill status-${session.status}`}>{session.status}</span></p>}
+        <div className="subbar-row">
+          <div>
+            <p className="eyebrow">{title}</p>
+            {session && <p className="subbar-meta">Session <code>{session.id.slice(0, 8)}</code> · <span className={`status-pill status-${session.status}`}>{session.status}</span></p>}
+          </div>
+          {busy && <div className="busy-indicator" role="status" aria-live="polite"><span className="spinner" aria-hidden="true" />Working…</div>}
         </div>
-        {busy && <div className="busy-indicator" role="status" aria-live="polite"><span className="spinner" aria-hidden="true" />Working…</div>}
+        {session && screen !== 'skills' && (
+          <ol className="phase-track" aria-label="Negotiation phases">
+            {(['briefing','preparation','room','debrief'] as const).map((phase, i, arr) => {
+              const labels = ['Briefing', 'Prepare', 'Negotiate', 'Debrief'];
+              const currentIdx = screen === 'cases' ? -1 : screen === 'briefing' ? 0 : screen === 'preparation' ? 1 : screen === 'room' ? 2 : 3;
+              const state = i < currentIdx ? 'done' : i === currentIdx ? 'current' : 'upcoming';
+              return (
+                <li key={phase} className={`phase-track-item ${state}`} aria-current={i === currentIdx ? 'step' : undefined}>
+                  <span>{labels[i]}</span>
+                </li>
+              );
+            })}
+          </ol>
+        )}
       </div>
 
       {error && (
@@ -261,7 +333,7 @@ export function App() {
             onRefresh={() => void run(loadCases)}
           />
         ) : screen === 'skills' ? (
-          <SkillsView />
+          <SkillsView cases={cases} />
         ) : !session ? (
           <div className="panel empty-panel">
             <h2>No active session</h2>
@@ -297,6 +369,37 @@ export function App() {
           />
         ) : null}
       </main>
+
+      {confirmNewSession && (
+        <div className="modal-backdrop" role="presentation" onClick={() => setConfirmNewSession(false)}>
+          <div
+            className="modal-panel panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="new-session-title"
+            aria-describedby="new-session-desc"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="eyebrow">Start over</p>
+            <h2 id="new-session-title" className="page-title-sm">Begin a new session?</h2>
+            <p id="new-session-desc" className="muted">
+              This clears the quick-resume link on this device and returns you to case selection. The session record remains on the server, but this app remembers only one active session on this device.
+              {session && session.status !== 'completed' && session.status !== 'abandoned'
+                ? ' If you want to keep negotiating, resume the current session instead.'
+                : ' You can start the same case again from the case list.'}
+            </p>
+            <div className="actions-row">
+              {session && session.status !== 'completed' && session.status !== 'abandoned' && (
+                <button type="button" className="btn btn-primary" onClick={() => { setConfirmNewSession(false); setScreen(screenForSession(session)); }}>
+                  Resume current session
+                </button>
+              )}
+              <button type="button" className="btn btn-danger" onClick={performReset}>Clear quick-resume &amp; go to cases</button>
+              <button type="button" className="btn btn-secondary" onClick={() => setConfirmNewSession(false)} autoFocus={!session || session.status === 'completed' || session.status === 'abandoned'}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

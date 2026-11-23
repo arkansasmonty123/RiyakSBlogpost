@@ -37,7 +37,7 @@ export function DebriefView({ session, debrief, busy, onLoad, onNewCase, onRetry
 
   return (
     <div className="stack-lg">
-      <section className="panel">
+      <section className="panel debrief-section" id="debrief-overview">
         <p className="eyebrow">Debrief</p>
         <h1 className="page-title">{session.case.title} — Outcome review</h1>
         <p className="lede">
@@ -51,14 +51,25 @@ export function DebriefView({ session, debrief, busy, onLoad, onNewCase, onRetry
         <p><strong>Agreement summary:</strong> {debrief.agreementSummary ?? 'No agreement summary available.'}</p>
         <p className="muted">{debrief.outcome.description}</p>
         <p className="small muted">{debrief.outcome.rationale}</p>
+        <nav className="debrief-nav" aria-label="Debrief sections">
+          <a href="#debrief-quality">Quality</a>
+          <a href="#debrief-objectives">Objectives</a>
+          <a href="#debrief-movement">Movement &amp; trust</a>
+          <a href="#debrief-moments">Key moments</a>
+          <a href="#debrief-reflection">Reflection</a>
+          <a href="#debrief-predictions">Predictions</a>
+          <a href="#debrief-reveals">Reveals</a>
+          <a href="#debrief-skills">Skills</a>
+          <a href="#debrief-concepts">Concepts</a>
+        </nav>
       </section>
 
-      <div className="two-col">
+      <div className="two-col debrief-section" id="debrief-quality">
         <QualityCard title="Decision quality" quality={debrief.decisionQuality} rationale={debrief.decisionQualityRationale} />
         <QualityCard title="Outcome quality" quality={debrief.outcomeQuality} rationale={debrief.outcomeQualityRationale} />
       </div>
 
-      <section className="panel">
+      <section className="panel debrief-section" id="debrief-objectives">
         <p className="eyebrow">Objectives</p>
         <h2>Objectives met</h2>
         <div className="stack-sm">
@@ -74,7 +85,7 @@ export function DebriefView({ session, debrief, busy, onLoad, onNewCase, onRetry
         </div>
       </section>
 
-      <div className="two-col">
+      <div className="two-col debrief-section" id="debrief-movement">
         <section className="panel">
           <p className="eyebrow">Movement</p>
           <h2>Concessions</h2>
@@ -103,7 +114,7 @@ export function DebriefView({ session, debrief, busy, onLoad, onNewCase, onRetry
         </section>
       </div>
 
-      <section className="panel">
+      <section className="panel debrief-section" id="debrief-moments">
         <p className="eyebrow">Timeline</p>
         <h2>Key moments</h2>
         {debrief.keyMoments.length === 0 ? <p className="muted">No key moments recorded.</p> : (
@@ -121,7 +132,7 @@ export function DebriefView({ session, debrief, busy, onLoad, onNewCase, onRetry
         )}
       </section>
 
-      <div className="two-col">
+      <div className="two-col debrief-section" id="debrief-reflection">
         <section className="panel">
           <p className="eyebrow">Reflection</p>
           <h2>Mistakes</h2>
@@ -142,7 +153,7 @@ export function DebriefView({ session, debrief, busy, onLoad, onNewCase, onRetry
         </section>
       </div>
 
-      <section className="panel">
+      <section className="panel debrief-section" id="debrief-predictions">
         <p className="eyebrow">Prediction calibration</p>
         <h2>Your predictions vs. what happened</h2>
         <p className="muted">Preparation assumptions are compared to recorded outcomes. This is evidence for calibration, not a score.</p>
@@ -168,7 +179,7 @@ export function DebriefView({ session, debrief, busy, onLoad, onNewCase, onRetry
         </div>
       </section>
 
-      <section className="panel">
+      <section className="panel debrief-section" id="debrief-reveals">
         <p className="eyebrow">Hidden reveals</p>
         <h2>What was hidden during negotiation</h2>
         <p className="muted">These are debrief-only reveals returned by the engine after the session. They were not exposed in the briefing.</p>
@@ -187,7 +198,7 @@ export function DebriefView({ session, debrief, busy, onLoad, onNewCase, onRetry
         )}
       </section>
 
-      <section className="panel">
+      <section className="panel debrief-section" id="debrief-skills">
         <p className="eyebrow">Skills</p>
         <h2>Skill assessment</h2>
         <p className="muted">Every rating is grounded in recorded actions from this session.</p>
@@ -204,7 +215,7 @@ export function DebriefView({ session, debrief, busy, onLoad, onNewCase, onRetry
         </div>
       </section>
 
-      <section className="panel">
+      <section className="panel debrief-section" id="debrief-concepts">
         <p className="eyebrow">Concepts</p>
         <h2>Concept lessons from this negotiation</h2>
         <p className="muted">Contextual lessons grounded in what happened in this session - not generic advice.</p>

@@ -1,9 +1,22 @@
 import { useEffect, useState } from 'react';
-import type { SkillSummary } from '@shared/types';
+import type { CaseSummary, SkillSummary } from '@shared/types';
 import { api } from '../api';
 import { ratingLabel, timeAgo } from '../utils';
 
-export function SkillsView() {
+interface Props {
+  cases: CaseSummary[];
+}
+
+function formatCaseLabel(caseId: string, cases: CaseSummary[]): string {
+  const found = cases.find((c) => c.id === caseId);
+  if (found) return found.title;
+  return caseId
+    .replace(/^case-\d+-/i, '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+export function SkillsView({ cases }: Props) {
   const [skills, setSkills] = useState<SkillSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,7 +63,7 @@ export function SkillsView() {
               </div>
               <dl className="case-meta">
                 <div><dt>Sessions</dt><dd>{s.sessions}</dd></div>
-                <div><dt>Last case</dt><dd>{s.lastCaseId}</dd></div>
+                <div><dt>Last case</dt><dd>{formatCaseLabel(s.lastCaseId, cases)}</dd></div>
               </dl>
               <p className="small muted"><strong>Last assessed:</strong> {timeAgo(s.lastAssessedAt)}</p>
               <p className="small">{s.lastEvidence}</p>

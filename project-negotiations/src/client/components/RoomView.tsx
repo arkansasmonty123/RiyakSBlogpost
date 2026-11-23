@@ -25,6 +25,12 @@ function offerStatusLabel(status: Offer['status']): string {
   return status.replaceAll('_', ' ');
 }
 
+const SUGGESTED_OPENERS = [
+  'What is your top priority here, and where do you have room to move?',
+  'Before we discuss terms, can you walk me through what a fair outcome looks like to you?',
+  'I would like to understand your constraints. What is hardest for you to concede?',
+];
+
 function formatTerms(offer: Offer, issues: SessionView['briefing']['issues']): string {
   return offer.terms
     .map((t) => {
@@ -58,8 +64,10 @@ export function RoomView({ session, busy, onSend, onWalkAway, onFinalize, onView
   const [offerValues, setOfferValues] = useState<Record<string, number>>({});
   const [selectedOfferId, setSelectedOfferId] = useState<string>('');
   const [confirmWalkAway, setConfirmWalkAway] = useState(false);
+  const [sceneExpanded, setSceneExpanded] = useState(false);
   const logRef = useRef<HTMLDivElement | null>(null);
   const liveRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLDivElement | null>(null);
   const prevCount = useRef<number>(session.messages.length);
 
   const issues = session.briefing.issues;
@@ -101,6 +109,10 @@ export function RoomView({ session, busy, onSend, onWalkAway, onFinalize, onView
 
   const selectedOffer = session.offers.find((o) => o.id === selectedOfferId);
   const closed = session.status === 'completed' || session.status === 'abandoned';
+
+  const jumpToComposer = () => {
+    composerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
 
   const submitText = async () => {
     const content = text.trim();
@@ -158,7 +170,21 @@ export function RoomView({ session, busy, onSend, onWalkAway, onFinalize, onView
           </div>
         </div>
 
-        <div className="table-scene" aria-label="Meeting room">
+        <div className="compact-participants" aria-label="At the table">
+          {participants.map((p) => (
+            <span key={p.id} className="compact-participant" title={`${p.role} · ${p.organization}`}>
+              <span className="compact-participant-dot" style={{ background: p.avatarColor }} aria-hidden="true" />
+              {p.name}
+            </span>
+          ))}
+        </div>
+        <div className="scene-toggle-row">
+          <button type="button" className="btn btn-ghost btn-small" aria-expanded={sceneExpanded} onClick={() => setSceneExpanded((v) => !v)}>
+            {sceneExpanded ? 'Hide room table & trust cues' : 'Show room table & trust cues'}
+          </button>
+        </div>
+
+        <div className={`table-scene${sceneExpanded ? '' : ' is-collapsed'}`} aria-label="Meeting room">
           <div className="room-atmosphere" aria-hidden="true">
             <span className="room-lamp room-lamp-left" />
             <span className="room-lamp room-lamp-right" />
@@ -193,8 +219,11 @@ export function RoomView({ session, busy, onSend, onWalkAway, onFinalize, onView
 
         <div className="transcript-shell">
           <div className="transcript-head">
-            <h2>Transcript</h2>
-            <p className="muted small">Target a participant or address the whole group. New messages are announced to screen readers.</p>
+            <div>
+              <h2>Transcript</h2>
+              <p className="muted small">Target a participant or address the whole group. New messages are announced to screen readers.</p>
+            </div>
+            <button type="button" className="btn btn-secondary btn-small transcript-jump" onClick={jumpToComposer}>Jump to composer</button>
           </div>
           <div className="transcript-log" ref={logRef} role="log" aria-label="Negotiation transcript" aria-live="off">
             {session.messages.length === 0 ? (
@@ -218,7 +247,7 @@ export function RoomView({ session, busy, onSend, onWalkAway, onFinalize, onView
         </div>
 
         <div className="composer-grid">
-          <section className="composer panel-sub" aria-label="Message composer">
+          <section className="composer panel-sub" aria-label="Message composer" ref={composerRef}>
             <h3>Send message</h3>
             <label className="field">
               <span className="field-label">Target</span>
@@ -240,6 +269,21 @@ export function RoomView({ session, busy, onSend, onWalkAway, onFinalize, onView
                 disabled={busy || closed}
               />
             </label>
+            {session.messages.length === 0 && !closed && (
+              <div className="suggested-prompts" aria-label="Suggested opening lines">
+                {SUGGESTED_OPENERS.map((opener) => (
+                  <button
+                    key={opener}
+                    type="button"
+                    className="suggested-prompt"
+                    disabled={busy}
+                    onClick={() => setText(opener)}
+                  >
+                    {opener}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="actions-row">
               <button type="button" className="btn btn-primary" onClick={() => void submitText()} disabled={busy || closed || !text.trim()}>
                 {busy ? 'Sending…' : 'Send message'}
