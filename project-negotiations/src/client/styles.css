@@ -873,7 +873,8 @@ details.panel-sub[open] > summary { margin-bottom: 12px; }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
   .transcript-log { scroll-behavior: auto; }
-  .panel, .case-card, .debrief-section, .skeleton-line { animation: none; }
+  .panel, .case-card, .debrief-section { animation: none; }
+  .skeleton-line { animation: none !important; }
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
