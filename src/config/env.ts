@@ -24,6 +24,8 @@ export interface ConfigResult {
 }
 
 /** The subset of Vite's `import.meta.env` this module reads (all values are strings). */
+export type StorageMode = 'local' | 'sqlite-api';
+
 export interface EnvSource {
   VITE_APP_NAME?: string;
   VITE_RUNTIME_AI_PROVIDER?: string;
@@ -31,6 +33,8 @@ export interface EnvSource {
   VITE_RUNTIME_AI_API_KEY?: string;
   /** Experimental local-AI lab: set to "false" to hide the panel. Never a secret. */
   VITE_ENABLE_LOCAL_AI?: string;
+  /** Persistence adapter: "local" (default) or "sqlite-api" (ADR-001, requires db server). */
+  VITE_STORAGE_MODE?: string;
 }
 
 export const DEFAULT_APP_NAME = 'THE BAR';
@@ -94,4 +98,12 @@ export const config: AppConfig = loadConfig().config;
  */
 export function isLocalAiPanelEnabled(source: EnvSource = defaultEnvSource()): boolean {
   return readString(source.VITE_ENABLE_LOCAL_AI).toLowerCase() !== 'false';
+}
+
+/**
+ * ADR-001: storage adapter selection. Defaults to localStorage for stability.
+ * SQLite API mode requires the DB server/proxy and is opt-in until fully integrated.
+ */
+export function getStorageMode(source: EnvSource = defaultEnvSource()): StorageMode {
+  return readString(source.VITE_STORAGE_MODE).toLowerCase() === 'sqlite-api' ? 'sqlite-api' : 'local';
 }

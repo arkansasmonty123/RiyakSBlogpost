@@ -39,8 +39,19 @@ function slotStorage(base: StorageLike, slotId: string): StorageLike {
   };
 }
 
+function slotRawKey(slotId: string): string {
+  return slotId === DEFAULT_GAME_SLOT ? SAVE_KEY : `${SAVE_KEY}:slot:${slotId}`;
+}
+
 export class LocalStorageGameRepository implements GameRepository {
   constructor(private readonly storage: StorageLike = defaultBrowserStorage()) {}
+
+  hasPersistedSave(slotId: string = DEFAULT_GAME_SLOT): boolean {
+    const raw = this.storage.getItem(slotRawKey(slotId));
+    if (raw) return true;
+    if (slotId === DEFAULT_GAME_SLOT) return this.storage.getItem(LEGACY_KEY) !== null;
+    return false;
+  }
 
   loadGameSync(slotId: string = DEFAULT_GAME_SLOT): SaveGame {
     return loadSave(slotStorage(this.storage, slotId));

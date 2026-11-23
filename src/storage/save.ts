@@ -169,33 +169,32 @@ function mergeDraft(base: DraftState, parsed: unknown): DraftState {
   };
 }
 
-/** Load v1 or v2 saves, merging new fields over sane defaults. Never trusts unknown versions. */
-export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
+/** Merge/sanitize untrusted persisted data into a complete SaveGame. Never trusts canonical truth. */
+export function hydrateSave(parsed: unknown): SaveGame {
   try {
-    const raw = storage.getItem(SAVE_KEY) ?? storage.getItem(LEGACY_KEY);
-    if (!raw) return createInitialSave();
-    const parsed = JSON.parse(raw) as Partial<SaveGame>;
-    const version = (parsed as { version?: number }).version;
+    if (!parsed || typeof parsed !== 'object') return createInitialSave();
+    const value = parsed as Partial<SaveGame>;
+    const version = (value as { version?: number }).version;
     if (version !== 1 && version !== 2) return createInitialSave();
 
     const base = createInitialSave();
-    const parsedCase = parsed.caseFile as Partial<SaveGame['caseFile']> | undefined;
-    const player = { ...base.player, ...(parsed.player ?? {}) };
+    const parsedCase = value.caseFile as Partial<SaveGame['caseFile']> | undefined;
+    const player = { ...base.player, ...(value.player ?? {}) };
     // Saves written before the chapter payoff predate the promotion; bring a completed
     // chapter up to date so the completion summary matches the recorded chapter state.
-    if (player.careerStage === 'intern' && parsed.flags?.chapterOneComplete === true) {
+    if (player.careerStage === 'intern' && value.flags?.chapterOneComplete === true) {
       player.careerStage = 'junior_advocate';
     }
     return {
       ...base,
-      ...parsed,
+      ...value,
       version: 2,
-      savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : base.savedAt,
+      savedAt: typeof value.savedAt === 'string' ? value.savedAt : base.savedAt,
       player,
-      clock: { ...base.clock, ...(parsed.clock ?? {}) },
-      characters: mergeCharacters(base.characters, parsed.characters),
-      relationships: mergeRelationships(base.relationships, parsed.relationships),
-      memories: parsed.memories?.length ? (parsed.memories as SaveGame['memories']) : base.memories,
+      clock: { ...base.clock, ...(value.clock ?? {}) },
+      characters: mergeCharacters(base.characters, value.characters),
+      relationships: mergeRelationships(base.relationships, value.relationships),
+      memories: value.memories?.length ? (value.memories as SaveGame['memories']) : base.memories,
       caseFile: {
         ...base.caseFile,
         ...(parsedCase ?? {}),
@@ -204,25 +203,25 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
         // tampered or stale save cannot alter hidden events, motives or authenticity.
         canonicalTruth: structuredClone(base.caseFile.canonicalTruth),
       },
-      legalSources: mergeLegalSources(base.legalSources, parsed.legalSources),
-      assignments: mergeAssignments(base.assignments, parsed.assignments),
+      legalSources: mergeLegalSources(base.legalSources, value.legalSources),
+      assignments: mergeAssignments(base.assignments, value.assignments),
       // Untrusted/legacy notebooks are trimmed to the newest entries on load as well.
-      notebook: parsed.notebook?.length ? trimNotebook(parsed.notebook as SaveGame['notebook']) : base.notebook,
-      flags: { ...base.flags, ...(parsed.flags ?? {}) },
+      notebook: value.notebook?.length ? trimNotebook(value.notebook as SaveGame['notebook']) : base.notebook,
+      flags: { ...base.flags, ...(value.flags ?? {}) },
       // A stale or unknown viewpoint id must never leave the scene panel without a view.
-      selectedViewpoint: isValidViewpoint(parsed.selectedViewpoint) ? parsed.selectedViewpoint : base.selectedViewpoint,
-      usedDialogueSceneIds: Array.isArray(parsed.usedDialogueSceneIds)
-        ? parsed.usedDialogueSceneIds.filter((id): id is string => typeof id === 'string')
+      selectedViewpoint: isValidViewpoint(value.selectedViewpoint) ? value.selectedViewpoint : base.selectedViewpoint,
+      usedDialogueSceneIds: Array.isArray(value.usedDialogueSceneIds)
+        ? value.usedDialogueSceneIds.filter((id): id is string => typeof id === 'string')
         : base.usedDialogueSceneIds,
-      draft: mergeDraft(base.draft, parsed.draft),
+      draft: mergeDraft(base.draft, value.draft),
       // Extended Day 1–10 casework: absent in older saves, so fall back to defaults.
-      custodyLog: Array.isArray(parsed.custodyLog) ? parsed.custodyLog : base.custodyLog,
-      challenges: Array.isArray(parsed.challenges) ? parsed.challenges : base.challenges,
-      reviewRounds: Array.isArray(parsed.reviewRounds) ? parsed.reviewRounds : base.reviewRounds,
+      custodyLog: Array.isArray(value.custodyLog) ? value.custodyLog : base.custodyLog,
+      challenges: Array.isArray(value.challenges) ? value.challenges : base.challenges,
+      reviewRounds: Array.isArray(value.reviewRounds) ? value.reviewRounds : base.reviewRounds,
       // Case theory is absent in older saves; fall back to an empty, player-authored file.
       caseTheory: {
-        claims: Array.isArray(parsed.caseTheory?.claims)
-          ? parsed.caseTheory!.claims.filter(
+        claims: Array.isArray(value.caseTheory?.claims)
+          ? value.caseTheory!.claims.filter(
               (c) =>
                 c &&
                 typeof c.id === 'string' &&
@@ -234,39 +233,56 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
           : base.caseTheory.claims,
       },
       // Audit log is absent in older saves; sanitize untrusted stored entries on load.
-      auditLog: sanitizeAuditLog(parsed.auditLog),
+      auditLog: sanitizeAuditLog(value.auditLog),
     };
   } catch {
     return createInitialSave();
   }
 }
 
+/** Load v1 or v2 saves, merging new fields over sane defaults. Never trusts unknown versions. */
+export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
+  try {
+    const raw = storage.getItem(SAVE_KEY) ?? storage.getItem(LEGACY_KEY);
+    if (!raw) return createInitialSave();
+    const parsed = JSON.parse(raw) as unknown;
+    return hydrateSave(parsed);
+  } catch {
+    return createInitialSave();
+  }
+}
+
+/** Build a player-safe save projection. Never includes canonical truth. */
+export function toPersistedSave(save: SaveGame): PersistedSave {
+  return {
+    ...save,
+    version: 2,
+    savedAt: new Date().toISOString(),
+    // Explicit player-safe fields; `canonicalTruth` is intentionally never serialized.
+    caseFile: {
+      id: save.caseFile.id,
+      title: save.caseFile.title,
+      status: save.caseFile.status,
+      playerKnowledge: save.caseFile.playerKnowledge,
+      allegations: save.caseFile.allegations,
+      admissibleMaterial: save.caseFile.admissibleMaterial,
+      unresolvedAmbiguity: save.caseFile.unresolvedAmbiguity,
+      evidence: save.caseFile.evidence,
+    },
+    draft: {
+      current: save.draft.current,
+      versions: save.draft.versions.slice(0, MAX_DRAFT_VERSIONS),
+    },
+    // Keep the newest notes only; an oversized in-memory save must not bloat storage.
+    notebook: trimNotebook(save.notebook),
+    auditLog: sanitizeAuditLog(save.auditLog),
+  };
+}
+
 /** Persist a player-safe projection of the save. Never throws; callers surface `ok`/`reason`. */
 export function persistSave(save: SaveGame, storage: StorageLike = defaultStorage()): PersistResult {
   try {
-    const payload: PersistedSave = {
-      ...save,
-      version: 2,
-      savedAt: new Date().toISOString(),
-      // Explicit player-safe fields; `canonicalTruth` is intentionally never serialized.
-      caseFile: {
-        id: save.caseFile.id,
-        title: save.caseFile.title,
-        status: save.caseFile.status,
-        playerKnowledge: save.caseFile.playerKnowledge,
-        allegations: save.caseFile.allegations,
-        admissibleMaterial: save.caseFile.admissibleMaterial,
-        unresolvedAmbiguity: save.caseFile.unresolvedAmbiguity,
-        evidence: save.caseFile.evidence,
-      },
-      draft: {
-        current: save.draft.current,
-        versions: save.draft.versions.slice(0, MAX_DRAFT_VERSIONS),
-      },
-      // Keep the newest notes only; an oversized in-memory save must not bloat storage.
-      notebook: trimNotebook(save.notebook),
-      auditLog: sanitizeAuditLog(save.auditLog),
-    };
+    const payload = toPersistedSave(save);
     storage.setItem(SAVE_KEY, JSON.stringify(payload));
     safeRemove(storage, LEGACY_KEY);
     return { ok: true };
