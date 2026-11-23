@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { SceneArt } from '@/app/SceneArt';
 import { config } from '@/config/env';
 import { loadSave, persistSave, resetSave } from '@/storage/save';
+import type { PersistResult } from '@/storage/save';
 import { recordAudit } from '@/domain/audit';
 import { checkDraftCitations } from '@/domain/guards';
 import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/completion';
@@ -107,6 +108,21 @@ const DIALOGUE_GREETINGS: Record<string, string> = {
 type WorkPanel = (typeof PANELS)[number];
 /** `completion` is reached only after the final brief closes the chapter. */
 type Panel = WorkPanel | 'completion';
+type SaveStatus = 'idle' | 'saved' | 'error';
+
+/** Polite, in-header feedback about local persistence; never exposes storage internals. */
+export function SaveStatusMessage({ status }: { status: SaveStatus }) {
+  if (status === 'idle') return null;
+  return (
+    <p
+      role="status"
+      aria-live="polite"
+      className={`w-full text-xs ${status === 'error' ? 'text-yellow-200' : 'text-bar-muted'}`}
+    >
+      {status === 'error' ? 'Progress is in memory but could not be saved locally.' : 'Progress saved locally.'}
+    </p>
+  );
+}
 
 function makeNotebookEntry(entry: Omit<NotebookEntry, 'id' | 'day'>, save: SaveGame): NotebookEntry {
   return { id: makeId('n'), day: save.clock.day, ...entry };
@@ -193,6 +209,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const [editingClaimId, setEditingClaimId] = useState<string | null>(null);
   const [editingLinks, setEditingLinks] = useState<string[]>([]);
   const [showHelp, setShowHelp] = useState(() => shouldShowHelp(save));
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
 
   const viewpoint = getViewpoint(save.selectedViewpoint);
   const location = getLocationForViewpoint(save.selectedViewpoint);
@@ -308,7 +325,10 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   function update(mutator: (s: SaveGame) => SaveGame) {
     setSave((prev) => {
       const next = mutator(structuredClone(prev));
-      persistSave(next);
+      const result: PersistResult = persistSave(next);
+      // Keep the functional update so several mutations in one handler still compose.
+      // A failed write is reported politely instead of throwing; progress stays in memory.
+      setSaveStatus(result.ok ? 'saved' : 'error');
       return next;
     });
   }
@@ -781,12 +801,14 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
               onClick={() => {
                 if (confirm('Reset local save?')) {
                   setSave(resetSave());
+                  setSaveStatus('idle');
                   setDraft('');
                 }
               }}
             >
               Reset
             </button>
+            <SaveStatusMessage status={saveStatus} />
           </div>
         </div>
       </header>

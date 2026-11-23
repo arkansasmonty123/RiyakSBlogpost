@@ -5,6 +5,7 @@ import { isValidViewpoint } from '@/domain/scenes';
 import { createInitialSave } from '@/domain/seed';
 import type {
   Assignment,
+  CaseFile,
   Character,
   DraftState,
   EvidenceItem,
@@ -21,6 +22,29 @@ export interface StorageLike {
   getItem(key: string): string | null;
   setItem(key: string, value: string): void;
   removeItem(key: string): void;
+}
+
+/**
+ * On-disk shape. `canonicalTruth` is deliberately absent: it is authoritative game data,
+ * never player data, so it is rehydrated from the deterministic seed on load instead of
+ * being written to (or trusted from) storage. The allow-list below also means that adding
+ * a new case-file field cannot accidentally leak it into a save.
+ */
+export type PersistedCaseFile = Omit<CaseFile, 'canonicalTruth'>;
+export type PersistedSave = Omit<SaveGame, 'caseFile'> & { caseFile: PersistedCaseFile };
+
+export interface PersistResult {
+  ok: boolean;
+  reason?: string;
+}
+
+/** Storage can be unavailable (private mode, disabled cookies, quota policy). Cleanup must never fail a save/reset. */
+function safeRemove(storage: StorageLike, key: string): void {
+  try {
+    storage.removeItem(key);
+  } catch {
+    // Best effort only; an undeleted stale legacy key is harmless because SAVE_KEY wins on load.
+  }
 }
 
 function defaultStorage(): StorageLike {
@@ -169,7 +193,9 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
         ...base.caseFile,
         ...(parsedCase ?? {}),
         evidence: mergeEvidence(base.caseFile.evidence, parsedCase?.evidence),
-        canonicalTruth: { ...base.caseFile.canonicalTruth, ...(parsedCase?.canonicalTruth ?? {}) },
+        // Never trust canonical truth from storage. Rehydrate a fresh seed copy so a
+        // tampered or stale save cannot alter hidden events, motives or authenticity.
+        canonicalTruth: structuredClone(base.caseFile.canonicalTruth),
       },
       legalSources: mergeLegalSources(base.legalSources, parsed.legalSources),
       assignments: mergeAssignments(base.assignments, parsed.assignments),
@@ -207,23 +233,41 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
   }
 }
 
-export function persistSave(save: SaveGame, storage: StorageLike = defaultStorage()): void {
-  const payload: SaveGame = {
-    ...save,
-    version: 2,
-    savedAt: new Date().toISOString(),
-    draft: {
-      current: save.draft.current,
-      versions: save.draft.versions.slice(0, MAX_DRAFT_VERSIONS),
-    },
-    auditLog: sanitizeAuditLog(save.auditLog),
-  };
-  storage.setItem(SAVE_KEY, JSON.stringify(payload));
-  storage.removeItem(LEGACY_KEY);
+/** Persist a player-safe projection of the save. Never throws; callers surface `ok`/`reason`. */
+export function persistSave(save: SaveGame, storage: StorageLike = defaultStorage()): PersistResult {
+  try {
+    const payload: PersistedSave = {
+      ...save,
+      version: 2,
+      savedAt: new Date().toISOString(),
+      // Explicit player-safe fields; `canonicalTruth` is intentionally never serialized.
+      caseFile: {
+        id: save.caseFile.id,
+        title: save.caseFile.title,
+        status: save.caseFile.status,
+        playerKnowledge: save.caseFile.playerKnowledge,
+        allegations: save.caseFile.allegations,
+        admissibleMaterial: save.caseFile.admissibleMaterial,
+        unresolvedAmbiguity: save.caseFile.unresolvedAmbiguity,
+        evidence: save.caseFile.evidence,
+      },
+      draft: {
+        current: save.draft.current,
+        versions: save.draft.versions.slice(0, MAX_DRAFT_VERSIONS),
+      },
+      auditLog: sanitizeAuditLog(save.auditLog),
+    };
+    storage.setItem(SAVE_KEY, JSON.stringify(payload));
+    safeRemove(storage, LEGACY_KEY);
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: error instanceof Error ? error.message : String(error) };
+  }
 }
 
+/** Reset always yields a fresh in-memory save, even if local storage rejects the cleanup. */
 export function resetSave(storage: StorageLike = defaultStorage()): SaveGame {
-  storage.removeItem(SAVE_KEY);
-  storage.removeItem(LEGACY_KEY);
+  safeRemove(storage, SAVE_KEY);
+  safeRemove(storage, LEGACY_KEY);
   return createInitialSave();
 }
