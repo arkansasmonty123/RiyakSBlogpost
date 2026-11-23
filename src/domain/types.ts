@@ -26,11 +26,14 @@ export interface GameClock {
   slot: 'morning' | 'afternoon' | 'evening';
 }
 
+export type CharacterExpression =
+  'neutral' | 'thinking' | 'smiling' | 'disappointed' | 'angry' | 'surprised' | 'speaking' | 'concerned' | 'approving';
+
 export interface Character {
   id: string;
   name: string;
   role: string;
-  portrait: 'neutral' | 'thinking' | 'smiling' | 'disappointed' | 'angry' | 'surprised';
+  portrait: CharacterExpression;
   knowledgeBoundaries: string[];
   goals: string[];
 }

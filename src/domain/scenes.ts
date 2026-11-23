@@ -1,17 +1,40 @@
 /**
  * Static, deterministic scene data for the illustrated point-and-click prototype.
  *
- * Visuals are CSS/placeholder only in P0 — no image assets. A `Location` groups one or
- * more `Viewpoint`s; a viewpoint is a single static background with clickable hotspots.
- * `SaveGame.selectedViewpoint` stores only the viewpoint id, so adding locations never
- * changes the save schema.
+ * Visuals are original inline SVG/CSS — no external image assets. A `Location` groups
+ * one or more `Viewpoint`s; a viewpoint is a single static illustrated background with
+ * clickable hotspots. `SaveGame.selectedViewpoint` stores only the viewpoint id, so
+ * adding locations/viewpoints never changes the save schema.
+ *
+ * The architecture is data-driven: hotspots, character presence and viewpoint metadata
+ * are declared here; SceneArt renders them through reusable scene/character primitives.
  */
+
+export type HotspotKind = 'navigation' | 'panel' | 'time' | 'dialogue' | 'interaction';
+
+/** Static expression ids used by illustrated character sprites in scene art. */
+export type SceneExpression = 'neutral' | 'thinking' | 'speaking' | 'concerned' | 'approving';
+
+export interface SceneCharacterPresence {
+  /** Character id from the domain (e.g. `senior`). */
+  characterId: string;
+  /** Static expression to render for this viewpoint composition. */
+  expression: SceneExpression;
+  /** Horizontal placement hint for reusable scene composition. */
+  position: 'left' | 'center' | 'right';
+  /** Accessible label used as decorative context; real interaction stays on hotspot buttons. */
+  label: string;
+}
 
 export interface SceneHotspot {
   id: string;
   label: string;
   /** Action strings are parsed by the UI: `view:<id>`, `panel:<id>`, `time:advance`, `dialogue:<characterId>`. */
   action: string;
+  /** Optional semantic kind for styling/testing; action remains the source of behavior. */
+  kind?: HotspotKind;
+  /** When present, hotspot represents a character interaction point. */
+  characterId?: string;
 }
 
 export interface SceneViewpoint {
@@ -20,6 +43,8 @@ export interface SceneViewpoint {
   label: string;
   description: string;
   hotspots: SceneHotspot[];
+  /** Optional illustrated character(s) present in this viewpoint. Decorative only. */
+  characters?: SceneCharacterPresence[];
 }
 
 export interface SceneLocation {
@@ -32,8 +57,9 @@ export interface SceneLocation {
 export const LOCATIONS: Record<string, SceneLocation> = {
   chamber: {
     id: 'chamber',
-    label: 'Senior Chamber',
-    description: 'Adv. Meera Kulkarni’s office — where the first assignment begins.',
+    label: "Senior's Chamber",
+    description:
+      'Adv. Meera Kulkarni’s office — a wood-and-brass Indian legal chamber where the first assignment begins.',
     viewpointIds: ['entrance', 'desk', 'bookshelf', 'window'],
   },
   reception: {
@@ -50,13 +76,15 @@ export const VIEWPOINTS: Record<string, SceneViewpoint> = {
     id: 'entrance',
     locationId: 'chamber',
     label: 'Entrance',
-    description: 'The chamber door opens into a quiet, book-lined office. The day begins here.',
+    description:
+      'The chamber door opens into a quiet, wood-lined office. Adv. Meera Kulkarni looks up from her work as you enter.',
+    characters: [{ characterId: 'senior', expression: 'approving', position: 'right', label: 'Adv. Meera Kulkarni' }],
     hotspots: [
-      { id: 'door', label: 'Door', action: 'view:bookshelf' },
-      { id: 'senior', label: 'Senior Mentor', action: 'dialogue:senior' },
-      { id: 'desk', label: 'Desk', action: 'view:desk' },
-      { id: 'window', label: 'Window', action: 'view:window' },
-      { id: 'reception', label: 'Door to Reception', action: 'view:reception-desk' },
+      { id: 'door', label: 'Door', action: 'view:bookshelf', kind: 'navigation' },
+      { id: 'senior', label: 'Senior Mentor', action: 'dialogue:senior', kind: 'dialogue', characterId: 'senior' },
+      { id: 'desk', label: 'Desk', action: 'view:desk', kind: 'navigation' },
+      { id: 'window', label: 'Window', action: 'view:window', kind: 'navigation' },
+      { id: 'reception', label: 'Door to Reception', action: 'view:reception-desk', kind: 'navigation' },
     ],
   },
   desk: {
@@ -64,37 +92,69 @@ export const VIEWPOINTS: Record<string, SceneViewpoint> = {
     locationId: 'chamber',
     label: 'Desk',
     description:
-      'Case files, drafts, and notes are spread across the desk, with a junior advocate working at the neighbouring desk.',
+      'Case files, drafts, and notes are spread across the desk. Meera reviews a draft while a junior advocate works nearby.',
+    characters: [{ characterId: 'senior', expression: 'thinking', position: 'left', label: 'Adv. Meera Kulkarni' }],
     hotspots: [
-      { id: 'casefile', label: 'Case File', action: 'panel:case' },
-      { id: 'assignments', label: 'Assignments', action: 'panel:assignments' },
-      { id: 'draft', label: 'Draft Pad', action: 'panel:draft' },
-      { id: 'colleague', label: 'Junior Advocate (Priya)', action: 'dialogue:junior' },
-      { id: 'back', label: 'Back to Entrance', action: 'view:entrance' },
+      { id: 'casefile', label: 'Case File', action: 'panel:case', kind: 'panel' },
+      { id: 'assignments', label: 'Assignments', action: 'panel:assignments', kind: 'panel' },
+      { id: 'draft', label: 'Draft Pad', action: 'panel:draft', kind: 'panel' },
+      {
+        id: 'senior',
+        label: 'Discuss with Senior',
+        action: 'dialogue:senior',
+        kind: 'dialogue',
+        characterId: 'senior',
+      },
+      {
+        id: 'colleague',
+        label: 'Junior Advocate (Priya)',
+        action: 'dialogue:junior',
+        kind: 'dialogue',
+        characterId: 'junior',
+      },
+      { id: 'back', label: 'Back to Entrance', action: 'view:entrance', kind: 'navigation' },
     ],
   },
   bookshelf: {
     id: 'bookshelf',
     locationId: 'chamber',
     label: 'Bookshelf',
-    description: 'Legal texts and reference materials line the wall. Only verified sources should be cited.',
+    description:
+      'Legal texts and reference materials line the wall. Meera points out a source to verify — only verified sources should be cited.',
+    characters: [{ characterId: 'senior', expression: 'speaking', position: 'right', label: 'Adv. Meera Kulkarni' }],
     hotspots: [
-      { id: 'research', label: 'Legal Research', action: 'panel:research' },
-      { id: 'notebook', label: 'Notebook', action: 'panel:notebook' },
-      { id: 'evidence', label: 'Evidence', action: 'panel:evidence' },
-      { id: 'casework', label: 'Casework', action: 'panel:casework' },
-      { id: 'journal', label: 'Timeline / Journal', action: 'panel:journal' },
-      { id: 'back', label: 'Back to Entrance', action: 'view:entrance' },
+      { id: 'research', label: 'Legal Research', action: 'panel:research', kind: 'panel' },
+      { id: 'notebook', label: 'Notebook', action: 'panel:notebook', kind: 'panel' },
+      { id: 'evidence', label: 'Evidence', action: 'panel:evidence', kind: 'panel' },
+      { id: 'casework', label: 'Casework', action: 'panel:casework', kind: 'panel' },
+      { id: 'journal', label: 'Timeline / Journal', action: 'panel:journal', kind: 'panel' },
+      {
+        id: 'senior',
+        label: 'Ask Senior about Sources',
+        action: 'dialogue:senior',
+        kind: 'dialogue',
+        characterId: 'senior',
+      },
+      { id: 'back', label: 'Back to Entrance', action: 'view:entrance', kind: 'navigation' },
     ],
   },
   window: {
     id: 'window',
     locationId: 'chamber',
     label: 'Window',
-    description: 'Outside, the district moves on its own schedule. The world does not wait for the player.',
+    description:
+      'Outside, the district moves on its own schedule. Meera pauses, weighing the day’s work before the clock moves on.',
+    characters: [{ characterId: 'senior', expression: 'concerned', position: 'left', label: 'Adv. Meera Kulkarni' }],
     hotspots: [
-      { id: 'clock', label: 'Advance Time', action: 'time:advance' },
-      { id: 'back', label: 'Back to Entrance', action: 'view:entrance' },
+      { id: 'clock', label: 'Advance Time', action: 'time:advance', kind: 'time' },
+      {
+        id: 'senior',
+        label: 'Check in with Senior',
+        action: 'dialogue:senior',
+        kind: 'dialogue',
+        characterId: 'senior',
+      },
+      { id: 'back', label: 'Back to Entrance', action: 'view:entrance', kind: 'navigation' },
     ],
   },
 

@@ -1375,6 +1375,11 @@ function GameApp({
             <div className="p-3 sm:p-4 bg-bar-panel/95">
               <p className="text-xs text-bar-muted">{location.description}</p>
               <p className="text-sm text-bar-muted mt-1">{viewpoint.description}</p>
+              {viewpoint.characters?.length ? (
+                <p className="mt-2 text-xs text-bar-gold/90">
+                  In scene: {viewpoint.characters.map((c) => `${c.label} (${c.expression})`).join(', ')}
+                </p>
+              ) : null}
               <div className="scene-rule my-3" aria-hidden="true" />
               <p className="text-[11px] uppercase tracking-wide text-bar-muted mb-2">
                 Interact here{' '}
@@ -1387,6 +1392,8 @@ function GameApp({
                   <button
                     key={h.id}
                     type="button"
+                    data-hotspot-kind={h.kind}
+                    data-character-id={h.characterId}
                     onClick={() => onHotspot(h.action)}
                     className="text-left p-3 rounded border border-bar-gold/20 bg-bar-panel2/40 hover:bg-white/5 hover:border-bar-gold/40 transition-colors"
                   >

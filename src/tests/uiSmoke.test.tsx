@@ -46,7 +46,7 @@ describe('App render smoke test', () => {
     expect(html).toContain('Initial fact matrix');
     expect(html).toContain('Day 1');
     expect(html).toContain('Advance time');
-    expect(html).toContain('Senior Chamber');
+    expect(html).toContain('Senior&#x27;s Chamber');
     expect(html).toContain('Office Reception');
     expect(html).toContain('Entrance');
   });

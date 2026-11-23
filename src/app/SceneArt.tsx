@@ -1,20 +1,17 @@
 /**
  * Static SVG stage sets for the illustrated point-and-click prototype.
  *
- * These are decorative compositions only: every interactive object remains a real,
- * labelled button rendered by App. There are no image assets, no animation and no
- * case content — just architectural cues (desk, books, window, door, corridor).
+ * Decorative compositions only: every interactive object remains a real, labelled button
+ * rendered by App. No image assets, no animation, no case-truth leakage. Original inline
+ * SVG/CSS art keeps the offline, no-network, no-leakable-metadata guarantees asserted by
+ * src/tests/scenePresentation.test.tsx.
  *
- * The lightweight ORIGINAL SVG placeholders in public/assets/art/ (catalogued in
- * docs/art-pipeline/asset-manifest.json) are documented reference/originals for these
- * shapes — including neutral framed busts, a three-drawer filing cabinet, a banker's lamp,
- * a wall clock, a potted plant and generic document/scales icons. They are intentionally NOT
- * loaded here at runtime: the matching detail below is drawn as inline vectors so the stage
- * keeps the offline, no-network, no-leakable-metadata guarantees asserted by
- * src/tests/scenePresentation.test.tsx. A human owner may integrate approved assets behind
- * these same viewpoint ids after the section 8 sign-off in docs/art-pipeline/README.md.
+ * Architecture: reusable primitives (Backdrop, furniture, props) + a data-driven character
+ * presence layer from domain/scenes. Viewpoint compositions reuse shared pieces so new rooms
+ * can be assembled without duplicating the whole drawing system.
  */
 import type { ReactElement } from 'react';
+import { getViewpoint, type SceneExpression } from '@/domain/scenes';
 
 const C = {
   brass: '#c8a75a',
@@ -24,13 +21,20 @@ const C = {
   paperShade: '#b7ae9b',
   wood: '#6b5138',
   woodDark: '#3d2e21',
+  woodMid: '#5a422d',
   teal: '#456267',
   oxblood: '#63393b',
   slate: '#46586b',
   shadow: '#0b0d12',
+  wall: '#242c3a',
+  wallDeep: '#12161e',
+  sari: '#5b3a4a',
+  sariTrim: '#c8a75a',
+  blouse: '#2f2a35',
+  skin: '#c99a72',
+  hair: '#231d1a',
 } as const;
 
-/** Shared wall/floor plane and reusable light sources. */
 function Backdrop() {
   return (
     <g>
@@ -80,7 +84,6 @@ function Lamp({ x, y }: { x: number; y: number }) {
   );
 }
 
-/** Simple office chair silhouette; `s` scales around its base point. */
 function Chair({ x, y, s = 1, color = '#2b3442' }: { x: number; y: number; s?: number; color?: string }) {
   return (
     <g transform={`translate(${x} ${y}) scale(${s})`}>
@@ -93,7 +96,6 @@ function Chair({ x, y, s = 1, color = '#2b3442' }: { x: number; y: number; s?: n
   );
 }
 
-/** Stack of case folders with brass label tabs. */
 function FileStack({ x, y, count = 3, s = 1 }: { x: number; y: number; count?: number; s?: number }) {
   return (
     <g transform={`translate(${x} ${y}) scale(${s})`}>
@@ -109,14 +111,13 @@ function FileStack({ x, y, count = 3, s = 1 }: { x: number; y: number; count?: n
             stroke="#7c735f"
             strokeWidth="0.6"
           />
-          <rect x="7" y="3" width="20" height="3" fill={C.brassSoft} opacity="0.7" />
+          <rect x="7" y="3" width="20" height="3" fill={i % 3 === 0 ? C.oxblood : C.brassSoft} opacity="0.7" />
         </g>
       ))}
     </g>
   );
 }
 
-/** A sheet of ruled notes seen from above. */
 function Paper({ x, y, w = 70, h = 52, lines = 4 }: { x: number; y: number; w?: number; h?: number; lines?: number }) {
   return (
     <g transform={`translate(${x} ${y})`}>
@@ -130,7 +131,6 @@ function Paper({ x, y, w = 70, h = 52, lines = 4 }: { x: number; y: number; w?: 
 
 const BOOK_COLORS = [C.oxblood, C.teal, C.slate, C.brassSoft, '#6a6353', C.wood, '#4a4f5c'];
 
-/** Deterministic row of book spines, optionally with a couple of fallen volumes. */
 function BookRow({
   x,
   y,
@@ -156,27 +156,15 @@ function BookRow({
   }
   return (
     <g>
-      {books.map((b, idx) => (
-        <g key={idx}>
-          <rect
-            x={x + books.slice(0, idx).reduce((sum, prev) => sum + prev.w + 2, 0)}
-            y={y + height - b.h}
-            width={b.w}
-            height={b.h}
-            fill={b.c}
-            stroke="#101318"
-            strokeWidth="0.6"
-          />
-          <rect
-            x={x + books.slice(0, idx).reduce((sum, prev) => sum + prev.w + 2, 0) + 2}
-            y={y + height - b.h + 8}
-            width={b.w - 4}
-            height="1.5"
-            fill={C.brass}
-            opacity="0.5"
-          />
-        </g>
-      ))}
+      {books.map((b, idx) => {
+        const bx = x + books.slice(0, idx).reduce((sum, prev) => sum + prev.w + 2, 0);
+        return (
+          <g key={idx}>
+            <rect x={bx} y={y + height - b.h} width={b.w} height={b.h} fill={b.c} stroke="#101318" strokeWidth="0.6" />
+            <rect x={bx + 2} y={y + height - b.h + 8} width={b.w - 4} height="1.5" fill={C.brass} opacity="0.5" />
+          </g>
+        );
+      })}
     </g>
   );
 }
@@ -237,10 +225,7 @@ function WallClock({ x, y }: { x: number; y: number }) {
   );
 }
 
-/**
- * Decorative framed bust: a generic, mood-neutral silhouette with no identifiable features.
- * Mirrors the original neutral portrait SVGs; it conveys no knowledge, guilt or case fact.
- */
+/** Decorative framed bust: generic, mood-neutral silhouette with no identifiable features. */
 function PortraitFrame({
   x,
   y,
@@ -295,7 +280,6 @@ function PortraitFrame({
   );
 }
 
-/** Generic three-drawer filing cabinet; its base centre is anchored at (x, y). */
 function FileCabinet({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
   return (
     <g data-art="file-cabinet" transform={`translate(${x} ${y}) scale(${s})`}>
@@ -312,51 +296,177 @@ function FileCabinet({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
   );
 }
 
-function EntranceScene() {
+function CeilingFan({ x, y }: { x: number; y: number }) {
   return (
-    <g>
-      <ellipse cx="400" cy="408" rx="170" ry="20" fill="#1d1a16" opacity="0.7" />
-      <rect x="300" y="66" width="196" height="264" fill={C.woodDark} stroke={C.brassFaint} strokeWidth="3" />
-      <rect x="314" y="80" width="168" height="250" fill="#2a303b" stroke={C.brassSoft} strokeWidth="1" />
+    <g data-art="ceiling-fan" opacity="0.7">
+      <line x1={x} y1={0} x2={x} y2={y - 8} stroke={C.brassFaint} strokeWidth="2" />
+      <circle cx={x} cy={y} r="5" fill={C.brassSoft} />
+      <ellipse cx={x - 34} cy={y} rx="32" ry="5" fill={C.woodMid} stroke={C.brassFaint} strokeWidth="0.6" />
+      <ellipse cx={x + 34} cy={y} rx="32" ry="5" fill={C.woodMid} stroke={C.brassFaint} strokeWidth="0.6" />
+      <ellipse cx={x} cy={y - 24} rx="5" ry="22" fill={C.woodMid} stroke={C.brassFaint} strokeWidth="0.6" />
+    </g>
+  );
+}
+
+function Nameplate({ x, y, text }: { x: number; y: number; text: string }) {
+  return (
+    <g data-art="nameplate">
       <rect
-        x="330"
-        y="102"
-        width="136"
-        height="28"
+        x={x - 72}
+        y={y - 16}
+        width="144"
+        height="32"
         rx="2"
         fill="url(#bar-brass)"
         stroke={C.brassFaint}
         strokeWidth="1"
       />
       <text
-        x="398"
-        y="120"
+        x={x}
+        y={y + 4}
         textAnchor="middle"
-        fontSize="9"
+        fontSize="10"
         letterSpacing="0.8"
         fill="#1a1710"
         fontFamily="Georgia, serif"
       >
-        MEERA KULKARNI
+        {text}
       </text>
-      <rect x="334" y="150" width="128" height="80" fill="#262c36" stroke={C.brassFaint} strokeWidth="1" />
-      <rect x="334" y="244" width="128" height="74" fill="#262c36" stroke={C.brassFaint} strokeWidth="1" />
-      <circle cx="462" cy="214" r="6" fill={C.brass} />
-      <circle cx="462" cy="214" r="2.5" fill="#3a2f18" />
-      <Lamp x={140} y={118} />
-      <Chair x={606} y={372} s={1.05} color="#33404f" />
-      <g transform="translate(150 300)">
-        <rect x="0" y="18" width="96" height="8" rx="2" fill={C.wood} />
-        <rect x="10" y="26" width="5" height="48" fill={C.woodDark} />
-        <rect x="82" y="26" width="5" height="48" fill={C.woodDark} />
-        <FileStack x={16} y={16} count={3} s={0.9} />
-      </g>
-      <PortraitFrame x={596} y={92} w={86} h={108} hair="#d8d3c8" coat="#3d4756" />
     </g>
   );
 }
 
-function DeskScene() {
+/** Original, static senior advocate figure. Decorative only - hotspot button is the real control. */
+function CharacterFigure({
+  expression,
+  x,
+  y,
+  scale = 1,
+}: {
+  expression: SceneExpression;
+  x: number;
+  y: number;
+  scale?: number;
+}) {
+  const mouth = {
+    neutral: <path d="M 0 6 Q 6 8 12 6" fill="none" stroke="#5a3a30" strokeWidth="1.8" strokeLinecap="round" />,
+    thinking: <path d="M 1 7 Q 6 5 11 7" fill="none" stroke="#5a3a30" strokeWidth="1.8" strokeLinecap="round" />,
+    speaking: <ellipse cx="6" cy="7" rx="3.5" ry="2.5" fill="#5a3a30" opacity="0.75" />,
+    concerned: <path d="M 1 8 Q 6 5 11 8" fill="none" stroke="#5a3a30" strokeWidth="1.8" strokeLinecap="round" />,
+    approving: <path d="M 0 5 Q 6 10 12 5" fill="none" stroke="#5a3a30" strokeWidth="1.8" strokeLinecap="round" />,
+  }[expression];
+
+  const brows = {
+    neutral: (
+      <>
+        <path d="M -8 -10 L 0 -11" fill="none" stroke="#3a2a22" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M 12 -11 L 20 -10" fill="none" stroke="#3a2a22" strokeWidth="1.5" strokeLinecap="round" />
+      </>
+    ),
+    thinking: (
+      <>
+        <path d="M -8 -9 L 0 -12" fill="none" stroke="#3a2a22" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M 12 -10 L 20 -9" fill="none" stroke="#3a2a22" strokeWidth="1.5" strokeLinecap="round" />
+      </>
+    ),
+    speaking: (
+      <>
+        <path d="M -8 -11 L 0 -12" fill="none" stroke="#3a2a22" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M 12 -12 L 20 -11" fill="none" stroke="#3a2a22" strokeWidth="1.5" strokeLinecap="round" />
+      </>
+    ),
+    concerned: (
+      <>
+        <path d="M -8 -8 L 0 -12" fill="none" stroke="#3a2a22" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M 12 -12 L 20 -8" fill="none" stroke="#3a2a22" strokeWidth="1.5" strokeLinecap="round" />
+      </>
+    ),
+    approving: (
+      <>
+        <path d="M -8 -10 L 0 -11" fill="none" stroke="#3a2a22" strokeWidth="1.5" strokeLinecap="round" />
+        <path d="M 12 -11 L 20 -10" fill="none" stroke="#3a2a22" strokeWidth="1.5" strokeLinecap="round" />
+      </>
+    ),
+  }[expression];
+
+  const eyes =
+    expression === 'approving' ? (
+      <>
+        <path d="M -6 -3 Q -2 -6 2 -3" fill="none" stroke="#2d211c" strokeWidth="1.6" strokeLinecap="round" />
+        <path d="M 10 -3 Q 14 -6 18 -3" fill="none" stroke="#2d211c" strokeWidth="1.6" strokeLinecap="round" />
+      </>
+    ) : (
+      <>
+        <ellipse cx="-2" cy="-3" rx="2.1" ry="1.8" fill="#2d211c" />
+        <ellipse cx="14" cy="-3" rx="2.1" ry="1.8" fill="#2d211c" />
+        <circle cx="-1.2" cy="-3.6" r="0.6" fill="#fff" opacity="0.7" />
+        <circle cx="14.8" cy="-3.6" r="0.6" fill="#fff" opacity="0.7" />
+      </>
+    );
+
+  const gesture =
+    expression === 'speaking' ? (
+      <g>
+        <path d="M 54 92 L 82 72 L 88 78 L 62 100" fill={C.skin} stroke="#a88768" strokeWidth="0.8" />
+        <circle cx="85" cy="74" r="5" fill={C.skin} stroke="#a88768" strokeWidth="0.8" />
+      </g>
+    ) : expression === 'thinking' ? (
+      <g>
+        <path d="M 52 90 L 44 74 L 50 70 L 60 88" fill={C.skin} stroke="#a88768" strokeWidth="0.8" />
+        <circle cx="47" cy="71" r="4.5" fill={C.skin} stroke="#a88768" strokeWidth="0.8" />
+      </g>
+    ) : null;
+
+  return (
+    <g
+      data-art="character-figure"
+      data-character="senior"
+      data-expression={expression}
+      transform={`translate(${x} ${y}) scale(${scale})`}
+    >
+      <ellipse cx="40" cy="176" rx="52" ry="10" fill={C.shadow} opacity="0.28" />
+      {/* sari / body */}
+      <path d="M 8 170 C 10 128 16 108 40 102 C 64 108 70 128 72 170 Z" fill={C.sari} />
+      <path d="M 18 170 C 20 136 24 118 40 112 C 52 116 56 128 60 148 L 72 170 Z" fill="#6a4558" opacity="0.45" />
+      <path d="M 40 102 L 26 170" fill="none" stroke={C.sariTrim} strokeWidth="2.2" opacity="0.9" />
+      <path d="M 40 102 L 58 148" fill="none" stroke={C.sariTrim} strokeWidth="1.8" opacity="0.75" />
+      {/* blouse / shoulders */}
+      <path d="M 18 108 Q 40 96 62 108 L 66 128 L 14 128 Z" fill={C.blouse} />
+      <rect x="36" y="96" width="8" height="14" fill={C.skin} />
+      {/* neck */}
+      <rect x="34" y="86" width="12" height="14" rx="4" fill={C.skin} />
+      {/* head */}
+      <circle cx="40" cy="66" r="24" fill={C.skin} />
+      {/* hair */}
+      <path d="M 16 66 Q 14 34 40 32 Q 66 34 64 66 Q 58 52 40 50 Q 22 52 16 66 Z" fill={C.hair} />
+      <path d="M 16 66 Q 12 86 20 96 L 24 82 Q 18 74 18 66 Z" fill={C.hair} />
+      <path d="M 64 66 Q 68 86 60 96 L 56 82 Q 62 74 62 66 Z" fill={C.hair} />
+      {/* bindi */}
+      <circle cx="40" cy="58" r="1.8" fill="#8b2f2f" />
+      {/* face */}
+      <g transform="translate(34 66)">
+        {brows}
+        {eyes}
+        <path d="M 6 0 L 4 3 L 8 3" fill="none" stroke="#8a6858" strokeWidth="1" strokeLinecap="round" />
+        {mouth}
+      </g>
+      {/* arms */}
+      <path d="M 18 112 Q 4 128 10 148 L 18 144 Q 14 130 24 120" fill={C.blouse} />
+      <path d="M 62 112 Q 76 128 70 148 L 62 144 Q 66 130 56 120" fill={C.blouse} />
+      {gesture}
+      {/* file/folder in hand for neutral/concerned/approving */}
+      {(expression === 'neutral' || expression === 'concerned' || expression === 'approving') && (
+        <g transform="translate(58 128)">
+          <rect x="0" y="0" width="22" height="28" rx="1.5" fill={C.paper} stroke={C.brassFaint} strokeWidth="0.8" />
+          <rect x="3" y="4" width="16" height="2" fill="#8f876f" />
+          <rect x="3" y="9" width="12" height="2" fill="#8f876f" />
+        </g>
+      )}
+    </g>
+  );
+}
+
+function ChamberDeskProps() {
   return (
     <g>
       <g opacity="0.55">
@@ -401,9 +511,52 @@ function DeskScene() {
   );
 }
 
+function EntranceScene() {
+  return (
+    <g>
+      <CeilingFan x={400} y={46} />
+      <ellipse cx="400" cy="408" rx="170" ry="20" fill="#1d1a16" opacity="0.7" />
+      <rect x="300" y="66" width="196" height="264" fill={C.woodDark} stroke={C.brassFaint} strokeWidth="3" />
+      <rect x="314" y="80" width="168" height="250" fill="#2a303b" stroke={C.brassSoft} strokeWidth="1" />
+      <Nameplate x={398} y={116} text="MEERA KULKARNI" />
+      <rect x="334" y="150" width="128" height="80" fill="#262c36" stroke={C.brassFaint} strokeWidth="1" />
+      <rect x="334" y="244" width="128" height="74" fill="#262c36" stroke={C.brassFaint} strokeWidth="1" />
+      <circle cx="462" cy="214" r="6" fill={C.brass} />
+      <circle cx="462" cy="214" r="2.5" fill="#3a2f18" />
+      <Lamp x={140} y={118} />
+      <Chair x={606} y={372} s={1.05} color="#33404f" />
+      <g transform="translate(150 300)">
+        <rect x="0" y="18" width="96" height="8" rx="2" fill={C.wood} />
+        <rect x="10" y="26" width="5" height="48" fill={C.woodDark} />
+        <rect x="82" y="26" width="5" height="48" fill={C.woodDark} />
+        <FileStack x={16} y={16} count={3} s={0.9} />
+      </g>
+      <PortraitFrame x={596} y={92} w={86} h={108} hair="#d8d3c8" coat="#3d4756" />
+      <g data-art="chamber-details">
+        <rect x="88" y="78" width="52" height="36" fill="#2a2118" stroke={C.brassFaint} strokeWidth="1.2" />
+        <text x="114" y="100" textAnchor="middle" fontSize="7" fill={C.brass} fontFamily="Georgia, serif">
+          ADVOCATE
+        </text>
+      </g>
+      <CharacterFigure expression="approving" x={516} y={206} scale={0.92} />
+    </g>
+  );
+}
+
+function DeskScene() {
+  return (
+    <g>
+      <CeilingFan x={400} y={40} />
+      <ChamberDeskProps />
+      <CharacterFigure expression="thinking" x={118} y={170} scale={0.95} />
+    </g>
+  );
+}
+
 function BookshelfScene() {
   return (
     <g>
+      <CeilingFan x={400} y={38} />
       <rect x="108" y="44" width="584" height="288" fill="#2b2119" stroke={C.brassFaint} strokeWidth="3" />
       <rect x="120" y="56" width="560" height="264" fill="#1c1a19" />
       {[56, 140, 224, 308].map((y) => (
@@ -424,6 +577,7 @@ function BookshelfScene() {
       <Paper x={506} y={280} w={72} h={36} lines={3} />
       <Lamp x={690} y={120} />
       <FileCabinet x={730} y={372} s={0.7} />
+      <CharacterFigure expression="speaking" x={560} y={190} scale={0.9} />
     </g>
   );
 }
@@ -436,6 +590,7 @@ function WindowScene() {
           <rect x="182" y="56" width="436" height="238" />
         </clipPath>
       </defs>
+      <CeilingFan x={400} y={34} />
       <rect x="170" y="44" width="460" height="262" fill={C.woodDark} stroke={C.brassFaint} strokeWidth="3" />
       <rect x="182" y="56" width="436" height="238" fill="url(#bar-sky)" />
       <g clipPath="url(#bar-panes)">
@@ -450,11 +605,9 @@ function WindowScene() {
           <rect x="534" y="222" width="84" height="72" />
         </g>
         <g fill="#c8a75a" opacity="0.35">
-          {[252, 292, 370, 410, 490, 550, 586].map((wx) =>
-            [224, 258, 214, 256, 222, 244, 236].map((wy, j) => (
-              <rect key={`${wx}-${j}`} x={wx} y={wy + j * 14} width="4" height="5" />
-            )),
-          )}
+          {[252, 292, 370, 410, 490, 550, 586].map((wx, i) => (
+            <rect key={wx} x={wx} y={[224, 258, 214, 256, 222, 244, 236][i]} width="4" height="5" />
+          ))}
         </g>
         <rect x="182" y="278" width="436" height="16" fill="#2f3a3a" opacity="0.6" />
       </g>
@@ -469,6 +622,7 @@ function WindowScene() {
         <rect x="76" y="8" width="5" height="44" fill={C.woodDark} />
         <FileStack x={14} y={-2} count={2} s={0.8} />
       </g>
+      <CharacterFigure expression="concerned" x={120} y={210} scale={0.85} />
     </g>
   );
 }
@@ -633,6 +787,38 @@ const SCENES: Record<string, () => ReactElement> = {
   'consultation-room': ConsultationScene,
 };
 
+const CHARACTER_POSITIONS: Record<'left' | 'center' | 'right', { x: number; y: number; scale: number }> = {
+  left: { x: 86, y: 214, scale: 0.9 },
+  center: { x: 360, y: 214, scale: 0.9 },
+  right: { x: 590, y: 214, scale: 0.9 },
+};
+
+/** Renders declared character presences not already baked into a bespoke scene composition. */
+function SceneCharacters({ viewpointId }: { viewpointId: string }) {
+  const viewpoint = getViewpoint(viewpointId);
+  const characters = viewpoint.characters ?? [];
+  if (characters.length === 0) return null;
+  // Chamber scenes with bespoke in-scene character placement already include the figure.
+  const bespoke = new Set(['entrance', 'desk', 'bookshelf', 'window']);
+  if (bespoke.has(viewpointId)) return null;
+  return (
+    <g data-art="scene-characters">
+      {characters.map((c) => {
+        const pos = CHARACTER_POSITIONS[c.position];
+        return (
+          <CharacterFigure
+            key={`${viewpointId}-${c.characterId}`}
+            expression={c.expression}
+            x={pos.x}
+            y={pos.y}
+            scale={pos.scale}
+          />
+        );
+      })}
+    </g>
+  );
+}
+
 export function SceneArt({ viewpointId }: { viewpointId: string }) {
   const Scene = SCENES[viewpointId] ?? EntranceScene;
   return (
@@ -645,6 +831,7 @@ export function SceneArt({ viewpointId }: { viewpointId: string }) {
     >
       <Backdrop />
       <Scene />
+      <SceneCharacters viewpointId={viewpointId} />
     </svg>
   );
 }

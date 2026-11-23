@@ -98,7 +98,17 @@ describe('expanded cast (12 persistent characters)', () => {
     for (const character of save.characters) {
       expect(character.name.length).toBeGreaterThan(0);
       expect(character.role.length).toBeGreaterThan(0);
-      expect(['neutral', 'thinking', 'smiling', 'disappointed', 'angry', 'surprised']).toContain(character.portrait);
+      expect([
+        'neutral',
+        'thinking',
+        'smiling',
+        'disappointed',
+        'angry',
+        'surprised',
+        'speaking',
+        'concerned',
+        'approving',
+      ]).toContain(character.portrait);
       expect(character.knowledgeBoundaries.length).toBeGreaterThan(0);
       expect(character.goals.length).toBeGreaterThan(0);
     }
@@ -289,7 +299,7 @@ describe('new character interaction consequences', () => {
 describe('second location and viewpoint navigation data', () => {
   it('defines two locations with 4 viewpoints each', () => {
     expect(ALL_LOCATION_IDS).toEqual(['chamber', 'reception']);
-    expect(LOCATIONS.chamber.label).toBe('Senior Chamber');
+    expect(LOCATIONS.chamber.label).toBe("Senior's Chamber");
     expect(LOCATIONS.reception.label).toBe('Office Reception');
     expect(LOCATIONS.chamber.viewpointIds).toHaveLength(4);
     expect(LOCATIONS.reception.viewpointIds.length).toBeGreaterThanOrEqual(2);

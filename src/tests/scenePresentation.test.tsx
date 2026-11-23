@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { App } from '@/app/App';
 import { addEvidenceNote, discoverEvidenceItem, reviewEvidence } from '@/domain/evidence';
-import { ALL_VIEWPOINT_IDS } from '@/domain/scenes';
+import { ALL_VIEWPOINT_IDS, getViewpoint, viewpointsForLocation } from '@/domain/scenes';
 import { createInitialSave } from '@/domain/seed';
 import type { SaveGame } from '@/domain/types';
 import { SAVE_KEY } from '@/storage/save';
@@ -102,6 +102,57 @@ describe('static scene presentation', () => {
     const html = renderApp({ viewpoint: 'corridor' });
     expect(html).toContain('the illustration is decorative; every action is a labelled control below');
     expect(html).toContain('aria-label="Corridor hotspots"');
+  });
+});
+
+describe("Senior's Chamber visual milestone", () => {
+  it('defines multiple chamber viewpoints with >=5 meaningful hotspots total and navigation', () => {
+    const chamber = viewpointsForLocation('chamber');
+    expect(chamber.length).toBeGreaterThanOrEqual(4);
+    const allHotspots = chamber.flatMap((v) => v.hotspots);
+    expect(allHotspots.length).toBeGreaterThanOrEqual(5);
+    // Meaningful actions: panels, dialogue, time, navigation all present.
+    const kinds = new Set(allHotspots.map((h) => h.action.split(':')[0]));
+    expect(kinds.has('view')).toBe(true);
+    expect(kinds.has('dialogue')).toBe(true);
+    expect(kinds.has('panel')).toBe(true);
+    expect(kinds.has('time')).toBe(true);
+    // Every chamber viewpoint can navigate back or to another viewpoint.
+    for (const v of chamber) {
+      expect(v.hotspots.some((h) => h.action.startsWith('view:'))).toBe(true);
+    }
+  });
+
+  it('visually represents the senior mentor with multiple static expressions across chamber viewpoints', () => {
+    const expressions = new Set<string>();
+    for (const viewpoint of viewpointsForLocation('chamber')) {
+      const svg = sceneSvg(renderApp({ viewpoint: viewpoint.id }));
+      expect(svg).toContain('data-character="senior"');
+      expect(svg).toContain('data-art="character-figure"');
+      const match = svg.match(/data-expression="([a-z]+)"/);
+      expect(match).not.toBeNull();
+      expressions.add(match![1]);
+      // Decorative, no raster/remote/animation.
+      expect(svg).not.toContain('<image');
+      expect(svg).not.toContain('http://');
+      expect(svg).not.toContain('https://');
+      expect(svg).not.toContain('<animate');
+    }
+    expect(expressions.size).toBeGreaterThanOrEqual(3);
+    for (const required of ['neutral', 'thinking', 'speaking', 'concerned', 'approving']) {
+      // At least several of the named expressions are present; require core set.
+      if (['thinking', 'speaking', 'concerned'].includes(required)) expect(expressions.has(required)).toBe(true);
+    }
+  });
+
+  it('keeps senior dialogue interactions working from chamber viewpoints', () => {
+    for (const viewpointId of ['entrance', 'desk', 'bookshelf', 'window']) {
+      const vp = getViewpoint(viewpointId);
+      expect(vp.hotspots.some((h) => h.action === 'dialogue:senior')).toBe(true);
+      const html = renderApp({ viewpoint: viewpointId });
+      expect(html).toContain(`aria-label="${vp.label} hotspots"`);
+      expect(html).toContain('Senior');
+    }
   });
 });
 
