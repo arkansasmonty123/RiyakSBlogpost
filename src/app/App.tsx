@@ -439,6 +439,7 @@ function GameApp({
   // Discard a late local-AI response if the user reset (or asked again) while it was in flight.
   const aiRequestId = useRef(0);
   const aiSeniorReviewAbort = useRef<AbortController | null>(null);
+  const noteTextRef = useRef<HTMLTextAreaElement>(null);
   // Async adapters can settle out of order: serialize writes and ignore stale save status.
   // The localStorage path stays synchronous and bypasses this queue entirely.
   const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
@@ -465,6 +466,10 @@ function GameApp({
     const t = window.setTimeout(() => setFocusEvidenceId(null), 2500);
     return () => window.clearTimeout(t);
   }, [focusEvidenceId, panel]);
+
+  useEffect(() => {
+    if (noteTarget) noteTextRef.current?.focus();
+  }, [noteTarget]);
 
   const viewpoint = getViewpoint(save.selectedViewpoint);
   const location = getLocationForViewpoint(save.selectedViewpoint);
@@ -2127,7 +2132,10 @@ function GameApp({
                           <button
                             type="button"
                             className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
-                            onClick={() => setPanel('casework')}
+                            onClick={() => {
+                              if (!reviewSummary.trim() && draft.trim()) setReviewSummary(draft);
+                              setPanel('casework');
+                            }}
                           >
                             Senior review &amp; revision →
                           </button>
@@ -2136,15 +2144,26 @@ function GameApp({
                         <button
                           type="button"
                           className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
-                          onClick={() => setPanel('casework')}
+                          onClick={() => {
+                            if (!finalSummary.trim() && draft.trim()) setFinalSummary(draft);
+                            setPanel('casework');
+                          }}
                         >
                           Final brief submission →
                         </button>
                       )}
+                      {(a.status === 'active' || a.status === 'pending') && unlocked && a.id === 'a2' && (
+                        <button
+                          type="button"
+                          className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                          onClick={() => setPanel('draft')}
+                        >
+                          Open draft &amp; submit →
+                        </button>
+                      )}
                       {(a.status === 'active' || a.status === 'pending') &&
                         unlocked &&
-                        a.id !== 'a7' &&
-                        a.id !== 'a8' && (
+                        !['a2', 'a7', 'a8'].includes(a.id) && (
                           <button
                             type="button"
                             className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
@@ -2325,6 +2344,7 @@ function GameApp({
                   <label className="text-xs flex flex-col gap-1">
                     Note
                     <textarea
+                      ref={noteTextRef}
                       className="bg-bar-bg border border-white/10 rounded p-2 min-h-20"
                       value={noteText}
                       maxLength={1000}
@@ -3289,7 +3309,12 @@ function GameApp({
                   </button>
                 ))}
               </div>
-              <div className="space-y-2 max-h-[60vh] overflow-auto">
+              <div
+                className="space-y-2 max-h-[60vh] overflow-auto"
+                tabIndex={0}
+                role="region"
+                aria-label="Notebook entries"
+              >
                 {(() => {
                   const filtered = save.notebook.filter((n) => notebookFilter === 'all' || n.kind === notebookFilter);
                   if (filtered.length === 0)
