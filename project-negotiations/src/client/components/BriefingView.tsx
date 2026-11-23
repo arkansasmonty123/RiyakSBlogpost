@@ -1,3 +1,4 @@
+import { useRef, useState, type KeyboardEvent } from 'react';
 import type { SessionView, BriefingItem } from '@shared/types';
 import { formatInfoClass } from '../utils';
 
@@ -20,6 +21,33 @@ function InfoList({ items, empty }: { items: BriefingItem[]; empty: string }) {
 
 export function BriefingView({ session, onContinue }: { session: SessionView; onContinue: () => void }) {
   const b = session.briefing;
+  const [playerSelected, setPlayerSelected] = useState(true);
+  const playerTabRef = useRef<HTMLButtonElement | null>(null);
+  const opposingTabRef = useRef<HTMLButtonElement | null>(null);
+
+  const selectPlayer = () => setPlayerSelected(true);
+  const selectOpposing = () => setPlayerSelected(false);
+
+  const onTabsKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      setPlayerSelected(false);
+      opposingTabRef.current?.focus();
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      setPlayerSelected(true);
+      playerTabRef.current?.focus();
+    } else if (e.key === 'Home') {
+      e.preventDefault();
+      setPlayerSelected(true);
+      playerTabRef.current?.focus();
+    } else if (e.key === 'End') {
+      e.preventDefault();
+      setPlayerSelected(false);
+      opposingTabRef.current?.focus();
+    }
+  };
+
   return (
     <div className="stack-lg">
       <section className="panel">
@@ -31,40 +59,72 @@ export function BriefingView({ session, onContinue }: { session: SessionView; on
         </div>
       </section>
 
-      <div className="two-col">
-        <section className="panel">
-          <p className="eyebrow">Your side</p>
-          <h2>Your role</h2>
-          <p>{b.playerRole}</p>
-          <h3>Objective</h3>
-          <p>{b.playerObjective}</p>
-          <h3>Minimum acceptable outcome</h3>
-          <p>{b.minimumAcceptableOutcome}</p>
-          <h3>Priorities</h3>
-          <ol className="priority-list">
-            {b.playerPriorities.map((p, i) => <li key={i}>{p}</li>)}
-          </ol>
-          <h3>Constraints</h3>
-          <InfoList items={b.playerConstraints} empty="No constraints listed." />
-          <h3>Resources / leverage</h3>
-          <InfoList items={b.playerResources} empty="No resources listed." />
-          <h3>Private information</h3>
-          <InfoList items={b.playerPrivateInfo} empty="No private information listed." />
-        </section>
+      <div className="briefing-tabs-wrap">
+        <div role="tablist" className="briefing-tablist" aria-label="Briefing side" onKeyDown={onTabsKeyDown}>
+          <button
+            type="button"
+            role="tab"
+            id="tab-player"
+            aria-selected={playerSelected}
+            aria-controls="panel-player"
+            tabIndex={playerSelected ? 0 : -1}
+            ref={playerTabRef}
+            className="briefing-tab"
+            onClick={selectPlayer}
+          >
+            Your side
+          </button>
+          <button
+            type="button"
+            role="tab"
+            id="tab-opposing"
+            aria-selected={!playerSelected}
+            aria-controls="panel-opposing"
+            tabIndex={playerSelected ? -1 : 0}
+            ref={opposingTabRef}
+            className="briefing-tab"
+            onClick={selectOpposing}
+          >
+            Opposing side
+          </button>
+        </div>
 
-        <section className="panel">
-          <p className="eyebrow">Opposing side</p>
-          <h2>What you know</h2>
-          <p className="muted">Intelligence is classified by confidence. Treat reported and unknown items with caution.</p>
-          <h3>Stated demands</h3>
-          <InfoList items={b.opposingDemands} empty="No demands listed." />
-          <h3>Known interests</h3>
-          <InfoList items={b.knownInterests} empty="No interests listed." />
-          <h3>Available intelligence</h3>
-          <InfoList items={b.availableIntelligence} empty="No intelligence listed." />
-          <h3>Apparent constraints</h3>
-          <InfoList items={b.apparentConstraints} empty="No apparent constraints listed." />
-        </section>
+        {playerSelected ? (
+          <section role="tabpanel" id="panel-player" aria-labelledby="tab-player" className="panel briefing-tabpanel">
+            <p className="eyebrow">Your side</p>
+            <h2>Your role</h2>
+            <p>{b.playerRole}</p>
+            <h3>Objective</h3>
+            <p>{b.playerObjective}</p>
+            <h3>Minimum acceptable outcome</h3>
+            <p>{b.minimumAcceptableOutcome}</p>
+            <h3>Priorities</h3>
+            <ol className="priority-list">
+              {b.playerPriorities.map((p, i) => <li key={i}>{p}</li>)}
+            </ol>
+            <h3>Constraints</h3>
+            <InfoList items={b.playerConstraints} empty="No constraints listed." />
+            <h3>Resources / leverage</h3>
+            <InfoList items={b.playerResources} empty="No resources listed." />
+            <h3>Private information</h3>
+            <InfoList items={b.playerPrivateInfo} empty="No private information listed." />
+            <p className="confidential-note"><strong>Confidential:</strong> Private information is hidden until the debrief.</p>
+          </section>
+        ) : (
+          <section role="tabpanel" id="panel-opposing" aria-labelledby="tab-opposing" className="panel briefing-tabpanel">
+            <p className="eyebrow">Opposing side</p>
+            <h2>What you know</h2>
+            <p className="muted">Intelligence is classified by confidence. Treat reported and unknown items with caution.</p>
+            <h3>Stated demands</h3>
+            <InfoList items={b.opposingDemands} empty="No demands listed." />
+            <h3>Known interests</h3>
+            <InfoList items={b.knownInterests} empty="No interests listed." />
+            <h3>Available intelligence</h3>
+            <InfoList items={b.availableIntelligence} empty="No intelligence listed." />
+            <h3>Apparent constraints</h3>
+            <InfoList items={b.apparentConstraints} empty="No apparent constraints listed." />
+          </section>
+        )}
       </div>
 
       <section className="panel">

@@ -3,15 +3,17 @@
 ## Project
 
 - **Workspace**: `/home/divyanshukumarsinha241`
-- **Main product codebase**: `project-investigation/`
-- **PRD (source of truth for product requirements)**: `project-investigation/PRD.md`
+- **Active project**: `project-negotiations/` (NEG-M0 initialization)
+- **Other projects**: `project-investigation/` (M8 complete, paused), `project-courtroom/`
+- **PRD (active project)**: `project-negotiations/PRD.md` (draft; define with user)
+- **PRD (investigation, paused)**: `project-investigation/PRD.md`
 - **Project memory**: `project-management/DEV-STATUS.md`, `TASKS.md`, `BUGS.md`, `TEST-REPORT.md`, `DECISIONS.md`
 - **Persistent orchestration/recovery**: `project-management/ORCHESTRATION-STATE.json`, `ORCHESTRATION-LOG.md`, `RECOVERY.md`, `MODEL-POLICY.md`
 - **Setup guide**: `SETUP-GUIDE.md`
 
 ## Working rules
 
-- Inspect relevant files before making changes; do not assume state.
+- Inspect only relevant files from named/likely entry points before making changes; do not recursively scan the repo or unrelated folders, and do not assume state.
 - On startup/resume, follow `project-management/RECOVERY.md` and reconstruct state from `ORCHESTRATION-STATE.json`/logs before acting.
 - Follow existing code style and patterns in `project-investigation/`.
 - Use project-management files as the source of truth for ongoing work; update ORCHESTRATION-STATE/LOG on task assignments, results, and checkpoints.

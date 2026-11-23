@@ -233,8 +233,8 @@ export function DebriefView({ session, debrief, busy, onLoad, onNewCase, onRetry
       </section>
 
       <div className="actions-row">
-        <button type="button" className="btn btn-primary" onClick={onRetryCase} disabled={busy}>Try same case again</button>
-        <button type="button" className="btn btn-secondary" onClick={onNewCase} disabled={busy}>Choose another case</button>
+        <button type="button" className="btn btn-primary" onClick={onNewCase} disabled={busy}>New case</button>
+        <button type="button" className="btn btn-secondary" onClick={onRetryCase} disabled={busy}>Try the same case again</button>
       </div>
     </div>
   );

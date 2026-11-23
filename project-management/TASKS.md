@@ -3,6 +3,26 @@
 > **Ownership**: Orchestrator creates/prioritizes tasks. Assigned agent updates status/evidence via Orchestrator.  
 > **Update rules**: Keep tasks small and testable. Status values: `pending`, `in_progress`, `blocked`, `done`. Always include acceptance criteria and evidence when done. Do not delete completed tasks; mark done.
 
+## Active project: negotiations (`project-negotiations/`)
+
+| ID | Task | Owner | Status | Acceptance criteria | Evidence / Notes |
+|---|---|---|---|---|---|
+| NEG-001 | Initialize negotiations project and shift active focus | orchestrator | done | `project-negotiations/` scaffold exists; orchestration state/log/dev-status/tasks updated to active negotiations focus; investigation history preserved | 2026-11-23: Scaffold + state shift complete. |
+| NEG-002 | Clarify negotiations product definition | orchestrator+user | done | User provides: product type, target users, core problem, MVP scope/platform, constraints/preferences | 2026-11-23: Full master spec received (The Negotiation Table). 500MB project constraint recorded. |
+| NEG-003 | Draft negotiations PRD | architect/orchestrator | done | `project-negotiations/PRD.md` captures vision, users, MVP flows, requirements, non-goals, milestones | 2026-11-23: PRD.md, ROADMAP.md, DECISIONS.md, docs/conversation-history.md written. |
+| NEG-004 | Scaffold runnable skeleton | builder+orchestrator | done | Runnable app skeleton with dev/build/test | 2026-11-23: Verified baseline; final integrated build passes. |
+| NEG-005 | M1 core backend | builder | done | Domain, 3 cases, SQLite, engine, API, tests | 2026-11-23: 33/33 tests, typecheck/build PASS. |
+| NEG-006 | M2 AI hardening | builder | done | Fallback/orchestrator/guards/counters | 2026-11-23: Deterministic fallback labeled; malformed-output handling; budgets; tests. |
+| NEG-007 | M4 frontend MVP | ui-ux-frontend | done | 5-phase UI, responsive/a11y, real API | 2026-11-23: Case select/briefing/prep/room/debrief/skills implemented. |
+| NEG-008 | CI workflow | orchestrator | done | CI typecheck/test/build | 2026-11-23: `.github/workflows/ci.yml` present (Node 26). |
+| NEG-009 | Recovery + M0 hardening | builder | done | Restore wiped backend, migrations/guards/counters | 2026-11-23: Restored and verified 33/33. |
+| NEG-010 | QA/scrutiny audit | qa-engineer+scrutinizer | done | Evidence-based audit, no P0/P1 | 2026-11-23: Scrutinizer APPROVED, QA PASS. |
+| NEG-011 | Final completion pass | orchestrator | done | Reconcile docs/roadmap; re-run typecheck/test/build; confirm PRD MVP criteria | 2026-11-23: typecheck PASS, 33/33 tests PASS, build PASS, 99M. Created `docs/ARCHITECT-PLAN.md`, `docs/DESIGN.md`; ROADMAP reconciled. |
+
+---
+
+## Investigation history (paused, M8 complete)
+
 ## Active setup tasks
 
 | ID | Task | Owner | Status | Acceptance criteria | Evidence / Notes |

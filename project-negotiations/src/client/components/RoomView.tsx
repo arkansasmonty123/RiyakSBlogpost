@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatMessage, Offer, OfferTerm, SendMessageRequest, SessionView } from '@shared/types';
 import { clamp, timeAgo } from '../utils';
+import { ConfirmModal } from './ConfirmModal';
 
 interface Props {
   session: SessionView;
@@ -63,7 +64,8 @@ export function RoomView({ session, busy, onSend, onWalkAway, onFinalize, onView
   const [offerMode, setOfferMode] = useState<'offer' | 'counteroffer'>('offer');
   const [offerValues, setOfferValues] = useState<Record<string, number>>({});
   const [selectedOfferId, setSelectedOfferId] = useState<string>('');
-  const [confirmWalkAway, setConfirmWalkAway] = useState(false);
+  const [walkAwayModal, setWalkAwayModal] = useState(false);
+  const [finalizeModal, setFinalizeModal] = useState(false);
   const [sceneExpanded, setSceneExpanded] = useState(false);
   const logRef = useRef<HTMLDivElement | null>(null);
   const liveRef = useRef<HTMLDivElement | null>(null);
@@ -163,6 +165,7 @@ export function RoomView({ session, busy, onSend, onWalkAway, onFinalize, onView
             <p className="muted small">
               Static simulation room. Messages are chat; commitments are tracked by the deterministic engine.
             </p>
+            <p className="room-meta">{participants.length} in briefing · {session.messages.length} messages so far</p>
           </div>
           <div className="room-status">
             <span className={`status-pill status-${session.status}`}>{session.status}</span>
@@ -422,18 +425,8 @@ export function RoomView({ session, busy, onSend, onWalkAway, onFinalize, onView
             </div>
           ) : (
             <div className="stack-sm">
-              {!confirmWalkAway ? (
-                <button type="button" className="btn btn-danger" onClick={() => setConfirmWalkAway(true)} disabled={busy}>Walk away</button>
-              ) : (
-                <div className="callout callout-danger">
-                  <p><strong>Walk away from this negotiation?</strong> This ends the session without a validated agreement.</p>
-                  <div className="actions-row wrap">
-                    <button type="button" className="btn btn-danger" onClick={onWalkAway} disabled={busy}>Confirm walk away</button>
-                    <button type="button" className="btn btn-ghost" onClick={() => setConfirmWalkAway(false)} disabled={busy}>Cancel</button>
-                  </div>
-                </div>
-              )}
-              <button type="button" className="btn btn-secondary" onClick={onFinalize} disabled={busy}>Finalize / compute debrief</button>
+              <button type="button" className="btn btn-danger" onClick={() => setWalkAwayModal(true)} disabled={busy}>Walk away</button>
+              <button type="button" className="btn btn-secondary" onClick={() => setFinalizeModal(true)} disabled={busy}>Finalize / compute debrief</button>
               <p className="muted small">Finalize is useful if negotiation has stalled. If there's no validated agreement, outcome will reflect that.</p>
             </div>
           )}
@@ -457,6 +450,27 @@ export function RoomView({ session, busy, onSend, onWalkAway, onFinalize, onView
           </div>
         </section>
       </aside>
+
+      <ConfirmModal
+        open={walkAwayModal}
+        title="Walk away from this negotiation?"
+        message="This ends the session without a validated agreement. The engine computes the debrief."
+        confirmLabel="Confirm walk away"
+        confirmVariant="danger"
+        isBusy={busy}
+        onConfirm={() => { setWalkAwayModal(false); onWalkAway(); }}
+        onCancel={() => setWalkAwayModal(false)}
+      />
+
+      <ConfirmModal
+        open={finalizeModal}
+        title="Finalize this negotiation?"
+        message="Stalling ends the room. The engine computes the debrief; without a validated agreement the outcome will reflect that."
+        confirmLabel="Confirm finalize"
+        isBusy={busy}
+        onConfirm={() => { setFinalizeModal(false); onFinalize(); }}
+        onCancel={() => setFinalizeModal(false)}
+      />
     </div>
   );
 }

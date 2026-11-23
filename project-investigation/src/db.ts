@@ -3753,3 +3753,131 @@ export async function getUnplayedCaseSuggestions(
     duration: r.duration === null || r.duration === undefined ? null : String(r.duration),
   }));
 }
+
+// ---------------------------------------------------------------------------
+// M8-W7: Account export / deletion (auth-scoped, safe DTO only)
+// ---------------------------------------------------------------------------
+
+export interface UserExportDTO {
+  exportedAt: string;
+  formatVersion: string;
+  profile: { id: string; email: string | null; createdAt: string | null };
+  investigations: Array<Record<string, unknown>>;
+  notebook: Array<Record<string, unknown>>;
+  knowledge: { journal: unknown; memories: Array<Record<string, unknown>> };
+  notifications: Array<Record<string, unknown>>;
+}
+
+function safeExportRow(row: any, allowed: string[]): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const k of allowed) {
+    if (k in row) {
+      const v = row[k];
+      out[k] = v instanceof Date ? v.toISOString() : v;
+    }
+  }
+  return out;
+}
+
+export async function exportUserData(userId: string): Promise<UserExportDTO> {
+  const userRes = await query('SELECT id, email, created_at FROM users WHERE id = $1', [userId]);
+  const user = userRes.rows[0] || {};
+  const invRes = await query(
+    `SELECT id, case_id, status, progress, start_timestamp, completion_timestamp, current_theory, created_at, updated_at
+       FROM investigations WHERE user_id = $1 ORDER BY created_at DESC`,
+    [userId],
+  );
+  const notebookRes = await query(
+    `SELECT id, investigation_id, entry_type, title, content, artifact_id, specialist_id, concept, source_snapshot,
+            discovery_memory_id, discovery_clue_key, created_at, updated_at
+       FROM notebook_entries WHERE user_id = $1 ORDER BY created_at DESC`,
+    [userId],
+  );
+  const notifRes = await query(
+    `SELECT id, investigation_id, event_id, category, priority, title, body, status, created_at, read_at
+       FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 200`,
+    [userId],
+  ).catch(() => ({ rows: [] as any[] }));
+  const memRes = await query(
+    `SELECT id, subject_key, subject_label, memory_kind, mastery_status, next_due_at, last_recall_at,
+            successful_recalls, failed_recalls, created_at, updated_at
+       FROM knowledge_memory_items WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 200`,
+    [userId],
+  ).catch(() => ({ rows: [] as any[] }));
+
+  // Build a safe journal view (no hidden/canonical fields).
+  let journal: unknown = { items: [], subjects: [] };
+  try {
+    const { getKnowledgeJournal } = await import('./discovery-service');
+    journal = await getKnowledgeJournal(userId);
+  } catch {
+    journal = { items: [], subjects: [] };
+  }
+
+  return {
+    exportedAt: new Date().toISOString(),
+    formatVersion: '1',
+    profile: {
+      id: String(user.id ?? userId),
+      email: user.email ?? null,
+      createdAt: user.created_at ? new Date(user.created_at).toISOString() : null,
+    },
+    investigations: invRes.rows.map((r: any) => safeExportRow(r, [
+      'id', 'case_id', 'status', 'progress', 'started_at', 'completion_timestamp', 'current_theory', 'created_at', 'updated_at',
+    ])),
+    notebook: notebookRes.rows.map((r: any) => {
+      const row = safeExportRow(r, [
+        'id', 'investigation_id', 'entry_type', 'title', 'content', 'artifact_id', 'specialist_id', 'concept',
+        'source_snapshot', 'discovery_memory_id', 'discovery_clue_key', 'created_at', 'updated_at',
+      ]);
+      // Strip any accidental leak keys from snapshot
+      if (row.source_snapshot && typeof row.source_snapshot === 'object') {
+        const snap = { ...(row.source_snapshot as any) };
+        for (const k of Object.keys(snap)) {
+          if (/canonical|hidden|secret|truth|password|token|evaluation_result|hidden_events/i.test(k)) delete snap[k];
+        }
+        row.source_snapshot = snap;
+      }
+      return row;
+    }),
+    knowledge: {
+      journal,
+      memories: memRes.rows.map((r: any) => safeExportRow(r, [
+        'id', 'subject_key', 'subject_label', 'memory_kind', 'mastery_status', 'next_due_at', 'last_recall_at',
+        'successful_recalls', 'failed_recalls', 'created_at', 'updated_at',
+      ])),
+    },
+    notifications: notifRes.rows.map((r: any) => safeExportRow(r, [
+      'id', 'investigation_id', 'event_id', 'category', 'priority', 'title', 'body', 'status', 'created_at', 'read_at',
+    ])),
+  };
+}
+
+export async function deleteUserAccount(userId: string): Promise<void> {
+  // Explicit deletes in dependency-safe order; FK cascades are a backstop.
+  await query(`DELETE FROM discovery_submissions WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM discovery_clue_state WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM discovery_unlocks WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM knowledge_memory_cases WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM knowledge_recall_events WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM knowledge_memory_items WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM perspective_reflections WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM perspective_suggestion_state WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM reality_claims WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM reality_hypotheses WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM reality_links WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM notebook_entries WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM notifications WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM journal_entries WHERE investigation_id IN (SELECT id FROM investigations WHERE user_id = $1)`, [userId]).catch(() => {});
+  await query(`DELETE FROM conversations WHERE investigation_id IN (SELECT id FROM investigations WHERE user_id = $1)`, [userId]).catch(() => {});
+  await query(`DELETE FROM scheduled_events WHERE investigation_id IN (SELECT id FROM investigations WHERE user_id = $1)`, [userId]).catch(() => {});
+  await query(`DELETE FROM development_log WHERE investigation_id IN (SELECT id FROM investigations WHERE user_id = $1)`, [userId]).catch(() => {});
+  await query(`DELETE FROM investigation_flags WHERE investigation_id IN (SELECT id FROM investigations WHERE user_id = $1)`, [userId]).catch(() => {});
+  await query(`DELETE FROM investigation_events WHERE investigation_id IN (SELECT id FROM investigations WHERE user_id = $1)`, [userId]).catch(() => {});
+  await query(`DELETE FROM accusations WHERE investigation_id IN (SELECT id FROM investigations WHERE user_id = $1)`, [userId]).catch(() => {});
+  await query(`DELETE FROM achievements WHERE investigation_id IN (SELECT id FROM investigations WHERE user_id = $1)`, [userId]).catch(() => {});
+  await query(`DELETE FROM user_onboarding WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM sessions WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM investigations WHERE user_id = $1`, [userId]).catch(() => {});
+  await query(`DELETE FROM users WHERE id = $1`, [userId]);
+}

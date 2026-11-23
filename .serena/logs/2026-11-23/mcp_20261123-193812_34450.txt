@@ -1,0 +1,24 @@
+INFO  2026-11-23 19:38:12,200 [MainThread] serena.cli:start_mcp_server:460 - Initializing Serena MCP server
+INFO  2026-11-23 19:38:12,201 [MainThread] serena.cli:start_mcp_server:461 - Storing logs in /home/divyanshukumarsinha241/.serena/logs/2026-11-23/mcp_20261123-193812_34450.txt
+INFO  2026-11-23 19:38:12,205 [MainThread] serena.config.serena_config:from_config_file:995 - Loading Serena configuration from /home/divyanshukumarsinha241/.serena/serena_config.yml
+INFO  2026-11-23 19:38:12,274 [MainThread] serena.agent:__init__:686 - Will record tool usage statistics with token count estimator: CHAR_COUNT.
+INFO  2026-11-23 19:38:12,277 [MainThread] serena.agent:__init__:691 - Starting Serena server (version=2.1.1.dev0-f364211a-dirty, process id=34450, parent process id=34040; language backend=LSP); Python version=3.12.3, platform=Linux-6.18.55+-x86_64-with-glibc2.39
+INFO  2026-11-23 19:38:12,277 [MainThread] serena.agent:__init__:695 - Configuration file: /home/divyanshukumarsinha241/.serena/serena_config.yml
+INFO  2026-11-23 19:38:12,278 [MainThread] serena.agent:__init__:696 - Available projects: 
+INFO  2026-11-23 19:38:12,278 [MainThread] serena.agent:__init__:697 - Loaded tools (53): create_text_file, replace_content, replace_in_files, delete_lines, replace_lines, insert_at_line, replace_symbol_body, insert_after_symbol, insert_before_symbol, read_file, list_dir, find_file, search_for_pattern, restart_language_server, get_symbols_overview, find_symbol, find_referencing_symbols, find_implementations, find_declaration, get_diagnostics_for_file, get_diagnostics_for_symbol, rename_symbol, safe_delete_symbol, write_memory, read_memory, list_memories, delete_memory, rename_memory, edit_memory, execute_shell_command, open_dashboard, activate_project, remove_project, get_current_config, onboarding, initial_instructions, serena_info, jet_brains_find_symbol, jet_brains_move, jet_brains_safe_delete, jet_brains_inline_symbol, jet_brains_find_referencing_symbols, jet_brains_get_symbols_overview, jet_brains_type_hierarchy, jet_brains_find_declaration, jet_brains_find_implementations, jet_brains_rename, jet_brains_debug, jet_brains_run_inspections, jet_brains_list_inspections, list_queryable_projects, query_project, serena_repl
+INFO  2026-11-23 19:38:12,278 [MainThread] serena.config.serena_config:determine_language_backend:1511 - Using language backend from global configuration: LSP
+INFO  2026-11-23 19:38:12,279 [MainThread] serena.config.serena_config:determine_agent_interface:1500 - Using agent interface 'REPL' (global configuration)
+INFO  2026-11-23 19:38:12,357 [MainThread] serena.agent:_update_active_modes:1327 - Active modes (2): editing, interactive
+INFO  2026-11-23 19:38:12,360 [MainThread] serena.agent:__init__:748 - Number of exposed tools: 3. Exposed tools: ['activate_project', 'initial_instructions', 'serena_repl']
+INFO  2026-11-23 19:38:12,361 [MainThread] serena.agent:_update_active_tools:1350 - Active tools (3): activate_project, initial_instructions, serena_repl
+INFO  2026-11-23 19:38:12,510 [MainThread] serena.repl.repl:__init__:75 - Registered 6/7 facades: ['cfg', 'fs', 'edit', 'mem', 'shell', 'lsp']
+INFO  2026-11-23 19:38:12,522 [MainThread] serena.dashboard.dashboard_api:run_in_thread:870 - Starting dashboard (listen_address=127.0.0.1, port=24282)
+INFO  2026-11-23 19:38:12,533 [MainThread] serena.agent:__init__:505 - Not opening the Serena dashboard because no usable display was detected.
+INFO  2026-11-23 19:38:12,533 [MainThread] serena.agent:__init__:784 - Serena web dashboard started at http://127.0.0.1:24282/dashboard/index.html
+INFO  2026-11-23 19:38:12,535 [MainThread] serena.mcp:create_mcp_server:413 - MCP server initial instructions:
+CRITICAL: Before starting to work on a coding task, call the `initial_instructions` tool to read the 'Serena Instructions Manual'.
+INFO  2026-11-23 19:38:12,553 [MainThread] serena.cli:start_mcp_server:503 - Starting MCP server …
+INFO  2026-11-23 19:38:12,730 [MainThread] serena.mcp:_set_mcp_tools:340 - Starting MCP server with 3 tools: ['activate_project', 'initial_instructions', 'serena_repl']
+INFO  2026-11-23 19:38:12,730 [MainThread] serena.mcp:server_lifespan:437 - MCP server lifetime setup complete
+INFO  2026-11-23 19:38:12,759 [MainThread] serena.mcp:shutdown_agent:456 - MCP server shutting down
+INFO  2026-11-23 19:38:12,760 [MainThread] serena.agent:on_shutdown:1712 - SerenaAgent is shutting down ...

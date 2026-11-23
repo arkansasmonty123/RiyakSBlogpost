@@ -1,11 +1,13 @@
-import { useState } from 'react';
-import type { CaseSummary, SessionView } from '@shared/types';
+import { useMemo, useState } from 'react';
+import type { CaseSummary, Difficulty, SessionView } from '@shared/types';
 import { difficultyLabel } from '../utils';
+import { SkeletonList } from './Skeleton';
 
 interface Props {
   cases: CaseSummary[];
   activeSession: SessionView | null;
   busy: boolean;
+  loading?: boolean;
   onStart: (caseId: string) => void;
   onResume: (session: SessionView) => void;
   onRefresh: () => void;
@@ -13,14 +15,66 @@ interface Props {
 
 const ONBOARDING_KEY = 'tnt.onboarding.dismissed';
 
-export function CaseSelectView({ cases, activeSession, busy, onStart, onResume, onRefresh }: Props) {
+export function CaseSelectView({ cases, activeSession, busy, loading, onStart, onResume, onRefresh }: Props) {
   const [showOnboarding, setShowOnboarding] = useState(() => {
     try { return localStorage.getItem(ONBOARDING_KEY) !== '1'; } catch { return true; }
   });
+  const [search, setSearch] = useState('');
+  const [difficulties, setDifficulties] = useState<Set<Difficulty>>(() => new Set());
+  const [skills, setSkills] = useState<Set<string>>(() => new Set());
 
   const dismissOnboarding = () => {
     try { localStorage.setItem(ONBOARDING_KEY, '1'); } catch { /* ignore */ }
     setShowOnboarding(false);
+  };
+
+  const difficultyOptions = useMemo(
+    () => Array.from(new Set(cases.map((c) => c.difficulty))),
+    [cases],
+  );
+  const skillOptions = useMemo(() => {
+    const seen = new Set<string>();
+    for (const c of cases) for (const s of c.skills) seen.add(s);
+    return Array.from(seen);
+  }, [cases]);
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return cases.filter((c) => {
+      if (q) {
+        const haystack = `${c.title}\n${c.subtitle}\n${c.summary}\n${c.skills.join(' ')}`.toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      if (difficulties.size > 0 && !difficulties.has(c.difficulty)) return false;
+      if (skills.size > 0 && !c.skills.some((s) => skills.has(s))) return false;
+      return true;
+    });
+  }, [cases, search, difficulties, skills]);
+
+  const showSkeletons = (busy || loading) && cases.length === 0;
+  const noMatch = !showSkeletons && cases.length > 0 && visible.length === 0;
+  const showFilters = cases.length > 0 && !showSkeletons;
+
+  const clearFilters = () => {
+    setSearch('');
+    setDifficulties(new Set());
+    setSkills(new Set());
+  };
+
+  const toggleDifficulty = (d: Difficulty) => {
+    setDifficulties((prev) => {
+      const next = new Set(prev);
+      if (next.has(d)) next.delete(d); else next.add(d);
+      return next;
+    });
+  };
+
+  const toggleSkill = (s: string) => {
+    setSkills((prev) => {
+      const next = new Set(prev);
+      if (next.has(s)) next.delete(s); else next.add(s);
+      return next;
+    });
   };
 
   return (
@@ -73,33 +127,96 @@ export function CaseSelectView({ cases, activeSession, busy, onStart, onResume, 
         </section>
       )}
 
-      <section aria-label="Available cases" className="case-grid">
-        {cases.length === 0 ? (
-          <div className="panel empty-panel">No cases available.</div>
-        ) : cases.map((c) => (
-          <article key={c.id} className="panel case-card">
-            <div className="case-card-top">
-              <span className={`difficulty-badge difficulty-${c.difficulty}`}>{difficultyLabel(c.difficulty)}</span>
-              <span className="muted small">{c.estimatedMinutes} min</span>
-            </div>
-            <p className="eyebrow">{c.subtitle}</p>
-            <h2 className="case-title">{c.title}</h2>
-            <p className="muted">{c.summary}</p>
-            <dl className="case-meta">
-              <div><dt>Participants</dt><dd>{c.participantCount}</dd></div>
-              <div><dt>Estimated time</dt><dd>{c.estimatedMinutes} min</dd></div>
-            </dl>
-            <div className="tag-row" aria-label="Skills">
-              {c.skills.map((s) => <span key={s} className="tag">{s.replaceAll('_', ' ')}</span>)}
-            </div>
-            <div className="case-card-actions">
-              <button type="button" className="btn btn-primary" onClick={() => onStart(c.id)} disabled={busy}>
-                Start negotiation
-              </button>
-            </div>
-          </article>
-        ))}
-      </section>
+      {showFilters && (
+        <section className="case-filters" aria-label="Case filters">
+          <p className="filter-group-label">Search</p>
+          <input
+            className="input case-search"
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search title, subtitle, summary, or skills…"
+            aria-label="Search cases"
+          />
+          {difficultyOptions.length > 0 && (
+            <>
+              <p className="filter-group-label">Difficulty</p>
+              <div className="chip-row" role="group" aria-label="Filter by difficulty">
+                {difficultyOptions.map((d) => (
+                  <button
+                    key={d}
+                    type="button"
+                    className="chip"
+                    aria-pressed={difficulties.has(d)}
+                    onClick={() => toggleDifficulty(d)}
+                  >
+                    <span className="chip-dot" aria-hidden="true" />
+                    {difficultyLabel(d)}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+          {skillOptions.length > 0 && (
+            <>
+              <p className="filter-group-label">Skills</p>
+              <div className="chip-row" role="group" aria-label="Filter by skill">
+                {skillOptions.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    className="chip"
+                    aria-pressed={skills.has(s)}
+                    onClick={() => toggleSkill(s)}
+                  >
+                    {s.replaceAll('_', ' ')}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+      )}
+
+      {showSkeletons ? (
+        <SkeletonList count={4} />
+      ) : cases.length === 0 ? (
+        <div className="panel empty-panel">No cases available.</div>
+      ) : noMatch ? (
+        <div className="panel empty-panel filters-empty" role="status">
+          <h2>No cases match your filters</h2>
+          <p className="muted">Try another search, or clear the filters to see every case.</p>
+          <div className="actions-row">
+            <button type="button" className="btn btn-secondary" onClick={clearFilters}>Clear filters</button>
+          </div>
+        </div>
+      ) : (
+        <section aria-label="Available cases" className="case-grid">
+          {visible.map((c) => (
+            <article key={c.id} className="panel case-card">
+              <div className="case-card-top">
+                <span className={`difficulty-badge difficulty-${c.difficulty}`}>{difficultyLabel(c.difficulty)}</span>
+                <span className="muted small">{c.estimatedMinutes} min</span>
+              </div>
+              <p className="eyebrow">{c.subtitle}</p>
+              <h2 className="case-title">{c.title}</h2>
+              <p className="muted">{c.summary}</p>
+              <dl className="case-meta">
+                <div><dt>Participants</dt><dd>{c.participantCount}</dd></div>
+                <div><dt>Estimated time</dt><dd>{c.estimatedMinutes} min</dd></div>
+              </dl>
+              <div className="tag-row" aria-label="Skills">
+                {c.skills.map((s) => <span key={s} className="tag">{s.replaceAll('_', ' ')}</span>)}
+              </div>
+              <div className="case-card-actions">
+                <button type="button" className="btn btn-primary" onClick={() => onStart(c.id)} disabled={busy}>
+                  Start negotiation
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@
 
 This repository is configured as an autonomous multi-agent OpenCode development environment for the **THE INVESTIGATION** project (`project-investigation/`, PRD at `project-investigation/PRD.md`).
 
-The system is designed so the **Orchestrator** receives objectives, inspects state, delegates to specialized subagents, verifies evidence, updates project memory, and advances work with minimal manual handoff.
+The system is designed so the **Orchestrator** receives objectives, resolves the active project from workspace state, assigns clear ownership, verifies evidence proportional to risk, updates shared project memory, and advances work with minimal handoff.
 
 ## Agent roster
 
@@ -16,7 +16,7 @@ The system is designed so the **Orchestrator** receives objectives, inspects sta
 | `bug-fixer` | subagent | `.opencode/agents/bug-fixer.md` | Root-cause analysis, minimal fix, targeted regression verification | Edit/shell allowed; can delegate independent investigation subtasks via `subagent`; no scope expansion |
 | `architect` | subagent | `.opencode/agents/architect.md` | Breaks complex work into tasks, dependencies, risks, implementation plan | **Read-only for edits** (`edit` denied) |
 | `game-designer` | subagent | `.opencode/agents/game-designer.md` | Designs game mechanics, rules, pacing, balancing, investigation/court flow | Edit/shell allowed; no push/deploy; prefers design specs/acceptance criteria over large code changes |
-| `ui-ux-frontend` | subagent | `.opencode/agents/ui-ux-frontend.md` | Designs and implements beautiful, accessible UI/UX/components/animations; web research; can use Stitch MCP for AI design drafts | Edit/shell allowed; websearch/webfetch allowed; Stitch MCP available; can delegate independent subtasks via `subagent`; no push/deploy |
+| `ui-ux-frontend` | subagent | `.opencode/agents/ui-ux-frontend.md` | End-to-end frontend owner: plans the user flow/design system, loads relevant skills, researches, implements UI, and verifies the running experience | Edit/shell/web allowed; may use Stitch/Context7/Playwright MCPs; delegates only independent work; no push/deploy |
 | `devops-engineer` | subagent | `.opencode/agents/devops-engineer.md` | CI/CD, build/release scripts, env/config, Docker, observability, developer tooling | Edit/shell allowed; push/deploy ask; destructive guarded |
 | `github-ops` | subagent | `.opencode/agents/github-ops.md` | Git/GitHub workflows: commits, branches, PRs/issues/checks, repo hygiene | Edit/shell allowed; `git push`/remote-write actions ask; no force-push/merge without approval |
 | `researcher` | subagent | `.opencode/agents/researcher.md` | External docs/library/API/best-practice research with cited sources | **Read-only for edits** (`edit` denied); websearch/webfetch allowed |
@@ -67,6 +67,12 @@ The system is designed so the **Orchestrator** receives objectives, inspects sta
 - **MCP servers** (configured in `opencode.jsonc`): `playwright` (local, browser automation), `context7` (remote, docs, no OAuth), `gh_grep` (remote, GitHub code search, no OAuth), `stitch` (remote, Google Stitch AI UI design, `https://stitch.googleapis.com/mcp`; auth via TUI `/mcps` if prompted).
 - **Skills** in `.agents/skills/`: `design-taste-frontend` (Taste Skill), `frontend-design`, `planning-with-files`, `stitch-design-mcp`, `vercel-composition-patterns`, `vercel-react-best-practices`, `webapp-testing`, `web-design-guidelines`. Load with the `skill` tool when relevant.
 
+### Skill and web usage (expected, not optional)
+
+- **Load skills before work**: agents must load matching skills with the `skill` tool at task start (UI: frontend/design-taste/web-design-guidelines/vercel-*/stitch-design-mcp/webapp-testing; planning: planning-with-files). Orchestrator handoffs should name required skills.
+- **Use web for current information**: for libraries/frameworks/APIs/CLI flags/security advisories or any claim likely to change, use `websearch`/`webfetch` and `context7` before implementing; include source links/versions in reports. Do not guess stale APIs.
+- **Evidence in reports**: agent reports should include skills loaded and external sources consulted when they influenced decisions.
+
 ## How to start the Orchestrator
 
 From the workspace root:
@@ -97,17 +103,33 @@ Examples:
 
 The Orchestrator should inspect relevant files first, update `project-management/TASKS.md`, delegate to subagents, and report evidence.
 
-## How delegation works
+## How engineering work is orchestrated
 
-The Orchestrator uses OpenCode's `subagent` tool to invoke specialized agents. Delegation is explicit and evidence-driven:
+Use the smallest process that safely fits the change. Parallel agents are a coordination tool, not a default ceremony.
 
-1. Orchestrator inspects objective/PRD/state.
-2. Optionally delegates planning to `architect`, gameplay/rules design to `game-designer`, and external research to `researcher`.
-3. Delegates implementation to `builder` (backend/general), `ui-ux-frontend` (UI/UX), or `devops-engineer` (CI/build/env/tooling) with specific acceptance criteria; delegates commit/PR/GitHub workflows to `github-ops` when needed (never push without approval).
-4. Delegates independent verification to `scrutinizer`.
-5. If defects found, delegates to `bug-fixer`, then back to `scrutinizer`.
-6. Uses `qa-engineer` for milestone/regression testing, `user-tester` for human-like usability/visual review, and `security-auditor` for security-sensitive work.
-7. Updates project-memory files and advances.
+| Mode | Typical scope | Expected workflow |
+|---|---|---|
+| **Fast (default)** | One small/clear, low-risk change | One owner plans, implements, and runs targeted checks. No automatic reviewer chain. |
+| **Standard** | Multi-file feature or moderate risk | One implementation owner, targeted tests, and one independent review pass only if it adds distinct signal. |
+| **Full** | Security/auth, schema/data migration, destructive operations, critical domain rules, concurrency, major refactor, or release | Contract/plan first; explicit file ownership; isolated implementation where feasible; independent verification (QA/security/scrutiny as relevant); integration and regression gate. |
+
+Escalate from Fast with a concrete risk or uncertainty—not simply because the task has multiple files. Run focused checks during implementation; batch broad suites at feature/milestone boundaries and before release. Reuse valid test evidence only when the relevant code and environment have not changed.
+
+For each delegated task, provide: outcome and acceptance criteria; active project/PRD; exact read/write path allowlist; out-of-scope paths; one owner; dependencies/contracts; test commands and expected signals; baseline failures; stop conditions; concise report format. Subagents have fresh context, so don't rely on implicit chat history.
+
+## Safe parallel work and integration
+
+- Inspect `git status --short` and relevant diff before any delegation. Existing changes are user-owned unless explicitly assigned.
+- Every path has one writer. Orchestrator alone writes shared orchestration state/log and project memory; workers report proposed updates to it.
+- Parallelize only disjoint paths/contracts. If work shares files, central schemas, route registries, package manifests, or the same UI surface, serialize it or establish an explicit integration owner and interface first.
+- Never use reset/clean/checkout/broad restore or recursive deletion to resolve agent conflicts. On unexpected file loss or cross-agent edits: stop writes, preserve evidence, and coordinate recovery.
+- Verify delegated output from actual diffs and commands; a worker's summary is not independent verification.
+- Do not create a review chain by default. Use `scrutinizer` for independent requirement/diff audit, `qa-engineer` for behavioral/test coverage, `security-auditor` for security boundaries, and `user-tester` for exploratory UX only when each provides distinct value.
+- If OpenCode worktree isolation is used, confirm the worker actually worked in that isolated tree before relying on it; do not assume delegation is automatically isolated.
+
+## Recovery and ownership
+
+For new sessions, follow `project-management/RECOVERY.md`, resolve the active project from `ORCHESTRATION-STATE.json`/`DEV-STATUS.md`, and validate interrupted work against the filesystem. Do not rely on a hardcoded project path or overwrite newer state with stale recovery notes. The Orchestrator owns shared status, task, decision, and log updates; update them at assignments, blockers, meaningful completion, and milestone checkpoints—not every tool call.
 
 Subagents run in child sessions. The Orchestrator should pass complete context in the prompt (relevant files, PRD sections, acceptance criteria, commands). For follow-up on the same child session, pass the returned `sessionID`.
 
@@ -152,7 +174,7 @@ opencode run "Resume from project-management/ORCHESTRATION-STATE.json and contin
 
 | Agent | Default model | Fallback (operational) | Why |
 |---|---|---|---|
-| `orchestrator` | `opencode/iceman-free` | - | Stronger coordination/synthesis |
+| `orchestrator` | `opencode/iceman-free` | - | Coordination and synthesis; default to lean Fast workflow |
 | `builder` | `opencode/hy4-flash-free` | `opencode/iceman-free` | Fast capable coding; iceman fallback |
 | `architect` | `opencode/deepseek-v4.1-flash-free` | `opencode/iceman-free` | Planning/reasoning at default variant |
 | `ui-ux-frontend` | `opencode/iceman-free` | `opencode/hy4-flash-free` | UI/UX design, components, animations, frontend implementation |
@@ -163,9 +185,11 @@ opencode run "Resume from project-management/ORCHESTRATION-STATE.json and contin
 | `qa-engineer` | `opencode/nemotron-3.5-lightning-free` | `opencode/hy4-flash-free` | Lightweight test execution/reporting |
 | `user-tester` | `opencode/hy4-flash-free` | `opencode/nemotron-3.5-lightning-free` | Human-like usability/visual/a11y review with better judgment |
 | `security-auditor` | `opencode/nemotron-3.5-lightning-free` | `opencode/hy4-flash-free` | Lightweight read-only security checklist |
+| `game-designer` | `opencode/deepseek-v4.1-flash-free` | `opencode/iceman-free` | Mechanics, rules, fairness, and testable gameplay contracts |
+| `github-ops` | `opencode/hy4-flash-free` | `opencode/iceman-free` | Scoped Git/GitHub packaging with explicit remote-write approvals |
 | `compaction/title/summary` | `opencode/nemotron-3.5-lightning-free` | - | Cheap hidden maintenance tasks |
 
-**Routing rules:** smaller/faster models for scrutiny/testing/summarization; stronger models for build/orchestration; escalate to stronger model if lightweight agent is insufficient. Verify availability with `opencode models` / `/models`; adjust in `.opencode/agents/*.md` or `opencode.jsonc`.
+**Routing rules:** treat these as preferences, not availability guarantees. Verify with `opencode models`/`/models`; if an agent cannot run, choose a supported fallback and communicate it rather than silently claiming the configured model. Escalate only when capability requires it.
 
 **Exhaustion handling:** Orchestrator logs quota/rate-limit/model errors in `ORCHESTRATION-STATE.json`/`ORCHESTRATION-LOG.md`, attempts supported fallback when possible, otherwise sets `waiting_for_model_capacity=true`, checkpoints, and reports exact resume steps. No tight retry loops.
 

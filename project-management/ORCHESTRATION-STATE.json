@@ -1,28 +1,116 @@
 {
   "version": 1,
-  "updated_at": "2026-11-24T04:45:00Z",
-  "status": "idle",
-  "objective": "Deliver PRD MVP for THE INVESTIGATION (project-investigation) with autonomous orchestration.",
-  "current_milestone": "M8 complete: Deployment & Beta Readiness",
-  "active_task_id": null,
-  "active_agent": null,
-  "last_completed_task_id": "M8-WAVE7-S1",
-  "next_action": "M8 complete; report delivered; beta gating operational; no public deploy. Await next milestone direction.",
+  "updated_at": "2026-11-23T20:45:00Z",
+  "status": "active",
+  "objective": "Take project-negotiations from 'MVP COMPLETE WITH CONDITIONS' to independently verified, playable, release-ready MVP (final completion & release readiness mission).",
+  "current_milestone": "NEG-RELEASE: Final completion and release readiness",
+  "active_task_id": "NEG-RELEASE-001-FINAL",
+  "active_agent": "orchestrator",
+  "last_completed_task_id": "NEG-RELEASE-001-FIXES",
+  "next_action": "Final independent audit/verdict, commit intended project-negotiations changes (excluding gitignored/node_modules/dist/db/env), and deliver final release report. External blocker: real LLM E2E requires provider credentials/runtime not present in env.",
   "model_policy": {
     "active_model": "opencode/iceman-free",
     "fallback_models": [
       "opencode/hy4-flash-free"
     ],
     "last_model_error": {
-      "at": "2026-11-23T20:45:00Z",
-      "task": "M8-AUDIT",
-      "error": "Architect subagent hit free usage limit"
+      "at": "2026-11-23T21:52:00Z",
+      "task": "COURT-10.6-UX-CLARITY",
+      "error": "ui-ux-frontend subagent (ses_df5a05427ffeCI2qIyXWj8z1oD) hit free usage limit during final courtroom UX-clarity pass. ONE bounded fallback to builder (ses_df59f9d7fffenXpd42D0cvGwAO, default opencode/hy4-flash-free) completed successfully; no tight retry, no capacity wait."
     },
     "waiting_for_model_capacity": false,
     "wait_reason": null,
     "policy_file": "project-management/MODEL-POLICY.md"
   },
   "task_assignments": [
+    {
+      "task_id": "NEG-011",
+      "title": "Final completion pass and doc reconciliation",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Verified typecheck PASS, vitest 33/33 PASS, vite build PASS, 99M. Reconciled docs: created docs/ARCHITECT-PLAN.md and docs/DESIGN.md; updated ROADMAP checkboxes; confirmed PRD MVP criteria present (3 cases, 5-phase flow, deterministic engine authority, labeled fallback, secret-safe briefing, 9 prep fields, decision/outcome quality separation, skills). CI present.",
+      "next_action": null
+    },
+    {
+      "task_id": "NEG-010",
+      "title": "QA and scrutiny audit",
+      "agent": "qa-engineer+scrutinizer",
+      "status": "done",
+      "result_summary": "Scrutinizer APPROVED; QA verified 33/33, typecheck PASS, build PASS, 99M. No P0/P1 defects reported. Core MVP flow, engine authority, fallback labeling, secret-safe briefing, 3 distinct cases confirmed.",
+      "next_action": null
+    },
+    {
+      "task_id": "NEG-007",
+      "title": "M4 frontend MVP",
+      "agent": "ui-ux-frontend+builder",
+      "status": "done",
+      "result_summary": "Frontend MVP built: case select, briefing, preparation, room, debrief, skills; responsive/a11y/fallback labels; typecheck/build PASS.",
+      "next_action": null
+    },
+    {
+      "task_id": "NEG-006",
+      "title": "M2 AI simulation hardening",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Deterministic fallback/orchestrator/structured parsing/guards implemented and covered by tests; live LLM E2E remains env-dependent.",
+      "next_action": null
+    },
+    {
+      "task_id": "NEG-005",
+      "title": "M1 core domain/schema/engine/API",
+      "agent": "orchestrator+builder",
+      "status": "done",
+      "result_summary": "Builder delivered backend core (25/25, typecheck/build PASS, 99M) but tree later wiped by concurrent reset; restoration required (NEG-009).",
+      "next_action": "NEG-009"
+    },
+    {
+      "task_id": "NEG-ARCH-001",
+      "title": "Architect implementation plan",
+      "agent": "architect",
+      "status": "done",
+      "result_summary": "Produced M0-M6 plan; saved docs/ARCHITECT-PLAN.md.",
+      "next_action": null
+    },
+    {
+      "task_id": "NEG-009",
+      "title": "Restore wiped backend core and harden M0",
+      "agent": "builder",
+      "status": "done",
+      "result_summary": "Backend restored + M0 hardened: PRAGMA user_version migrations, turnCount/llmCalls/stateVersion, state guards/activate/idempotency/in-flight lock, 33/33 tests, typecheck PASS, build PASS, 99M.",
+      "next_action": null
+    },
+    {
+      "task_id": "NEG-004",
+      "title": "Scaffold runnable project skeleton",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Skeleton verified; backend was implemented then wiped; see NEG-009.",
+      "next_action": null
+    },
+    {
+      "task_id": "NEG-002",
+      "title": "Clarify negotiations product definition",
+      "agent": "orchestrator+user",
+      "status": "done",
+      "result_summary": "Master spec received; 500MB constraint.",
+      "next_action": null
+    },
+    {
+      "task_id": "NEG-003",
+      "title": "Draft negotiations PRD",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "PRD/ROADMAP/DECISIONS/ARCHITECT-PLAN written.",
+      "next_action": null
+    },
+    {
+      "task_id": "NEG-001",
+      "title": "Initialize negotiations project and shift active focus",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Created project-negotiations scaffold and shifted active focus. PRD/ROADMAP/DECISIONS/conversation history captured.",
+      "next_action": null
+    },
     {
       "task_id": "SETUP-001..011",
       "title": "Setup/autonomous environment",
@@ -617,10 +705,16 @@
     }
   ],
   "recovery": {
-    "last_checkpoint": "2026-11-24T04:45:00Z",
-    "resume_instructions": "Read ORCHESTRATION-STATE.json, ORCHESTRATION-LOG.md, RECOVERY.md, DEV-STATUS.md, TASKS.md, BUGS.md, MODEL-POLICY.md; validate state against repo; continue from next_action.",
+    "last_checkpoint": "2026-11-23T18:45:00Z",
+    "resume_instructions": "Read ORCHESTRATION-STATE.json, ORCHESTRATION-LOG.md, RECOVERY.md, DEV-STATUS.md, TASKS.md, BUGS.md, MODEL-POLICY.md; validate state against repo; continue from next_action. Active project is project-negotiations/; project-investigation is M8-complete/paused.",
     "open_blockers": [],
     "validation_notes": [
+      "2026-11-23: NEG-AUDIT-001 direct PRD audit (scrutinizer subagent hit model limit). Verified: typecheck PASS, vitest 33/33 PASS (6 files), vite build PASS, dist/client+dist/server present. PRD MVP requirements covered; remaining live LLM E2E/deploy are operator/env-dependent.",
+      "2026-11-23: NEG MVP baseline verified. typecheck PASS, vitest 33/33 PASS (6 files), build PASS, 99M. Scrutinizer APPROVED, QA PASS. Remaining: live LLM E2E env-dependent, Playwright visual smoke optional, per-process in-flight lock only.",
+      "2026-11-23: Recovery complete. Verified: typecheck PASS, vitest 33/33 PASS (6 files), vite build PASS, 99M. Backend restored+hardened; UI MVP present. Ready for QA/scrutiny.",
+      "2026-11-23: CRITICAL incident - backend tree wiped while UI/M0-hardening subagents ran. On-disk: only src/server/index.ts stub, src/shared/types.ts 78 lines, tests/smoke.test.ts, partial src/client files. typecheck FAIL. Builder resumed to restore 25/25 baseline + M0 hardening.",
+      "2026-11-23: NEG scaffold verified - project 98M (<500MB). tsc client PASS, tsc server PASS, vitest 1/1 PASS, vite build PASS. node:sqlite available; esbuild install scripts manually approved.",
+      "2026-11-23: Created project-negotiations/ and shifted active orchestration focus from project-investigation (M8 complete, paused) to negotiations (NEG-M0). Investigation history preserved in task_assignments/log.",
       "2026-11-23: 25 published cases seeded; case:validate PASS (25 cases, 202 evidence, 25 canonical truth rows).",
       "2026-11-23: smoke-http fixture fixed to select The Midnight Heist by title; test:http 57/57 PASS after seeding.",
       "2026-11-23: AI infra pluggable (Gemini/OpenAI-compatible/local + deterministic fallback); no keys hardcoded.",
@@ -629,5 +723,13 @@
       "2026-11-24: Scrutinizer subagent incorrectly marked M8-WAVE6 done/ready for deployment in ORCHESTRATION-STATE; corrected by orchestrator. W6 conditions remain open; W7 not started.",
       "2026-11-24: M8 complete with all 7 waves delivered. 133/133 test:http, schema 45/45 546 cols, typecheck PASS. W6 conditions documented in M8-W6-GATE-REPORT.md. W7 docs/endpoints operational. No public deployment authorized."
     ]
-  }
+  },
+  "validation_notes": [
+    "2026-11-23: Completion pass. typecheck PASS, vitest 33/33 PASS (6 files), build PASS, 99M. Created missing docs/ARCHITECT-PLAN.md, docs/DESIGN.md; ROADMAP checkboxes reconciled. PRD MVP criteria verified in code/tests.",
+    "2026-11-23: Browser E2E smoke PASS 13/13 (Playwright chromium_headless_shell-1255, 1440x900+375x812): home, 3 cases, briefing your side/opposing/badges/boundary, prep BATNA/objectives, room view, message send no fatal page errors, mobile home+briefing. Screenshots in /tmp/opencode/e2e2-*.png. Rate limiting added (session create + messages); typecheck PASS, 33/33 tests PASS.",
+    "2026-11-23: Live smoke verified - API flow PASS (3 cases, briefing no participantPrivate, session 201, prep 200, message 200 with 3 msgs, finalize completed, debrief outcome present). Playwright screenshots captured at 1440x900 and 375x812 (/tmp/opencode/neg-1440.png, neg-375.png); server on temp DB cleaned up.",
+    "2026-11-24: UI/UX Overhaul FULLY COMPLETE. P0: ProgressPage simulated data removed, heading bug fixed, InvestigationRoomPage tabs ARIA tablist added, OnboardingOverlay dotColors fixed, token systems reconciled, color contrast verified. P1: Mobile tab overflow CSS (scrollable at 720px), nav mobile optimization (scrollable at 640px), --text-muted fixed to #5a5a5a for WCAG AA 4.5:1, all badge contrast verified. P2: Skeleton primitives added (CaseCardSkeleton, DetailCardSkeleton, ChatSkeleton), focus-visible coverage extended for tabs/chips/summary/inputs, aria-busy pattern with inline spinner added. typecheck PASS, test:http 133/133 baseline maintained.",
+    "2026-11-23T04:29:49Z | Subagent review complete: Visual consistency assessed across 375/768/1440px; Accessibility gaps identified: skip link missing, chip focus-visible needs verification, mobile tap targets below 44px; Signature enhancements noted: narrated case timeline + Detective's Desk visual motif; All P0/P1/P2 fixes verified PASS.",
+    "2026-11-23T04:39:48Z | UI/UX Overhaul complete. P0: ProgressPage bugs fixed, InvestigationRoomPage ARIA tablist added, OnboardingOverlay fixed, token systems reconciled, color contrast verified (#5a5a5a for WCAG AA). P1: Mobile tab overflow CSS, nav optimization, focus-visible coverage extended. P2: Skeleton primitives, focus-visible extension, aria-busy pattern added. typecheck PASS, test:http 133/133 PASS, build has pre-existing 71 TS errors (same as original codebase)."
+  ]
 }

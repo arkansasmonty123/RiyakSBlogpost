@@ -35,12 +35,55 @@
       "stitch": {
         "type": "remote",
         "url": "https://stitch.googleapis.com/mcp"
+      },
+
+      // --- Context/value MCPs (enabled; agents may toggle per task/value) ---
+      // Code graph: build with `graphify .` or `graphify /path/to/project`, then enable.
+      "graphify_local": {
+        "type": "local",
+        "enabled": true,
+        "protocol": "legacy",
+        "command": ["/home/divyanshukumarsinha241/.local/bin/graphify-mcp", "--graph", "graphify-out/graph.json"],
+        "environment": { "HOME": "/home/divyanshukumarsinha241" }
+      },
+      // Hosted Graphify (OAuth via /mcps in TUI; no API key in config).
+      "graphify": {
+        "type": "remote",
+        "enabled": true,
+        "url": "https://api.graphify.com/mcp"
+      },
+      // Structural code index (MCP). Index repo first; see package docs.
+      "codebase_memory": {
+        "type": "local",
+        "enabled": true,
+        "command": ["npx", "-y", "codebase-memory-mcp"],
+        "environment": { "HOME": "/home/divyanshukumarsinha241", "npm_config_cache": "/home/divyanshukumarsinha241/.npm" }
+      },
+      // LSP/symbol intelligence MCP (optional; heavy first run). Verify command before enabling.
+      "serena": {
+        "type": "local",
+        "enabled": true,
+        "protocol": "legacy",
+        "command": ["uvx", "--from", "git+https://github.com/oraios/serena", "serena", "start-mcp-server"],
+        "environment": { "HOME": "/home/divyanshukumarsinha241" }
+      },
+      // Local semantic code search MCP (optional). Verify package/command before enabling.
+      "code_context_engine": {
+        "type": "local",
+        "enabled": true,
+        "command": ["uvx", "--from", "code-context-engine[local]", "cce", "serve"],
+        "environment": { "HOME": "/home/divyanshukumarsinha241" }
       }
     }
   },
   "permissions": [
     { "action": "shell", "resource": "git push *", "effect": "ask" },
     { "action": "shell", "resource": "git push", "effect": "ask" },
+    { "action": "shell", "resource": "git reset *", "effect": "ask" },
+    { "action": "shell", "resource": "git clean *", "effect": "ask" },
+    { "action": "shell", "resource": "git checkout -- *", "effect": "ask" },
+    { "action": "shell", "resource": "git restore *", "effect": "ask" },
+    { "action": "shell", "resource": "git branch -D *", "effect": "ask" },
     { "action": "shell", "resource": "rm -rf /*", "effect": "deny" },
     { "action": "shell", "resource": "sudo *", "effect": "ask" }
   ]

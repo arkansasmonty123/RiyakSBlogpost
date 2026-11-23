@@ -322,7 +322,19 @@ export function App() {
 
       <main id="main-content" className="main-content">
         {booting ? (
-          <div className="panel loading-panel" role="status" aria-live="polite">Loading negotiation table…</div>
+          screen === 'cases' ? (
+            <CaseSelectView
+              cases={cases}
+              activeSession={session}
+              busy={busy}
+              loading
+              onStart={handleStartCase}
+              onResume={(s) => void openSession(s.id)}
+              onRefresh={() => void run(loadCases)}
+            />
+          ) : (
+            <div className="panel loading-panel" role="status" aria-live="polite">Loading negotiation table…</div>
+          )
         ) : screen === 'cases' ? (
           <CaseSelectView
             cases={cases}
@@ -333,7 +345,7 @@ export function App() {
             onRefresh={() => void run(loadCases)}
           />
         ) : screen === 'skills' ? (
-          <SkillsView cases={cases} />
+          <SkillsView cases={cases} onBrowseCases={() => setScreen('cases')} />
         ) : !session ? (
           <div className="panel empty-panel">
             <h2>No active session</h2>

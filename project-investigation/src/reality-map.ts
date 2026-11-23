@@ -164,6 +164,8 @@ export interface PublicClaim {
   notes: string;
   sourceJournalEntryId: string | null;
   sourceNotebookEntryId: string | null;
+  sourcePerspectiveExperienceId: string | null;
+  sourcePerspectiveReflectionId: string | null;
   isTutorial: boolean;
   createdAt: unknown;
   updatedAt: unknown;
@@ -212,6 +214,8 @@ export function toPublicClaim(row: AnyRow): PublicClaim {
     notes: clip(pick(row, 'notes', 'notes'), REALITY_MAP_LIMITS.maxTextChars),
     sourceJournalEntryId: pick(row, 'sourceJournalEntryId', 'source_journal_entry_id') ?? null,
     sourceNotebookEntryId: pick(row, 'sourceNotebookEntryId', 'source_notebook_entry_id') ?? null,
+    sourcePerspectiveExperienceId: pick(row, 'sourcePerspectiveExperienceId', 'source_perspective_experience_id') ?? null,
+    sourcePerspectiveReflectionId: pick(row, 'sourcePerspectiveReflectionId', 'source_perspective_reflection_id') ?? null,
     isTutorial: bool(pick(row, 'isTutorial', 'is_tutorial')),
     createdAt: pick(row, 'createdAt', 'created_at'),
     updatedAt: pick(row, 'updatedAt', 'updated_at'),

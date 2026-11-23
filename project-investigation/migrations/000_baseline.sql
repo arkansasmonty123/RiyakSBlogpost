@@ -400,6 +400,9 @@ CREATE TABLE public.users (
     updated_at timestamp without time zone DEFAULT now()
 );
 
+ALTER TABLE ONLY public.users
+    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
+
 
 -- =============================================================================
 -- P2-SESSIONS — durable auth sessions (effects of migration 004).
@@ -652,14 +655,6 @@ ALTER TABLE ONLY public.scheduled_events
 
 ALTER TABLE ONLY public.users
     ADD CONSTRAINT users_email_key UNIQUE (email);
-
-
---
--- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.users
-    ADD CONSTRAINT users_pkey PRIMARY KEY (id);
 
 
 --

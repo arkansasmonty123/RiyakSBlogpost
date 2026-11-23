@@ -47,6 +47,24 @@ import {
   hashSessionToken,
   getNotificationSettings,
   updateNotificationSettings,
+  getOnboarding,
+  updateOnboarding,
+  getDiscoveryProgressCounts,
+  getRecentProgressActivity,
+  exportUserData,
+  deleteUserAccount,
+  getPerspectiveFrameworks,
+  getPerspectiveExperiences,
+  getPerspectiveExperienceByKey,
+  getPerspectiveExperienceById,
+  createPerspectiveReflection,
+  getPerspectiveReflections,
+  getPerspectiveReflectionById,
+  updatePerspectiveReflection,
+  deletePerspectiveReflection,
+  getPerspectiveSuggestionState,
+  getPerspectiveSuggestionStates,
+  upsertPerspectiveSuggestionState,
   hashRateLimitKey,
   consumeRateLimit,
   deleteExpiredRateLimits,
@@ -104,6 +122,37 @@ import {
   type KnowledgeIntent,
   type KnowledgeDepth,
 } from './knowledge';
+import {
+  getDiscoverySnapshot,
+  getDiscoveryClueDetail,
+  startDiscoveryResearch,
+  submitDiscovery,
+  applyDiscoveryUnlock,
+  getKnowledgeJournal,
+  getKnowledgeJournalSubject,
+  submitRecall,
+  toNotebookDiscoverySnapshot,
+  DiscoveryError,
+} from './discovery-service';
+import {
+  processLivingWorld,
+  getActivitySnapshot,
+  markActivitySeen,
+} from './living-world/engine';
+import { toSafeActivityEvent } from './living-world/dto';
+import { scanForForbiddenTerms, assertNoInternalLeaks } from './living-world/safety';
+import {
+  toPublicFramework,
+  toPublicExperienceSummary,
+  toPublicExperienceDetail,
+  toPublicReflection,
+  toPublicSuggestionState,
+  recommendExperiences,
+  curatedOpeningQuestions,
+  PERSPECTIVE_FORMATS,
+  SUGGESTION_REASON_CODES,
+  PERSPECTIVE_LIMITS,
+} from './perspectives/registry';
 import {
   GROUNDING_LIMITS,
   detectTeamRole,
@@ -388,11 +437,22 @@ const requireOwnedInvestigation = asyncRoute(async (req: Request, res: Response,
 });
 
 // ---------------------------------------------------------------------------
-// Health
+// Health / Public Config
 // ---------------------------------------------------------------------------
 
+const APP_VERSION = process.env.APP_VERSION || process.env.npm_package_version || '1.0.0';
+const FEEDBACK_URL = process.env.FEEDBACK_URL || 'mailto:feedback@example.com';
+const BETA_ACCESS_REQUIRED = String(process.env.BETA_ACCESS_REQUIRED || '').toLowerCase() === 'true';
+
 app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  res.json({ status: 'ok', timestamp: new Date().toISOString(), version: APP_VERSION });
+});
+
+app.get('/api/config', (_req: Request, res: Response) => {
+  res.json({
+    feedbackUrl: FEEDBACK_URL,
+    betaAccessRequired: BETA_ACCESS_REQUIRED,
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -465,6 +525,388 @@ app.get('/api/me/notification-settings', authMiddleware, asyncRoute(async (req: 
 
 app.patch('/api/me/notification-settings', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
   res.json(await updateNotificationSettings(res.locals.userId, req.body));
+}));
+
+// M8-W1: Onboarding (user-scoped, no canonical truth).
+app.get('/api/me/onboarding', authMiddleware, asyncRoute(async (_req: Request, res: Response) => {
+  res.json(await getOnboarding(res.locals.userId));
+}));
+
+app.patch('/api/me/onboarding', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  res.json(await updateOnboarding(res.locals.userId, req.body));
+}));
+
+// M8-W6: Private progress/return summary (user-scoped, no canonical truth).
+app.get('/api/me/progress', authMiddleware, asyncRoute(async (_req: Request, res: Response) => {
+  const userId = res.locals.userId as string;
+  const [invRows, memoryRows, dueRecallRows, recent, discoveryCounts, openQRows, followUpRows, suggestionRows] = await Promise.all([
+    query(`SELECT status, case_id FROM investigations WHERE user_id = $1`, [userId]),
+    query(`SELECT mastery_status FROM knowledge_memory_items WHERE user_id = $1`, [userId]),
+    query(`SELECT COUNT(*)::int AS c FROM knowledge_memory_items WHERE user_id = $1 AND next_due_at IS NOT NULL AND next_due_at <= NOW()`, [userId]),
+    getRecentProgressActivity(userId),
+    getDiscoveryProgressCounts(userId),
+    query(`SELECT COUNT(*)::int AS c FROM reality_claims rc JOIN investigations i ON i.id = rc.investigation_id WHERE i.user_id = $1 AND rc.claim_type = 'unresolved_question'`, [userId]).catch(() => ({ rows: [{ c: 0 }] })),
+    query(`SELECT COUNT(*)::int AS c FROM knowledge_memory_cases kmc WHERE kmc.user_id = $1 AND kmc.case_id IS DISTINCT FROM (SELECT kmi.first_case_id FROM knowledge_memory_items kmi WHERE kmi.id = kmc.memory_item_id)`, [userId]).catch(() => ({ rows: [{ c: 0 }] })),
+    query(`SELECT c.id, c.title, c.difficulty, c.duration FROM cases c WHERE c.id NOT IN (SELECT DISTINCT case_id FROM investigations WHERE user_id = $1) ORDER BY c.created_at ASC LIMIT 3`, [userId]).catch(() => ({ rows: [] })),
+  ]);
+
+  const investigations = invRows.rows || [];
+  const counts = { completed: 0, abandoned: 0, active: 0, paused: 0, total: investigations.length, distinctCasesPlayed: 0 };
+  const caseSet = new Set<string>();
+  for (const inv of investigations) {
+    const status = String(inv.status || '');
+    if (status === 'completed') counts.completed++;
+    else if (status === 'abandoned') counts.abandoned++;
+    else if (status === 'active' || status === 'in_progress') counts.active++;
+    else if (status === 'paused') counts.paused++;
+    if (inv.case_id) caseSet.add(String(inv.case_id));
+  }
+  counts.distinctCasesPlayed = caseSet.size;
+
+  const mastery = { new: 0, developing: 0, proficient: 0, mastered: 0 };
+  for (const row of memoryRows.rows || []) {
+    const s = String(row.mastery_status || 'new');
+    if (s in mastery) mastery[s as keyof typeof mastery]++;
+  }
+
+  const memoryItems = (memoryRows.rows || []).length;
+  const dueRecall = Number(dueRecallRows.rows?.[0]?.c) || 0;
+
+  const milestones = [
+    { key: 'first-case', label: 'First case started', achieved: counts.total > 0, reason: counts.total > 0 ? 'You started an investigation.' : 'Start your first case.' },
+    { key: 'first-completion', label: 'First case completed', achieved: counts.completed > 0, reason: counts.completed > 0 ? 'You completed a case.' : 'Complete a case to mark this milestone.' },
+    { key: 'first-discovery', label: 'First discovery accepted', achieved: discoveryCounts.acceptedSubmissions > 0, reason: discoveryCounts.acceptedSubmissions > 0 ? 'You accepted a discovery.' : 'Accept a discovery to mark this milestone.' },
+    { key: 'cross-case', label: 'Applied knowledge across cases', achieved: discoveryCounts.crossCaseApplications > 0, reason: discoveryCounts.crossCaseApplications > 0 ? 'You applied knowledge in another case.' : 'Apply knowledge in a different case.' },
+  ];
+
+  const suggestions = (suggestionRows.rows || []).map((row: any) => ({
+    caseId: String(row.id),
+    title: String(row.title || ''),
+    difficulty: row.difficulty ?? null,
+    duration: row.duration ?? null,
+    reason: 'A case you have not played yet.',
+  }));
+
+  res.json({
+    generatedAt: new Date().toISOString(),
+    disclaimer: 'Progress reflects your own recorded activity. It is not a score or ranking.',
+    investigations: counts,
+    knowledge: {
+      discoveriesAccepted: discoveryCounts.acceptedSubmissions,
+      memoryItems,
+      mastery,
+      dueRecall,
+      crossCaseApplications: discoveryCounts.crossCaseApplications,
+      successfulRecalls: Math.max(0, discoveryCounts.totalApplications - discoveryCounts.crossCaseApplications),
+    },
+    openThreads: {
+      unresolvedQuestions: Number(openQRows.rows?.[0]?.c) || 0,
+      followUpApplications: Number(followUpRows.rows?.[0]?.c) || 0,
+      samples: [],
+    },
+    milestones,
+    recentActivity: {
+      windowDays: 7,
+      newMemoryItems: recent.newMemoryItems,
+      completedCases: recent.completedCases,
+      acceptedDiscoveries: recent.acceptedDiscoveries,
+      newNotifications: recent.newNotifications,
+    },
+    suggestions,
+  });
+}));
+
+// M8-W7: Account export/delete (auth-scoped, safe DTO only)
+app.get('/api/me/export', authMiddleware, asyncRoute(async (_req: Request, res: Response) => {
+  const data = await exportUserData(res.locals.userId);
+  res.json(data);
+}));
+
+app.post('/api/me/delete', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  const confirm = req.body?.confirm;
+  if (confirm !== 'DELETE') {
+    res.status(400).json({ error: 'Explicit confirmation required: { "confirm": "DELETE" }' });
+    return;
+  }
+  const userId = res.locals.userId as string;
+  const token = getSessionToken(req);
+  await deleteUserAccount(userId);
+  if (token) await deleteSession(hashSessionToken(token)).catch(() => {});
+  res.clearCookie(SESSION_COOKIE, { path: '/' });
+  res.json({ ok: true });
+}));
+
+// M6: Notifications inbox (user-scoped)
+app.get('/api/notifications', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  const status = typeof req.query.status === 'string' ? req.query.status : 'unread';
+  const limit = Math.max(1, Math.min(100, Number(req.query.limit) || 50));
+  const params: any[] = [res.locals.userId];
+  let where = 'WHERE user_id = $1';
+  if (status === 'unread' || status === 'read' || status === 'archived') {
+    params.push(status);
+    where += ` AND status = $${params.length}`;
+  } else if (status !== 'all') {
+    // default unread
+    where += ` AND status = 'unread'`;
+  }
+  params.push(limit);
+  const rows = await query(
+    `SELECT id, investigation_id, event_id, category, priority, group_key, title, body, status, created_at, read_at
+       FROM notifications ${where}
+      ORDER BY created_at DESC
+      LIMIT $${params.length}`,
+    params,
+  );
+  const unreadRes = await query(
+    `SELECT COUNT(*)::int AS c FROM notifications WHERE user_id = $1 AND status = 'unread'`,
+    [res.locals.userId],
+  );
+  const items = rows.rows.map((r: any) => ({
+    id: String(r.id),
+    investigationId: r.investigation_id ? String(r.investigation_id) : null,
+    eventId: r.event_id ? String(r.event_id) : null,
+    category: String(r.category ?? 'development'),
+    priority: String(r.priority ?? 'normal'),
+    groupKey: r.group_key ?? null,
+    title: String(r.title ?? ''),
+    body: String(r.body ?? ''),
+    status: String(r.status ?? 'unread'),
+    createdAt: r.created_at ? new Date(r.created_at).toISOString() : null,
+    readAt: r.read_at ? new Date(r.read_at).toISOString() : null,
+  }));
+  res.json({ items, unreadCount: Number(unreadRes.rows[0]?.c) || 0 });
+}));
+
+// M7: Knowledge journal / recall (user-scoped, never reveals case truth).
+app.get('/api/knowledge/journal', authMiddleware, asyncRoute(async (_req: Request, res: Response) => {
+  res.json(await getKnowledgeJournal(res.locals.userId));
+}));
+
+app.get('/api/knowledge/journal/:subjectKey', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  const subject = await getKnowledgeJournalSubject(res.locals.userId, String(req.params.subjectKey));
+  if (!subject) {
+    res.status(404).json({ error: 'Knowledge subject not found' });
+    return;
+  }
+  res.json(subject);
+}));
+
+app.post('/api/knowledge/recall/:memoryId', authMiddleware, writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const result = await submitRecall(res.locals.userId, String(req.params.memoryId), req.body);
+  if (!result) {
+    res.status(404).json({ error: 'Knowledge memory item not found' });
+    return;
+  }
+  res.json(result);
+}));
+
+// ---------------------------------------------------------------------------
+// M5: Perspective Engine (advisory, no canonical truth)
+// ---------------------------------------------------------------------------
+
+const PERSPECTIVE_DISCLAIMER = 'Perspectives are educational lenses, not evidence, not verdicts, and not canonical case truth.';
+const PERSPECTIVE_ADVISORY_FLAGS = {
+  advisory: true,
+  isEvidence: false,
+  affectsVerdict: false,
+  revealsCanonicalTruth: false,
+};
+
+function isPerspectiveFormatValue(v: unknown): v is string {
+  return typeof v === 'string' && (PERSPECTIVE_FORMATS as readonly string[]).includes(v);
+}
+
+app.get('/api/perspectives/frameworks', authMiddleware, asyncRoute(async (_req: Request, res: Response) => {
+  const rows = await getPerspectiveFrameworks('published');
+  const frameworks = rows.map(toPublicFramework);
+  res.json({
+    frameworks,
+    count: frameworks.length,
+    disclaimer: PERSPECTIVE_DISCLAIMER,
+    ...PERSPECTIVE_ADVISORY_FLAGS,
+  });
+}));
+
+app.get('/api/perspectives/discover', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  const rows = await getPerspectiveExperiences({ status: 'published' });
+  const experiences = rows.map(toPublicExperienceSummary);
+  const frameworkRows = await getPerspectiveFrameworks('published');
+  const openingQuestions = curatedOpeningQuestions().slice(0, 6);
+  const featured = experiences.slice(0, 6);
+  const connections = experiences.slice(0, 8).map((e: any) => ({
+    experienceKey: e.experienceKey,
+    title: e.title,
+    frameworkKey: e.frameworkKey,
+  }));
+  res.json({
+    openingQuestions,
+    featured,
+    connections,
+    frameworkCount: frameworkRows.length,
+    experiences,
+    disclaimer: PERSPECTIVE_DISCLAIMER,
+    ...PERSPECTIVE_ADVISORY_FLAGS,
+  });
+}));
+
+app.get('/api/perspectives/reflections', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  const userId = res.locals.userId as string;
+  const experienceKey = typeof req.query.experienceKey === 'string' ? req.query.experienceKey : undefined;
+  const investigationId = typeof req.query.investigationId === 'string' ? req.query.investigationId : undefined;
+  if (experienceKey) {
+    const exp = await getPerspectiveExperienceByKey(experienceKey);
+    if (!exp) {
+      res.json({ reflections: [] });
+      return;
+    }
+  }
+  const rows = await getPerspectiveReflections(userId, experienceKey, investigationId);
+  const reflections = rows.map(toPublicReflection);
+  res.json({ reflections });
+}));
+
+app.get('/api/perspectives', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  const format = typeof req.query.format === 'string' ? req.query.format : undefined;
+  if (format && !isPerspectiveFormatValue(format)) {
+    res.status(400).json({ error: 'Invalid format filter' });
+    return;
+  }
+  const framework = typeof req.query.framework === 'string' ? req.query.framework : undefined;
+  const q = typeof req.query.q === 'string' ? req.query.q : undefined;
+  const rows = await getPerspectiveExperiences({
+    status: 'published',
+    frameworkKey: framework,
+    format: format as any,
+    q,
+  });
+  const experiences = rows.map(toPublicExperienceSummary);
+  res.json({ experiences, count: experiences.length, disclaimer: PERSPECTIVE_DISCLAIMER, ...PERSPECTIVE_ADVISORY_FLAGS });
+}));
+
+app.get('/api/perspectives/:experienceKey/connections', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  const experience = await getPerspectiveExperienceByKey(String(req.params.experienceKey));
+  if (!experience || experience.status !== 'published') {
+    res.status(404).json({ error: 'Perspective experience not found' });
+    return;
+  }
+  const all = await getPerspectiveExperiences({ status: 'published' });
+  const relatedExperiences = all
+    .filter((e: any) => e.experienceKey !== experience.experienceKey && (e.frameworkKey === experience.frameworkKey || ((experience as any).relatedExperienceKeys || []).includes(e.experienceKey)))
+    .slice(0, 6)
+    .map(toPublicExperienceSummary);
+  const sharedConcepts = Array.isArray((experience as any).keyConcepts) ? (experience as any).keyConcepts.slice(0, 8) : [];
+  const bridges = ((experience as any).relatedCaseTitles || []).map((title: string) => ({
+    caseTitle: title,
+    reason: 'This lens can be considered alongside this case context.',
+  }));
+  res.json({
+    experienceKey: experience.experienceKey,
+    relatedExperiences,
+    sharedConcepts,
+    bridges,
+    disclaimer: PERSPECTIVE_DISCLAIMER,
+    ...PERSPECTIVE_ADVISORY_FLAGS,
+  });
+}));
+
+app.get('/api/perspectives/:experienceKey', authMiddleware, asyncRoute(async (req: Request, res: Response) => {
+  const experience = await getPerspectiveExperienceByKey(String(req.params.experienceKey));
+  if (!experience || experience.status !== 'published') {
+    res.status(404).json({ error: 'Perspective experience not found' });
+    return;
+  }
+  const detail = toPublicExperienceDetail(experience);
+  res.json({
+    ...detail,
+    disclaimer: PERSPECTIVE_DISCLAIMER,
+    ...PERSPECTIVE_ADVISORY_FLAGS,
+  });
+}));
+
+app.post('/api/perspectives/:experienceKey/reflections', authMiddleware, writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const experience = await getPerspectiveExperienceByKey(String(req.params.experienceKey));
+  if (!experience || experience.status !== 'published') {
+    res.status(404).json({ error: 'Perspective experience not found' });
+    return;
+  }
+  const body = req.body || {};
+  const responseText = typeof body.response === 'string' ? body.response.trim() : '';
+  if (!responseText) {
+    res.status(400).json({ error: 'response is required' });
+    return;
+  }
+  if (responseText.length > PERSPECTIVE_LIMITS.maxReflectionChars) {
+    res.status(400).json({ error: 'response too long' });
+    return;
+  }
+  const reflectionKind = typeof body.reflectionKind === 'string' ? body.reflectionKind : 'reflection';
+  const allowedKinds = new Set(['reflection','argument_for','argument_against','assumption','open_question','alternative_interpretation','disagreement','hypothesis_reconsideration']);
+  if (!allowedKinds.has(reflectionKind)) {
+    res.status(400).json({ error: 'Invalid reflectionKind' });
+    return;
+  }
+  let investigationId: string | null = null;
+  if (body.investigationId !== undefined && body.investigationId !== null && body.investigationId !== '') {
+    if (!isUuid(body.investigationId)) {
+      res.status(400).json({ error: 'Invalid investigationId' });
+      return;
+    }
+    const inv = await getInvestigationById(body.investigationId);
+    if (!inv || inv.userId !== res.locals.userId) {
+      res.status(404).json({ error: 'Investigation not found' });
+      return;
+    }
+    investigationId = inv.id;
+  }
+  const promptIndex = Number.isFinite(Number(body.promptIndex)) ? Math.max(0, Math.trunc(Number(body.promptIndex))) : 0;
+  const prompt = typeof body.prompt === 'string' ? body.prompt.slice(0, PERSPECTIVE_LIMITS.maxReflectionPromptChars) : '';
+  const row = await createPerspectiveReflection({
+    experienceId: experience.id,
+    experienceKey: experience.experienceKey,
+    userId: res.locals.userId as string,
+    investigationId,
+    promptIndex,
+    prompt,
+    reflectionKind,
+    response: responseText,
+  });
+  const reflection = toPublicReflection({ ...row, experienceKey: experience.experienceKey });
+  res.status(201).json({ reflection });
+}));
+
+app.patch('/api/perspectives/reflections/:id', authMiddleware, writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  if (!isUuid(id)) { res.status(404).json({ error: 'Reflection not found' }); return; }
+  const existing = await getPerspectiveReflectionById(id);
+  if (!existing || existing.userId !== res.locals.userId) {
+    res.status(404).json({ error: 'Reflection not found' });
+    return;
+  }
+  const body = req.body || {};
+  const data: any = {};
+  if (body.response !== undefined) {
+    if (typeof body.response !== 'string' || !body.response.trim()) { res.status(400).json({ error: 'Invalid response' }); return; }
+    data.response = body.response.trim().slice(0, PERSPECTIVE_LIMITS.maxReflectionChars);
+  }
+  if (body.reflectionKind !== undefined) {
+    const allowedKinds = new Set(['reflection','argument_for','argument_against','assumption','open_question','alternative_interpretation','disagreement','hypothesis_reconsideration']);
+    if (!allowedKinds.has(body.reflectionKind)) { res.status(400).json({ error: 'Invalid reflectionKind' }); return; }
+    data.reflectionKind = body.reflectionKind;
+  }
+  if (body.prompt !== undefined) data.prompt = String(body.prompt).slice(0, PERSPECTIVE_LIMITS.maxReflectionPromptChars);
+  if (body.promptIndex !== undefined) data.promptIndex = Math.max(0, Math.trunc(Number(body.promptIndex) || 0));
+  const updated = await updatePerspectiveReflection(id, res.locals.userId as string, data);
+  if (!updated) { res.status(404).json({ error: 'Reflection not found' }); return; }
+  const exp = await getPerspectiveExperienceById(updated.experienceId);
+  res.json({ reflection: toPublicReflection({ ...updated, experienceKey: exp?.experienceKey ?? '' }) });
+}));
+
+app.delete('/api/perspectives/reflections/:id', authMiddleware, writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  if (!isUuid(id)) { res.status(404).json({ error: 'Reflection not found' }); return; }
+  const ok = await deletePerspectiveReflection(id, res.locals.userId as string);
+  if (!ok) { res.status(404).json({ error: 'Reflection not found' }); return; }
+  res.json({ ok: true });
 }));
 
 // ---------------------------------------------------------------------------
@@ -1444,6 +1886,7 @@ investigationRouter.post('/chat', chatLimiter, asyncRoute(async (req: Request, r
   const { message, specialistKey, targetSpecialistKey } = req.body || {};
   const intentRaw = req.body?.intent;
   const depthRaw = req.body?.depth;
+  const perspectiveKeyRaw = req.body?.perspectiveKey;
   if (!boundedText(message, KNOWLEDGE_LIMITS.maxMessageChars)) {
     res.status(400).json({ error: 'message required (1-4000 characters)' });
     return;
@@ -1466,6 +1909,19 @@ investigationRouter.post('/chat', chatLimiter, asyncRoute(async (req: Request, r
   if (targetSpecialistKey !== undefined && (typeof targetSpecialistKey !== 'string' || targetSpecialistKey.length === 0 || targetSpecialistKey.length > 120)) {
     res.status(400).json({ error: 'Invalid targetSpecialistKey' });
     return;
+  }
+  let perspectiveExperience: any = null;
+  if (perspectiveKeyRaw !== undefined && perspectiveKeyRaw !== null && perspectiveKeyRaw !== '') {
+    if (typeof perspectiveKeyRaw !== 'string' || perspectiveKeyRaw.length > 120) {
+      res.status(400).json({ error: 'Invalid perspectiveKey' });
+      return;
+    }
+    const exp = await getPerspectiveExperienceByKey(perspectiveKeyRaw);
+    if (!exp || exp.status !== 'published') {
+      res.status(404).json({ error: 'Perspective experience not found' });
+      return;
+    }
+    perspectiveExperience = exp;
   }
   const intent: KnowledgeIntent | undefined = intentRaw as KnowledgeIntent | undefined;
   const depth: KnowledgeDepth | undefined = depthRaw as KnowledgeDepth | undefined;
@@ -1633,6 +2089,12 @@ investigationRouter.post('/chat', chatLimiter, asyncRoute(async (req: Request, r
     summarizedMessageCount: grounded.summarizedMessageCount,
   });
 
+  let content = response.content;
+  if (perspectiveExperience) {
+    const note = `\n\nPerspective lens note (${perspectiveExperience.title}): This is an educational lens, not evidence and not a verdict. Use it to question assumptions and consider alternative interpretations.`;
+    if (!content.includes('Perspective lens note')) content += note;
+  }
+
   const body: Record<string, unknown> = {
     role: 'investigator',
     teamRole,
@@ -1645,7 +2107,7 @@ investigationRouter.post('/chat', chatLimiter, asyncRoute(async (req: Request, r
       chars: grounded.charCount,
       maxChars: GROUNDING_LIMITS.maxContextChars,
     },
-    content: response.content,
+    content,
     timestamp: new Date().toISOString(),
   };
   if (specialistMeta) {
@@ -1653,6 +2115,10 @@ investigationRouter.post('/chat', chatLimiter, asyncRoute(async (req: Request, r
     body.specialistName = specialistMeta.specialistName;
     body.intent = specialistMeta.intent;
     body.depth = specialistMeta.depth;
+  }
+  if (perspectiveExperience) {
+    body.perspectiveKey = perspectiveExperience.experienceKey;
+    body.perspectiveDisclaimer = PERSPECTIVE_DISCLAIMER;
   }
   res.json(body);
 }));
@@ -1793,6 +2259,57 @@ investigationRouter.post('/notebook', writeLimiter, asyncRoute(async (req: Reque
     specialistId = body.specialistId;
   }
 
+  let discoveryMemoryId: string | null = null;
+  let discoveryClueKey: string | null = null;
+  if (body.discoveryMemoryId !== undefined && body.discoveryMemoryId !== null && body.discoveryMemoryId !== '') {
+    if (!isUuid(body.discoveryMemoryId)) {
+      res.status(400).json({ error: 'Invalid discoveryMemoryId' });
+      return;
+    }
+    const memorySnapshot = await toNotebookDiscoverySnapshot(
+      res.locals.userId as string,
+      body.discoveryMemoryId,
+      typeof body.discoveryClueKey === 'string' ? body.discoveryClueKey : null,
+    );
+    if (!memorySnapshot) {
+      res.status(404).json({ error: 'Discovery memory not found' });
+      return;
+    }
+    discoveryMemoryId = String(memorySnapshot.discoveryMemoryId ?? body.discoveryMemoryId);
+    discoveryClueKey = typeof memorySnapshot.discoveryClueKey === 'string' ? memorySnapshot.discoveryClueKey : (typeof body.discoveryClueKey === 'string' ? body.discoveryClueKey : null);
+    // Provenance snapshot is safe and replaces generic snapshot for discovery-linked notes.
+    sourceSnapshot = memorySnapshot;
+  } else if (body.discoveryClueKey !== undefined && body.discoveryClueKey !== null && body.discoveryClueKey !== '') {
+    if (typeof body.discoveryClueKey !== 'string' || body.discoveryClueKey.length > 120) {
+      res.status(400).json({ error: 'Invalid discoveryClueKey' });
+      return;
+    }
+    discoveryClueKey = body.discoveryClueKey;
+  }
+
+  let perspectiveExperienceId: string | null = null;
+  if (body.perspectiveKey !== undefined && body.perspectiveKey !== null && body.perspectiveKey !== '') {
+    if (typeof body.perspectiveKey !== 'string') {
+      res.status(400).json({ error: 'Invalid perspectiveKey' });
+      return;
+    }
+    const exp = await getPerspectiveExperienceByKey(body.perspectiveKey);
+    if (!exp || exp.status !== 'published') {
+      res.status(404).json({ error: 'Perspective experience not found' });
+      return;
+    }
+    perspectiveExperienceId = exp.id;
+    const summary = toPublicExperienceSummary(exp);
+    sourceSnapshot = {
+      kind: 'perspective_experience',
+      experienceKey: summary.experienceKey,
+      title: summary.title,
+      frameworkKey: summary.frameworkKey,
+      supportingSources: summary.supportingSources,
+      disclaimer: PERSPECTIVE_DISCLAIMER,
+    };
+  }
+
   const entry = await createNotebookEntry(res.locals.investigation.id, res.locals.userId as string, {
     entryType: body.entryType,
     concept: body.concept ?? '',
@@ -1801,6 +2318,9 @@ investigationRouter.post('/notebook', writeLimiter, asyncRoute(async (req: Reque
     artifactId,
     specialistId,
     sourceSnapshot,
+    perspectiveExperienceId,
+    discoveryMemoryId,
+    discoveryClueKey,
   });
   res.status(201).json(toPublicNotebookEntry(entry));
 }));
@@ -1923,6 +2443,254 @@ investigationRouter.post('/achievements', (_req: Request, res: Response) => {
 
 investigationRouter.get('/achievements', asyncRoute(async (req: Request, res: Response) => {
   res.json(await getAchievements(res.locals.investigation.id));
+}));
+
+// ---------------------------------------------------------------------------
+// M7: Real-World Discovery & Knowledge Retention (MVP)
+// ---------------------------------------------------------------------------
+// HARD INVARIANTS:
+// - No canonical_truth / hidden evidence / answer criteria exposed.
+// - Deterministic evaluation is the ONLY authority for acceptance.
+// - Unlocks are pre-authored; action unlocks go through recordInvestigationAction.
+// - All responses pass through the discovery service's leak guards.
+
+investigationRouter.get('/discoveries', asyncRoute(async (req: Request, res: Response) => {
+  const snapshot = await getDiscoverySnapshot(res.locals.investigation.id, res.locals.userId);
+  res.json(snapshot);
+}));
+
+investigationRouter.get('/discoveries/:clueKey', asyncRoute(async (req: Request, res: Response) => {
+  const detail = await getDiscoveryClueDetail(res.locals.investigation.id, res.locals.userId, String(req.params.clueKey));
+  if (!detail) {
+    res.status(404).json({ error: 'Discovery clue not found' });
+    return;
+  }
+  res.json(detail);
+}));
+
+investigationRouter.post('/discoveries/:clueKey/start', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const clueKey = String(req.params.clueKey);
+  const result = await startDiscoveryResearch(res.locals.investigation.id, res.locals.userId, clueKey);
+  res.json(result);
+}));
+
+investigationRouter.post('/discoveries/:clueKey/submissions', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const clueKey = String(req.params.clueKey);
+  const result = await submitDiscovery(res.locals.investigation.id, res.locals.userId, clueKey, req.body);
+  res.status(201).json(result);
+}));
+
+investigationRouter.post('/discoveries/:clueKey/unlocks/:unlockKey/apply', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const clueKey = String(req.params.clueKey);
+  const unlockKey = String(req.params.unlockKey);
+  const result = await applyDiscoveryUnlock(
+    res.locals.investigation.id,
+    res.locals.userId,
+    clueKey,
+    unlockKey,
+  );
+  res.json(result);
+}));
+
+// ---------------------------------------------------------------------------
+// M6: Living Investigations activity/notifications (investigation-scoped)
+// ---------------------------------------------------------------------------
+
+investigationRouter.post('/activity/refresh', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  // Client-supplied timestamps are ignored; server time only.
+  const result = await processLivingWorld(res.locals.investigation.id, {});
+  res.json({
+    ok: true,
+    resolved: (result.resolved ?? []).map((e: any) => ({ id: String(e.id) })),
+    counts: {
+      notifications: Number((result as any).counts?.notifications ?? 0),
+      resolved: Array.isArray(result.resolved) ? result.resolved.length : 0,
+    },
+  });
+}));
+
+investigationRouter.get('/activity', asyncRoute(async (req: Request, res: Response) => {
+  const limit = typeof req.query.limit === 'string' ? Number(req.query.limit) : undefined;
+  const cursor = typeof req.query.cursor === 'string' ? req.query.cursor : undefined;
+  const opts: { limit?: number; cursor?: string } = {};
+  if (limit !== undefined && Number.isFinite(limit)) opts.limit = limit;
+  if (cursor !== undefined) opts.cursor = cursor;
+  const snapshot = await getActivitySnapshot(res.locals.investigation.id, res.locals.userId, opts);
+  res.json(snapshot);
+}));
+
+investigationRouter.post('/activity/seen', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const eventIds = Array.isArray(req.body?.eventIds) ? req.body.eventIds : [];
+  const through = typeof req.body?.through === 'string' ? req.body.through : undefined;
+  await markActivitySeen(res.locals.investigation.id, res.locals.userId, { eventIds, through });
+  res.json({ ok: true });
+}));
+
+investigationRouter.get('/activity/events/:eventId', asyncRoute(async (req: Request, res: Response) => {
+  const eventId = String(req.params.eventId);
+  if (!isUuid(eventId)) {
+    res.status(404).json({ error: 'Activity event not found' });
+    return;
+  }
+  const rowRes = await query(
+    `SELECT e.*, i.user_id
+       FROM investigation_events e
+       JOIN investigations i ON i.id = e.investigation_id
+      WHERE e.id = $1 AND e.investigation_id = $2 AND i.user_id = $3
+      LIMIT 1`,
+    [eventId, res.locals.investigation.id, res.locals.userId],
+  );
+  if (rowRes.rowCount === 0) {
+    res.status(404).json({ error: 'Activity event not found' });
+    return;
+  }
+  const row: any = rowRes.rows[0];
+  // Map DB row to engine row shape expected by toSafeActivityEvent
+  const mapped = {
+    id: row.id,
+    investigationId: row.investigation_id,
+    caseId: row.case_id,
+    eventKey: row.event_key,
+    eventType: row.event_type,
+    status: row.status,
+    significance: row.significance,
+    groupKey: row.group_key,
+    actorKind: row.actor_kind,
+    actorKey: row.actor_key,
+    eligibleAt: row.eligible_at,
+    resolvedAt: row.resolved_at,
+    presentation: row.presentation ?? {},
+    outcome: row.outcome ?? {},
+    provenance: row.provenance ?? {},
+  };
+  const safe = toSafeActivityEvent(mapped as any, { leakageTerms: [] });
+  res.json(safe);
+}));
+
+investigationRouter.post('/activity/events/:eventId/narrate', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const eventId = String(req.params.eventId);
+  if (!isUuid(eventId)) {
+    res.status(404).json({ error: 'Activity event not found' });
+    return;
+  }
+  const rowRes = await query(
+    `SELECT e.id, e.event_key, e.event_type, e.status, e.significance, e.group_key,
+            e.actor_kind, e.actor_key, e.eligible_at, e.resolved_at,
+            e.presentation, e.outcome, e.provenance
+       FROM investigation_events e
+       JOIN investigations i ON i.id = e.investigation_id
+      WHERE e.id = $1 AND e.investigation_id = $2 AND i.user_id = $3
+      LIMIT 1`,
+    [eventId, res.locals.investigation.id, res.locals.userId],
+  );
+  if (rowRes.rowCount === 0) {
+    res.status(404).json({ error: 'Activity event not found' });
+    return;
+  }
+  const row: any = rowRes.rows[0];
+  const mapped = {
+    id: row.id, investigationId: res.locals.investigation.id, caseId: res.locals.investigation.caseId,
+    eventKey: row.event_key, eventType: row.event_type, status: row.status, significance: row.significance,
+    groupKey: row.group_key, actorKind: row.actor_kind, actorKey: row.actor_key,
+    eligibleAt: row.eligible_at, resolvedAt: row.resolved_at,
+    presentation: row.presentation ?? {}, outcome: row.outcome ?? {}, provenance: row.provenance ?? {},
+  };
+  const safe = toSafeActivityEvent(mapped as any, { leakageTerms: [] });
+  const narrative = {
+    eventId: safe.id,
+    source: 'deterministic',
+    text: safe.detail || safe.summary || safe.title,
+    whyItMatters: safe.whyItMatters,
+    provenanceLabel: 'case-package',
+  };
+  assertNoInternalLeaks(narrative, 'M6 narrate');
+  const leak = scanForForbiddenTerms(narrative, []);
+  if (leak) throw new Error('[M6 SAFETY] narrate leaked forbidden term');
+  res.json(narrative);
+}));
+
+// ---------------------------------------------------------------------------
+// M5: Perspective suggestions (advisory, investigation-scoped)
+// ---------------------------------------------------------------------------
+
+investigationRouter.get('/perspectives/suggestions', asyncRoute(async (req: Request, res: Response) => {
+  const investigation = res.locals.investigation;
+  const userId = res.locals.userId as string;
+  const caseData = await getCaseById(investigation.caseId);
+  const evidence = await getEvidenceByCase(investigation.caseId, userId);
+  const discovered = evidence.filter((e: any) => e.discovered === true);
+  const discoveredEvidenceCategories = [...new Set(discovered.map((e: any) => String(e.category || e.type || '').toLowerCase()).filter(Boolean))];
+  const dismissedRows = await getPerspectiveSuggestionStates(investigation.id, userId);
+  const dismissedExperienceKeys = dismissedRows.filter((r: any) => r.status === 'dismissed').map((r: any) => String(r.experienceKey));
+  const allExperiences = await getPerspectiveExperiences({ status: 'published' });
+  const expDefs = allExperiences.map((e: any) => ({
+    experienceKey: e.experienceKey,
+    title: e.title,
+    frameworkKey: e.frameworkKey,
+    format: e.format,
+    perspectiveClass: e.perspectiveClass,
+    status: e.status,
+    recommendationTags: e.recommendationTags || [],
+    intellectualPurpose: e.intellectualPurpose || '',
+    primaryQuestion: e.primaryQuestion || '',
+    scopeNote: e.scopeNote || '',
+    estimatedMinutes: e.estimatedMinutes || 10,
+  }));
+
+  const hasEngagement = discovered.length > 0 || Number(investigation.progress ?? 0) > 0;
+  let suggestions: any[] = [];
+  if (hasEngagement) {
+    const recs = recommendExperiences({
+      caseTitle: caseData?.title || '',
+      genre: caseData?.genre || '',
+      discoveredEvidenceCategories,
+      dismissedExperienceKeys,
+      limit: 2,
+      availableExperiences: expDefs as any,
+    });
+    suggestions = recs.slice(0, 2).map((r) => ({
+      experienceKey: r.experienceKey,
+      title: r.title,
+      frameworkKey: r.frameworkKey,
+      reasonCodes: r.reasonCodes,
+      reasonText: r.reasonText,
+      stateFingerprint: r.stateFingerprint,
+      advisory: true,
+      isEvidence: false,
+      affectsVerdict: false,
+    }));
+  }
+
+  res.json({
+    engagement: hasEngagement ? 'active' : 'none',
+    suggestions,
+    advisory: true,
+    isEvidence: false,
+    affectsVerdict: false,
+    disclaimer: PERSPECTIVE_DISCLAIMER,
+  });
+}));
+
+investigationRouter.post('/perspectives/suggestions/:experienceKey/dismiss', writeLimiter, asyncRoute(async (req: Request, res: Response) => {
+  const investigation = res.locals.investigation;
+  const userId = res.locals.userId as string;
+  const experienceKey = String(req.params.experienceKey);
+  const reasonCode = typeof req.body?.reasonCode === 'string' ? req.body.reasonCode : '';
+  const allowedReasons = new Set(SUGGESTION_REASON_CODES as readonly string[]);
+  if (!allowedReasons.has(reasonCode)) {
+    res.status(400).json({ error: 'Invalid reasonCode' });
+    return;
+  }
+  const fingerprint = typeof req.body?.fingerprint === 'string' ? req.body.fingerprint.slice(0, 200) : '';
+  await upsertPerspectiveSuggestionState({
+    investigationId: investigation.id,
+    userId,
+    experienceKey,
+    reasonCode,
+    stateFingerprint: fingerprint,
+    status: 'dismissed',
+  });
+  res.json({ ok: true, status: 'dismissed', experienceKey });
 }));
 
 // ---------------------------------------------------------------------------
@@ -2125,6 +2893,38 @@ investigationRouter.post('/reality-map/claims', writeLimiter, asyncRoute(async (
     sourceNotebookEntryId = body.sourceNotebookEntryId;
   }
 
+  let sourcePerspectiveExperienceId: string | null = null;
+  let sourcePerspectiveReflectionId: string | null = null;
+  if (body.sourcePerspectiveExperienceKey !== undefined && body.sourcePerspectiveExperienceKey !== null && body.sourcePerspectiveExperienceKey !== '') {
+    if (typeof body.sourcePerspectiveExperienceKey !== 'string') {
+      res.status(400).json({ error: 'Invalid sourcePerspectiveExperienceKey' });
+      return;
+    }
+    const exp = await getPerspectiveExperienceByKey(body.sourcePerspectiveExperienceKey);
+    if (!exp) {
+      res.status(404).json({ error: 'Perspective experience not found' });
+      return;
+    }
+    sourcePerspectiveExperienceId = exp.id;
+  }
+  if (body.sourcePerspectiveReflectionId !== undefined && body.sourcePerspectiveReflectionId !== null && body.sourcePerspectiveReflectionId !== '') {
+    if (!isUuid(body.sourcePerspectiveReflectionId)) {
+      res.status(400).json({ error: 'Invalid sourcePerspectiveReflectionId' });
+      return;
+    }
+    const ref = await getPerspectiveReflectionById(body.sourcePerspectiveReflectionId);
+    if (!ref || ref.userId !== userId) {
+      res.status(404).json({ error: 'Perspective reflection not found' });
+      return;
+    }
+    if (sourcePerspectiveExperienceId && ref.experienceId !== sourcePerspectiveExperienceId) {
+      res.status(400).json({ error: 'Reflection does not belong to perspective experience' });
+      return;
+    }
+    sourcePerspectiveReflectionId = ref.id;
+    if (!sourcePerspectiveExperienceId) sourcePerspectiveExperienceId = ref.experienceId;
+  }
+
   if (await countRealityRows('investigation_claims', investigationId, userId) >= REALITY_MAP_LIMITS.maxClaims) {
     res.status(409).json({ error: 'Claim limit reached' });
     return;
@@ -2137,6 +2937,8 @@ investigationRouter.post('/reality-map/claims', writeLimiter, asyncRoute(async (
     notes: notes.value,
     sourceJournalEntryId,
     sourceNotebookEntryId,
+    sourcePerspectiveExperienceId,
+    sourcePerspectiveReflectionId,
   });
   res.status(201).json(toPublicClaim(claim));
 }));
@@ -2703,6 +3505,10 @@ app.use((err: unknown, _req: Request, res: Response, next: NextFunction) => {
   console.error('API error:', err);
   if (res.headersSent) {
     next(err);
+    return;
+  }
+  if (err instanceof DiscoveryError) {
+    res.status(err.status).json({ error: err.message });
     return;
   }
   res.status(500).json({ error: 'Internal server error' });

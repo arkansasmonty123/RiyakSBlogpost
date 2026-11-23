@@ -305,6 +305,7 @@ export function toPublicNotebookEntry(row: AnyRow) {
     entryType: str(pick(row, 'entryType', 'entry_type')),
     artifactId: pick(row, 'artifactId', 'artifact_id') ?? null,
     specialistId: pick(row, 'specialistId', 'specialist_id') ?? null,
+    perspectiveExperienceId: pick(row, 'perspectiveExperienceId', 'perspective_experience_id') ?? null,
     concept: str(pick(row, 'concept', 'concept')),
     title: str(pick(row, 'title', 'title')),
     content: str(pick(row, 'content', 'content')),

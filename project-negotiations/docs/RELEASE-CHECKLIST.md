@@ -55,3 +55,14 @@ Use this checklist before declaring release readiness. Mark items with evidence.
 - [ ] **RELEASE READY** / **RELEASE READY WITH EXTERNAL BLOCKERS** / **NOT READY**
 - [ ] Independent final audit recorded
 - [ ] Final report includes commands/results, evidence, blockers, git hash, launch steps
+---
+
+## Final sign-off (2026-11-23)
+
+- **Final commit**: `964d51b` — `feat: polish negotiation room and debrief UX` (on `main`, prior release baseline `f364211`). Six scoped files: client App/RoomView/DebriefView/SkillsView/styles.css and server `engine/debrief.ts`.
+- **Working tree**: `project-negotiations/` clean; nothing staged; no push/deploy performed.
+- **Verification against final tree**: `npm run typecheck` PASS (exit 0); `npm test` PASS (43 passed / 2 skipped, 9 files — 2 skipped are opt-in `llm-e2e`); `npm run build` PASS.
+- **Browser smoke**: Playwright at 1440x900 and 390x844 across cases/briefing/preparation/room/message/debrief/skills — 0 console/page errors, no horizontal overflow. Final screenshots: `/tmp/opencode/final-*.png`, `/tmp/opencode/final-debrief-verify-1440.png`.
+- **Defect found and fixed during sign-off review**: debrief stat labels rendered inline with values (regression from CSS overhaul); restored `display:block` on `.stat-label`; visual re-check PASS.
+- **Release verdict**: **RELEASE READY WITH EXTERNAL BLOCKERS**.
+- **External blocker (unchanged, not claimed as verified)**: real-LLM E2E not executed — no provider credentials/runtime in this environment; reproducible procedure in `docs/TESTING.md`; opt-in test skipped/fails loudly without creds. No fabricated pass.
