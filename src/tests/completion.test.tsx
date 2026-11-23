@@ -214,4 +214,12 @@ describe('chapter completion summary', () => {
       expect(lower).not.toContain(forbidden);
     }
   });
+
+  it('offers a primary Start a new game action and keeps notebook review secondary', () => {
+    const html = renderWithSave(completeChapter());
+    expect(html).toContain('Start a new game');
+    expect(html).toContain('Review the full notebook →');
+    // The new-game action is the filled primary button; notebook review is outlined.
+    expect(html).toContain('bg-bar-gold text-bar-bg font-medium');
+  });
 });

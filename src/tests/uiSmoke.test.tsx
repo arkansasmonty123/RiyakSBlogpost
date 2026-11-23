@@ -341,4 +341,14 @@ describe('App render smoke test', () => {
     expect(draftHtml).not.toContain('Submit for senior review');
     expect(draftHtml).toContain('A2 also requires reviewed evidence and the verified source note in your notebook.');
   });
+
+  it('opens the draft editor with a clean Saved status and keeps Save in the header', () => {
+    const draftHtml = renderWithSave(createInitialSave(), 'draft');
+    expect(draftHtml).toContain('aria-label="Draft editor"');
+    expect(draftHtml).toContain('>Saved</span>');
+    expect(draftHtml).not.toContain('Unsaved changes');
+    // Explicit Save lives in the header; it is not a panel change or a dialogue redirect.
+    expect(draftHtml).toContain('>Save</button>');
+    expect(draftHtml).toContain('Panel: <span class="text-bar-text capitalize">draft</span>');
+  });
 });

@@ -1,11 +1,13 @@
 import { useMemo, useState } from 'react';
 import { SceneArt } from '@/app/SceneArt';
+import { createResetUiState, emptySourceForm, EXPLICIT_SAVE_NOTICE, RESET_CONFIRMATION } from '@/app/sessionUi';
+import type { SaveStatus, SourceFormState } from '@/app/sessionUi';
 import { config } from '@/config/env';
 import { loadSave, persistSave, resetSave } from '@/storage/save';
 import type { PersistResult } from '@/storage/save';
 import { recordAudit } from '@/domain/audit';
 import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/completion';
-import { markHelpSeen, shouldShowHelp } from '@/domain/onboarding';
+import { markHelpSeen } from '@/domain/onboarding';
 import {
   canCiteAsAuthoritative,
   intakeSource,
@@ -44,7 +46,7 @@ import {
   submitFinalBrief,
   submitSeniorReview,
 } from '@/domain/casework';
-import { loadDraftVersion, MAX_DRAFT_CHARS, saveDraftVersion } from '@/domain/draft';
+import { loadDraftVersion, MAX_DRAFT_CHARS, saveDraftVersion, setCurrentDraft } from '@/domain/draft';
 import { submitDraftForFeedback } from '@/domain/draftSubmission';
 import type { DraftSubmissionResult } from '@/domain/draftSubmission';
 import {
@@ -110,7 +112,6 @@ const DIALOGUE_GREETINGS: Record<string, string> = {
 type WorkPanel = (typeof PANELS)[number];
 /** `completion` is reached only after the final brief closes the chapter. */
 type Panel = WorkPanel | 'completion';
-type SaveStatus = 'idle' | 'saved' | 'error';
 
 /** Polite, in-header feedback about local persistence; never exposes storage internals. */
 export function SaveStatusMessage({ status }: { status: SaveStatus }) {
@@ -123,6 +124,25 @@ export function SaveStatusMessage({ status }: { status: SaveStatus }) {
     >
       {status === 'error' ? 'Progress is in memory but could not be saved locally.' : 'Progress saved locally.'}
     </p>
+  );
+}
+
+/** Polite in-editor feedback: reflects whether the textarea matches the persisted draft. */
+export function DraftStatusMessage({ dirty }: { dirty: boolean }) {
+  return (
+    <span role="status" aria-live="polite" className={`text-xs ${dirty ? 'text-yellow-200' : 'text-green-200'}`}>
+      {dirty ? 'Unsaved changes' : 'Saved'}
+    </span>
+  );
+}
+
+/** Polite confirmation for the explicit Save button, rendered in place without navigation. */
+export function SaveNoticeMessage({ notice }: { notice: string }) {
+  if (!notice) return null;
+  return (
+    <span role="status" aria-live="polite" className="text-xs text-green-200">
+      {notice}
+    </span>
   );
 }
 
@@ -153,65 +173,36 @@ function FileSection({ title, items, empty }: { title: string; items: string[]; 
   );
 }
 
-interface SourceFormState {
-  title: string;
-  sourceName: string;
-  citation: string;
-  sourceType: SourceType;
-  jurisdiction: SourceJurisdiction;
-  provenance: string;
-  sourceUrl: string;
-  effectiveDate: string;
-  excerpt: string;
-  notes: string;
-  requestPlaceholder: boolean;
-}
-
-function emptySourceForm(): SourceFormState {
-  return {
-    title: '',
-    sourceName: '',
-    citation: '',
-    sourceType: 'statute',
-    jurisdiction: 'India',
-    provenance: '',
-    sourceUrl: '',
-    effectiveDate: '',
-    excerpt: '',
-    notes: '',
-    requestPlaceholder: false,
-  };
-}
-
 export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const [save, setSave] = useState<SaveGame>(() => loadSave());
+  // Single source of truth for initial UI values; reset reuses the same blueprint.
+  const freshUi = createResetUiState(save);
   const [panel, setPanel] = useState<Panel>(initialPanel);
-  const [draft, setDraft] = useState<string>(() => save.draft.current);
-  const [dialogue, setDialogue] = useState<string>(
-    'Adv. Meera Kulkarni: "Welcome. Read the facts carefully. Separate what is known, claimed, disputed, and unknown."',
-  );
-  const [noteTarget, setNoteTarget] = useState<string | null>(null);
-  const [noteRelation, setNoteRelation] = useState<'contradiction' | 'corroboration'>('contradiction');
-  const [noteText, setNoteText] = useState('');
-  const [caseTarget, setCaseTarget] = useState('');
-  const [custodyText, setCustodyText] = useState('');
-  const [challengeGround, setChallengeGround] = useState<ChallengeGround>('relevance');
-  const [challengeText, setChallengeText] = useState('');
-  const [reviewSummary, setReviewSummary] = useState('');
-  const [finalSummary, setFinalSummary] = useState('');
-  const [showSourceIntake, setShowSourceIntake] = useState(false);
-  const [sourceForm, setSourceForm] = useState<SourceFormState>(emptySourceForm);
-  const [intakeError, setIntakeError] = useState('');
-  const [intakeNotice, setIntakeNotice] = useState('');
-  const [theoryText, setTheoryText] = useState('');
-  const [theoryStatus, setTheoryStatus] = useState<TheoryStatus>('known');
-  const [theoryEvidenceIds, setTheoryEvidenceIds] = useState<string[]>([]);
-  const [notebookFilter, setNotebookFilter] = useState<'all' | NotebookEntry['kind']>('all');
-  const [journalFilter, setJournalFilter] = useState<'all' | JournalKind>('all');
-  const [editingClaimId, setEditingClaimId] = useState<string | null>(null);
-  const [editingLinks, setEditingLinks] = useState<string[]>([]);
-  const [showHelp, setShowHelp] = useState(() => shouldShowHelp(save));
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const [draft, setDraft] = useState<string>(freshUi.draft);
+  const [dialogue, setDialogue] = useState<string>(freshUi.dialogue);
+  const [noteTarget, setNoteTarget] = useState<string | null>(freshUi.noteTarget);
+  const [noteRelation, setNoteRelation] = useState<'contradiction' | 'corroboration'>(freshUi.noteRelation);
+  const [noteText, setNoteText] = useState(freshUi.noteText);
+  const [caseTarget, setCaseTarget] = useState(freshUi.caseTarget);
+  const [custodyText, setCustodyText] = useState(freshUi.custodyText);
+  const [challengeGround, setChallengeGround] = useState<ChallengeGround>(freshUi.challengeGround);
+  const [challengeText, setChallengeText] = useState(freshUi.challengeText);
+  const [reviewSummary, setReviewSummary] = useState(freshUi.reviewSummary);
+  const [finalSummary, setFinalSummary] = useState(freshUi.finalSummary);
+  const [showSourceIntake, setShowSourceIntake] = useState(freshUi.showSourceIntake);
+  const [sourceForm, setSourceForm] = useState<SourceFormState>(freshUi.sourceForm);
+  const [intakeError, setIntakeError] = useState(freshUi.intakeError);
+  const [intakeNotice, setIntakeNotice] = useState(freshUi.intakeNotice);
+  const [theoryText, setTheoryText] = useState(freshUi.theoryText);
+  const [theoryStatus, setTheoryStatus] = useState<TheoryStatus>(freshUi.theoryStatus);
+  const [theoryEvidenceIds, setTheoryEvidenceIds] = useState<string[]>(freshUi.theoryEvidenceIds);
+  const [notebookFilter, setNotebookFilter] = useState<'all' | NotebookEntry['kind']>(freshUi.notebookFilter);
+  const [journalFilter, setJournalFilter] = useState<'all' | JournalKind>(freshUi.journalFilter);
+  const [editingClaimId, setEditingClaimId] = useState<string | null>(freshUi.editingClaimId);
+  const [editingLinks, setEditingLinks] = useState<string[]>(freshUi.editingLinks);
+  const [showHelp, setShowHelp] = useState(freshUi.showHelp);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>(freshUi.saveStatus);
+  const [saveNotice, setSaveNotice] = useState(freshUi.saveNotice);
 
   const viewpoint = getViewpoint(save.selectedViewpoint);
   const location = getLocationForViewpoint(save.selectedViewpoint);
@@ -348,14 +339,65 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     });
   }
 
-  /** Explicit Save action. Automatic saves from other mutations are not logged separately. */
+  /**
+   * Complete session reset. One path for both entry points: a fresh save plus every
+   * transient UI value from the same blueprint, so no stale id or filter survives.
+   */
+  function resetSession() {
+    const freshSave = resetSave();
+    const fresh = createResetUiState(freshSave);
+    setSave(freshSave);
+    setPanel(fresh.panel);
+    setDraft(fresh.draft);
+    setDialogue(fresh.dialogue);
+    setNoteTarget(fresh.noteTarget);
+    setNoteRelation(fresh.noteRelation);
+    setNoteText(fresh.noteText);
+    setCaseTarget(fresh.caseTarget);
+    setCustodyText(fresh.custodyText);
+    setChallengeGround(fresh.challengeGround);
+    setChallengeText(fresh.challengeText);
+    setReviewSummary(fresh.reviewSummary);
+    setFinalSummary(fresh.finalSummary);
+    setShowSourceIntake(fresh.showSourceIntake);
+    setSourceForm(fresh.sourceForm);
+    setIntakeError(fresh.intakeError);
+    setIntakeNotice(fresh.intakeNotice);
+    setTheoryText(fresh.theoryText);
+    setTheoryStatus(fresh.theoryStatus);
+    setTheoryEvidenceIds(fresh.theoryEvidenceIds);
+    setNotebookFilter(fresh.notebookFilter);
+    setJournalFilter(fresh.journalFilter);
+    setEditingClaimId(fresh.editingClaimId);
+    setEditingLinks(fresh.editingLinks);
+    setShowHelp(fresh.showHelp);
+    setSaveStatus(fresh.saveStatus);
+    setSaveNotice(fresh.saveNotice);
+  }
+
+  /** Shared, explicit confirmation for every "start over" action. */
+  function requestReset() {
+    if (confirm(RESET_CONFIRMATION)) resetSession();
+  }
+
+  /** Explicit Save stays on the current panel and confirms beside the button, without navigating. */
   function doSave() {
     update((s) => {
       recordAudit(s, 'save', 'Saved progress locally');
+      // Fold in the visible editor text so an explicit Save never leaves unsaved draft edits.
+      setCurrentDraft(s, draft);
       return s;
     });
-    setDialogue('Saved locally.');
-    setPanel('dialogue');
+    setSaveNotice(EXPLICIT_SAVE_NOTICE);
+  }
+
+  /** Persist editor text on blur only — never on every keystroke. */
+  function persistDraftOnBlur() {
+    if (draft === save.draft.current) return;
+    update((s) => {
+      setCurrentDraft(s, draft);
+      return s;
+    });
   }
 
   /** Dismiss first-day guidance and remember the choice across saves. */
@@ -766,16 +808,11 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
             >
               Save
             </button>
+            <SaveNoticeMessage notice={saveNotice} />
             <button
               type="button"
               className="px-2 py-1 border border-red-400/30 rounded text-red-200 hover:bg-red-400/10"
-              onClick={() => {
-                if (confirm('Reset local save?')) {
-                  setSave(resetSave());
-                  setSaveStatus('idle');
-                  setDraft('');
-                }
-              }}
+              onClick={requestReset}
             >
               Reset
             </button>
@@ -1273,13 +1310,22 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                     </ul>
                   </section>
 
-                  <button
-                    type="button"
-                    className="px-3 py-1 border border-bar-gold/40 rounded text-xs"
-                    onClick={() => setPanel('notebook')}
-                  >
-                    Review the full notebook →
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="px-3 py-1 border border-bar-gold/40 rounded text-xs text-bar-muted hover:bg-white/5"
+                      onClick={() => setPanel('notebook')}
+                    >
+                      Review the full notebook →
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-1 rounded text-xs bg-bar-gold text-bar-bg font-medium hover:bg-bar-gold/90"
+                      onClick={requestReset}
+                    >
+                      Start a new game
+                    </button>
+                  </div>
                 </>
               )}
             </div>
@@ -2415,11 +2461,13 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                 value={draft}
                 maxLength={MAX_DRAFT_CHARS}
                 onChange={(e) => setDraft(e.target.value)}
+                onBlur={persistDraftOnBlur}
               />
               <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-bar-muted">
                 <span>
                   {draft.length}/{MAX_DRAFT_CHARS} characters
                 </span>
+                <DraftStatusMessage dirty={draft !== save.draft.current} />
                 <span>Use only verified sources; no fabricated citations.</span>
               </div>
               <p className="text-xs text-bar-muted">
