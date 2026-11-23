@@ -34,6 +34,30 @@ async function readBody(req: http.IncomingMessage, limitBytes = 2_000_000): Prom
   return JSON.parse(text);
 }
 
+function isLocalOrigin(origin: string | undefined): boolean {
+  if (!origin) return true; // non-browser / same-origin tooling
+  try {
+    const u = new URL(origin);
+    return u.hostname === 'localhost' || u.hostname === '127.0.0.1' || u.hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
+function assertMutatingRequestSafe(req: http.IncomingMessage): void {
+  const origin = req.headers.origin;
+  if (!isLocalOrigin(typeof origin === 'string' ? origin : undefined)) {
+    throw new Error('FORBIDDEN_ORIGIN');
+  }
+  const method = req.method ?? 'GET';
+  if (method === 'PUT' || method === 'POST') {
+    const ct = String(req.headers['content-type'] ?? '').toLowerCase();
+    if (!ct.includes('application/json')) {
+      throw new Error('UNSUPPORTED_CONTENT_TYPE');
+    }
+  }
+}
+
 // Keep this pattern in sync with SLOT_ID_PATTERN in src/storage/slotId.ts (ADR-003 risk #5).
 function slotIdFromPath(pathname: string): string | null {
   const m = pathname.match(/^\/api\/saves\/([a-zA-Z0-9_-]{1,64})$/);
@@ -69,6 +93,7 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
         return sendJson(res, 200, { ok: true, slot });
       }
       if (method === 'PUT' || method === 'POST') {
+        assertMutatingRequestSafe(req);
         const body = await readBody(req);
         const bodyObj = body && typeof body === 'object' ? (body as Record<string, unknown>) : null;
         const payload = bodyObj && 'payload' in bodyObj ? bodyObj.payload : body;
@@ -77,6 +102,7 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
         return sendJson(res, 200, { ok: true, slot });
       }
       if (method === 'DELETE') {
+        assertMutatingRequestSafe(req);
         const deleted = deleteSaveSlot(getDb(), slotId);
         return sendJson(res, 200, { ok: true, deleted });
       }
@@ -86,6 +112,8 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
   } catch (error) {
     if (error instanceof SaveConflictError) return sendJson(res, 409, { ok: false, error: 'SAVE_CONFLICT' });
     const message = error instanceof Error ? error.message : String(error);
+    if (message === 'FORBIDDEN_ORIGIN') return sendJson(res, 403, { ok: false, error: message });
+    if (message === 'UNSUPPORTED_CONTENT_TYPE') return sendJson(res, 415, { ok: false, error: message });
     if (message === 'PAYLOAD_TOO_LARGE') return sendJson(res, 413, { ok: false, error: message });
     if (error instanceof SyntaxError) return sendJson(res, 400, { ok: false, error: 'INVALID_JSON' });
     return sendJson(res, 500, { ok: false, error: 'INTERNAL_ERROR' });

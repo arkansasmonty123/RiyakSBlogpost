@@ -72,10 +72,10 @@ export class SqliteApiGameRepository implements GameRepository {
       const data = (await res.json()) as { ok?: boolean; slot?: { payload?: unknown } };
       this.rememberSavedAt(slot, data?.slot);
       return hydrateSave(data?.slot?.payload);
-    } catch {
-      // Fail closed to a fresh, safe in-memory save; caller may choose fallback policy.
+    } catch (err) {
+      // Do not silently replace a potentially valid server save with a fresh one.
       this.knownSavedAt.delete(slot);
-      return createInitialSave();
+      throw err instanceof Error ? err : new Error('LOAD_FAILED');
     }
   }
 

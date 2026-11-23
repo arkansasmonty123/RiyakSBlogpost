@@ -3,7 +3,6 @@ import { SceneArt } from '@/app/SceneArt';
 import { createResetUiState, emptySourceForm, EXPLICIT_SAVE_NOTICE, RESET_CONFIRMATION } from '@/app/sessionUi';
 import type { SaveStatus, SourceFormState } from '@/app/sessionUi';
 import { config, isAiSeniorReviewEnabled, isLocalAiPanelEnabled } from '@/config/env';
-import { createInitialSave } from '@/domain/seed';
 import { DEFAULT_GAME_SLOT, type GameRepository, type SaveOptions } from '@/storage/gameRepository';
 import { getGameRepository } from '@/storage/getGameRepository';
 import { isSaveConflict, type PersistResult } from '@/storage/save';
@@ -157,13 +156,9 @@ export function loadInitialSave(boot: SessionBoot): SaveGame | null {
   return boot.sync ? boot.sync.loadGameSync(DEFAULT_GAME_SLOT) : null;
 }
 
-/** First load for async adapters. Repositories fail closed, but a boot must never throw. */
+/** First load for async adapters. 404/empty slots produce a fresh save; real load failures throw so the UI can block overwrites. */
 export async function loadBootSave(boot: SessionBoot): Promise<SaveGame> {
-  try {
-    return await boot.repository.loadGame(DEFAULT_GAME_SLOT);
-  } catch {
-    return createInitialSave();
-  }
+  return boot.repository.loadGame(DEFAULT_GAME_SLOT);
 }
 
 /** Save through the configured adapter, using the sync path when the adapter offers one. */
@@ -210,17 +205,44 @@ function SessionLoading() {
 export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const [boot] = useState(() => createSessionBoot(getGameRepository()));
   const [loadedSave, setLoadedSave] = useState<SaveGame | null>(() => loadInitialSave(boot));
+  const [bootError, setBootError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (loadedSave) return;
+    if (loadedSave || bootError) return;
     let active = true;
-    void loadBootSave(boot).then((save) => {
-      if (active) setLoadedSave(save);
-    });
+    void loadBootSave(boot)
+      .then((save) => {
+        if (active) setLoadedSave(save);
+      })
+      .catch((err) => {
+        if (active) setBootError(err instanceof Error ? err.message : 'LOAD_FAILED');
+      });
     return () => {
       active = false;
     };
-  }, [boot, loadedSave]);
+  }, [boot, loadedSave, bootError]);
+
+  if (bootError) {
+    return (
+      <div className="min-h-screen bg-bar-bg text-bar-text flex items-center justify-center px-4">
+        <div role="alert" className="max-w-lg w-full border border-red-400/30 bg-bar-panel rounded-lg p-4 space-y-3">
+          <h1 className="text-lg font-semibold text-red-200">Could not load your saved case file</h1>
+          <p className="text-sm text-bar-muted">
+            The local save service did not respond. Your existing save was not overwritten. Check that the DB server is
+            running, then retry.
+          </p>
+          <p className="text-xs text-bar-muted">Error: {bootError}</p>
+          <button
+            type="button"
+            className="px-3 py-2 border border-bar-gold/40 rounded text-sm hover:bg-white/5"
+            onClick={() => setBootError(null)}
+          >
+            Retry load
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (!loadedSave) return <SessionLoading />;
   return <GameApp boot={boot} initialSave={loadedSave} initialPanel={initialPanel} />;
@@ -393,6 +415,7 @@ function GameApp({
   const [theoryEvidenceIds, setTheoryEvidenceIds] = useState<string[]>(freshUi.theoryEvidenceIds);
   const [notebookFilter, setNotebookFilter] = useState<'all' | NotebookEntry['kind']>(freshUi.notebookFilter);
   const [journalFilter, setJournalFilter] = useState<'all' | JournalKind>(freshUi.journalFilter);
+  const [focusEvidenceId, setFocusEvidenceId] = useState<string | null>(null);
   const [editingClaimId, setEditingClaimId] = useState<string | null>(freshUi.editingClaimId);
   const [editingLinks, setEditingLinks] = useState<string[]>(freshUi.editingLinks);
   const [showHelp, setShowHelp] = useState(freshUi.showHelp);
@@ -432,6 +455,16 @@ function GameApp({
     renderedPanel.current = panel;
     workspaceHeadingRef.current?.focus();
   }, [panel]);
+
+  // When the player clicks "In evidence board" from the journal, scroll to and briefly
+  // highlight the referenced card so they don't lose context in longer evidence lists.
+  useEffect(() => {
+    if (!focusEvidenceId || panel !== 'evidence') return;
+    const el = document.getElementById(`evidence-${focusEvidenceId}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const t = window.setTimeout(() => setFocusEvidenceId(null), 2500);
+    return () => window.clearTimeout(t);
+  }, [focusEvidenceId, panel]);
 
   const viewpoint = getViewpoint(save.selectedViewpoint);
   const location = getLocationForViewpoint(save.selectedViewpoint);
@@ -2164,7 +2197,11 @@ function GameApp({
                 </p>
               </div>
               {playerCase.evidence.map((ev) => (
-                <div key={ev.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
+                <div
+                  key={ev.id}
+                  id={`evidence-${ev.id}`}
+                  className={`bg-bar-panel2 p-2 rounded border ${focusEvidenceId === ev.id ? 'border-bar-gold/60 ring-1 ring-bar-gold/30' : 'border-white/5'}`}
+                >
                   <div className="flex justify-between gap-2">
                     <span className="text-bar-gold">{ev.title}</span>
                     <span className="text-xs text-bar-muted">{ev.type}</span>
@@ -3210,7 +3247,10 @@ function GameApp({
                                 <button
                                   type="button"
                                   className="mt-1 px-2 py-1 border border-white/10 rounded text-xs text-bar-gold hover:bg-white/5"
-                                  onClick={() => setPanel('evidence')}
+                                  onClick={() => {
+                                    setFocusEvidenceId(entry.evidenceId ?? null);
+                                    setPanel('evidence');
+                                  }}
                                 >
                                   In evidence board: {evidenceTitleById.get(entry.evidenceId) ?? entry.evidenceId} →
                                 </button>

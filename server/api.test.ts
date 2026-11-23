@@ -261,4 +261,28 @@ describe('ADR-001 persistence over HTTP (server/api.ts)', () => {
     expect(put.status).toBe(404);
     expect((await requestJson('/api/saves')).body.slots).toEqual([]);
   });
+
+  it('rejects cross-origin and non-JSON mutating requests (CSRF hardening)', async () => {
+    const seed = await putSave('default', { version: 2, player: { name: 'Original' } });
+    expect(seed.status).toBe(200);
+
+    const crossOrigin = await fetch(`${baseUrl}/api/saves/default`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain', origin: 'https://evil.example' },
+      body: JSON.stringify({ payload: { version: 2, player: { name: 'Pwned' } } }),
+    });
+    expect(crossOrigin.status).toBe(403);
+    expect(await crossOrigin.json()).toEqual({ ok: false, error: 'FORBIDDEN_ORIGIN' });
+
+    const badContentType = await fetch(`${baseUrl}/api/saves/default`, {
+      method: 'PUT',
+      headers: { 'content-type': 'text/plain' },
+      body: JSON.stringify({ payload: { version: 2, player: { name: 'Pwned' } } }),
+    });
+    expect(badContentType.status).toBe(415);
+    expect(await badContentType.json()).toEqual({ ok: false, error: 'UNSUPPORTED_CONTENT_TYPE' });
+
+    const after = await requestJson('/api/saves/default');
+    expect(after.body.slot.payload.player.name).toBe('Original');
+  });
 });

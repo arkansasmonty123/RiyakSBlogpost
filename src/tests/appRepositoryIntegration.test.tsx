@@ -115,15 +115,13 @@ describe('App ↔ GameRepository integration (ADR-001)', () => {
     expect(repo.loadGame).toHaveBeenCalledWith(DEFAULT_GAME_SLOT);
   });
 
-  it('falls back to a safe fresh save when an async load fails', async () => {
+  it('throws on async load failure so the UI can block overwrites instead of replacing a valid save', async () => {
     const repo = asyncRepository({
       loadGame: vi.fn(async () => {
         throw new Error('offline');
       }),
     });
-    const save = await loadBootSave(createSessionBoot(repo));
-    expect(save.version).toBe(2);
-    expect(save.player.name).toBe('Newcomer');
+    await expect(loadBootSave(createSessionBoot(repo))).rejects.toThrow('offline');
   });
 
   it('routes async save and reset through the mocked repository', async () => {
