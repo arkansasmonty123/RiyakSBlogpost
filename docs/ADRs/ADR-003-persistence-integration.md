@@ -43,7 +43,7 @@ Success means: same `GameRepository` contract, identical player-visible behavior
 
 ### Tests (verified locally)
 
-Persistence/API suites: `src/tests/gameRepository.test.ts`, `src/tests/sqliteApiGameRepository.test.ts`, `src/tests/saveMigration.test.ts`, `server/db/repository.test.ts`, `src/tests/appRepositoryIntegration.test.tsx`, `server/api.test.ts`, `src/tests/sqliteApiE2E.test.ts` — **57 tests across 7 files** (current). They cover slot isolation, canonical-truth exclusion, v1→v2 merge, import-on-404, HTTP failure handling, transactional upsert/audit, stale-write conflict, restart/reopen persistence, App↔repository boot contract, async save serialization, conflict reload/overwrite UX, handler-level HTTP behavior, and real-server `SqliteApiGameRepository` E2E flows.
+Persistence/API suites: `src/tests/gameRepository.test.ts`, `src/tests/sqliteApiGameRepository.test.ts`, `src/tests/saveMigration.test.ts`, `server/db/repository.test.ts`, `src/tests/appRepositoryIntegration.test.tsx`, `server/api.test.ts`, `src/tests/sqliteApiE2E.test.ts`, `src/tests/adversarialPersistence.test.ts` — **63 tests across 8 files** (current). They cover slot isolation, canonical-truth exclusion, v1→v2 merge, import-on-404, HTTP failure handling, transactional upsert/audit, stale-write conflict, restart/reopen persistence, App↔repository boot contract, async save serialization, conflict reload/overwrite UX, handler-level HTTP behavior, real-server `SqliteApiGameRepository` E2E flows, and adversarial malformed/pollution/tampering cases.
 
 `server/api.test.ts` and `src/tests/sqliteApiE2E.test.ts` exercise real HTTP+SQLite (ephemeral port/temp DB). Some App integration tests still mock `fetch`; full Vite-proxy/manual two-mode smoke remains pending.
 
