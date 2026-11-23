@@ -65,18 +65,14 @@ async function main() {
     await shot(page, '01-load');
 
     // Dismiss onboarding/help if present
-    await maybeClick(page, 'Dismiss guide', { timeout: 2000 });
+    await maybeClick(page, 'Got it — dismiss', { timeout: 2000 });
+    await maybeClick(page, 'Dismiss guide', { timeout: 1000 });
     await maybeClick(page, 'Close help', { timeout: 1000 });
     await shot(page, '02-after-help');
 
     // Basic smoke: heading and key controls
     await page.getByRole('heading', { name: /THE BAR/i }).waitFor({ timeout: 10000 });
     log('heading visible');
-
-    // Accept case / start flow - best effort across UI variants
-    await maybeClick(page, 'Accept case', { timeout: 2000 });
-    await maybeClick(page, 'Enter', { timeout: 1500 });
-    await maybeClick(page, 'Begin', { timeout: 1500 });
 
     // Go through assignments by following objective panel buttons
     for (let step = 0; step < 80; step++) {
@@ -91,20 +87,24 @@ async function main() {
       // Try to click primary action buttons in a sensible order
       const actions = [
         'Submit / Evaluate',
+        'Submit draft for feedback',
+        'Submit for senior review',
+        'Submit final brief',
         'Open draft & submit →',
         'Senior review & revision →',
         'Final brief submission →',
+        'Save draft version',
+        'Save draft',
         'Save note',
+        'Save connection',
         'Record observation',
         'Record challenge',
-        'Save connection',
+        'Add to theory',
         'Accept case',
-        'Next day',
-        'Advance time',
       ];
       let acted = false;
       for (const a of actions) {
-        if (await maybeClick(page, a, { timeout: 600 })) {
+        if (await maybeClick(page, a, { timeout: 450 })) {
           acted = true;
           break;
         }
@@ -142,12 +142,25 @@ async function main() {
       }
 
       if (!acted) {
-        // Try advancing panels/tabs
-        await maybeClick(page, 'Assignments', { timeout: 500 });
-        await maybeClick(page, 'Evidence', { timeout: 500 });
-        await maybeClick(page, 'Case Theory', { timeout: 500 });
-        await maybeClick(page, 'Draft', { timeout: 500 });
-        await maybeClick(page, 'Casework', { timeout: 500 });
+        const panels = [
+          'Assignments',
+          'Evidence',
+          'Case Theory',
+          'Research',
+          'Draft',
+          'Casework',
+          'Journal',
+          'Notebook',
+        ];
+        for (const p of panels) {
+          if (await maybeClick(page, p, { timeout: 300 })) {
+            acted = true;
+            break;
+          }
+        }
+      }
+      if (!acted) {
+        await maybeClick(page, 'Advance time', { timeout: 400 });
       }
 
       if (step % 10 === 0) await shot(page, `step-${String(step).padStart(2, '0')}`);
