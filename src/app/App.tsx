@@ -3,7 +3,8 @@ import { SceneArt } from '@/app/SceneArt';
 import { createResetUiState, emptySourceForm, EXPLICIT_SAVE_NOTICE, RESET_CONFIRMATION } from '@/app/sessionUi';
 import type { SaveStatus, SourceFormState } from '@/app/sessionUi';
 import { config, isLocalAiPanelEnabled } from '@/config/env';
-import { loadSave, persistSave, resetSave } from '@/storage/save';
+import { DEFAULT_GAME_SLOT } from '@/storage/gameRepository';
+import { localStorageGameRepository } from '@/storage/localStorageGameRepository';
 import type { PersistResult } from '@/storage/save';
 import { recordAudit } from '@/domain/audit';
 import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/completion';
@@ -203,7 +204,7 @@ function FileSection({ title, items, empty }: { title: string; items: string[]; 
 }
 
 export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
-  const [save, setSave] = useState<SaveGame>(() => loadSave());
+  const [save, setSave] = useState<SaveGame>(() => localStorageGameRepository.loadGameSync(DEFAULT_GAME_SLOT));
   // Experimental local-AI lab (Phase 6 foundations). Env-aware, never a hosted provider.
   const localAiEnabled = isLocalAiPanelEnabled();
   // Single source of truth for initial UI values; reset reuses the same blueprint.
@@ -381,7 +382,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
       // Defensive backstop: every append also uses addNotebookEntry, but this keeps any
       // future direct mutation from growing an in-memory save past the cap before persisting.
       capNotebook(next.notebook);
-      const result: PersistResult = persistSave(next);
+      const result: PersistResult = localStorageGameRepository.saveGameSync(DEFAULT_GAME_SLOT, next);
       // Keep the functional update so several mutations in one handler still compose.
       // A failed write is reported politely instead of throwing; progress stays in memory.
       setSaveStatus(result.ok ? 'saved' : 'error');
@@ -401,7 +402,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
    * transient UI value from the same blueprint, so no stale id or filter survives.
    */
   function resetSession() {
-    const freshSave = resetSave();
+    const freshSave = localStorageGameRepository.resetGameSync(DEFAULT_GAME_SLOT);
     const fresh = createResetUiState(freshSave);
     setSave(freshSave);
     setPanel(fresh.panel);

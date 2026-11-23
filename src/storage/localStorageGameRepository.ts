@@ -3,8 +3,18 @@ import { LEGACY_KEY, loadSave, persistSave, resetSave, SAVE_KEY, type PersistRes
 import type { SaveGame } from '@/domain/types';
 
 function defaultBrowserStorage(): StorageLike {
-  if (typeof window !== 'undefined' && window.localStorage) return window.localStorage;
-  return { getItem: () => null, setItem: () => undefined, removeItem: () => undefined };
+  return {
+    getItem(key) {
+      if (typeof window !== 'undefined' && window.localStorage) return window.localStorage.getItem(key);
+      return null;
+    },
+    setItem(key, value) {
+      if (typeof window !== 'undefined' && window.localStorage) window.localStorage.setItem(key, value);
+    },
+    removeItem(key) {
+      if (typeof window !== 'undefined' && window.localStorage) window.localStorage.removeItem(key);
+    },
+  };
 }
 
 function slotStorage(base: StorageLike, slotId: string): StorageLike {
