@@ -71,15 +71,18 @@ export const CORPUS_MANIFEST_STAGES = ['unverified', 'reviewed', 'promoted'] as 
 export const CORPUS_RIGHTS_STATUSES = ['none', 'pending', 'cleared'] as const;
 
 /**
- * The only corpus kind shipped in this repository: original internal educational summaries.
- * These are teaching material authored for the prototype, not legal authority. A *real* official
- * legal corpus is a separate, human-reviewed effort and is not asserted by any shipped file.
+ * Corpus kinds supported by the offline manifest validator.
+ * - `internal-educational-summary`: original non-authoritative teaching summaries (no real law fabricated).
+ * - `official-source-metadata`: metadata records pointing to official publications (India Code, etc.).
+ *   Records may reference real official Acts/publications by name/identifier and official URL, but must
+ *   not reproduce or fabricate statutory/procedural provision text. Human review and provenance are required.
  */
 export const INTERNAL_EDUCATIONAL_CATEGORY = 'internal-educational-summary';
+export const OFFICIAL_SOURCE_METADATA_CATEGORY = 'official-source-metadata';
 /** Declaration required of an internal educational corpus/record: it is never legal authority. */
 export const NON_AUTHORITATIVE_DECLARATION = 'non-authoritative';
-/** Supported corpus kinds. Only the internal educational kind is present in this repository. */
-export const CORPUS_KINDS = [INTERNAL_EDUCATIONAL_CATEGORY] as const;
+/** Supported corpus kinds. */
+export const CORPUS_KINDS = [INTERNAL_EDUCATIONAL_CATEGORY, OFFICIAL_SOURCE_METADATA_CATEGORY] as const;
 
 function hasText(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -170,25 +173,33 @@ export function validateSourceRecord(source: unknown, options: SourceValidationO
     errors.push(issue('INVALID_INTAKE', "Intake must be 'seed' or 'player-draft' when present.", 'intake'));
   }
 
-  // Optional honesty markers for original internal educational summaries. They are validated
-  // when present (so a stand-in cannot silently claim to be authoritative law), but remain
-  // optional for backward compatibility with older records/manifests.
+  // Optional honesty markers. Validated when present for backward compatibility.
   const category = record.category;
-  if (category !== undefined && category !== null && category !== INTERNAL_EDUCATIONAL_CATEGORY) {
+  if (
+    category !== undefined &&
+    category !== null &&
+    category !== INTERNAL_EDUCATIONAL_CATEGORY &&
+    category !== OFFICIAL_SOURCE_METADATA_CATEGORY
+  ) {
     errors.push(
       issue(
         'INVALID_SOURCE_CATEGORY',
-        `category must be "${INTERNAL_EDUCATIONAL_CATEGORY}" when present (the only supported non-authoritative record kind).`,
+        `category must be "${INTERNAL_EDUCATIONAL_CATEGORY}" or "${OFFICIAL_SOURCE_METADATA_CATEGORY}" when present.`,
         'category',
       ),
     );
   }
   const authority = record.authority;
-  if (authority !== undefined && authority !== null && authority !== NON_AUTHORITATIVE_DECLARATION) {
+  if (
+    authority !== undefined &&
+    authority !== null &&
+    authority !== NON_AUTHORITATIVE_DECLARATION &&
+    authority !== 'official-publication-metadata'
+  ) {
     errors.push(
       issue(
         'INVALID_AUTHORITY_DECLARATION',
-        `authority must be "${NON_AUTHORITATIVE_DECLARATION}" when present; these records are never legal authority.`,
+        `authority must be "${NON_AUTHORITATIVE_DECLARATION}" or "official-publication-metadata" when present.`,
         'authority',
       ),
     );
@@ -198,16 +209,31 @@ export function validateSourceRecord(source: unknown, options: SourceValidationO
     errors.push(issue('INVALID_DISCLAIMER', 'disclaimer must be a non-empty string when present.', 'disclaimer'));
   }
   const assertsRealCitation = record.assertsRealCitation;
-  if (assertsRealCitation !== undefined && assertsRealCitation !== false) {
+  if (assertsRealCitation !== undefined && assertsRealCitation !== null && typeof assertsRealCitation !== 'boolean') {
+    errors.push(
+      issue('INVALID_CITATION_ASSERTION', 'assertsRealCitation must be a boolean when present.', 'assertsRealCitation'),
+    );
+  }
+  const isInternalEducational = category === INTERNAL_EDUCATIONAL_CATEGORY;
+  const isOfficialMetadata = category === OFFICIAL_SOURCE_METADATA_CATEGORY;
+  if (isInternalEducational && assertsRealCitation === true) {
     errors.push(
       issue(
         'INVALID_CITATION_ASSERTION',
-        'assertsRealCitation, when present, must be false for an internal educational summary.',
+        'assertsRealCitation must be false for an internal educational summary.',
         'assertsRealCitation',
       ),
     );
   }
-  const isInternalEducational = category === INTERNAL_EDUCATIONAL_CATEGORY;
+  if (isOfficialMetadata && assertsRealCitation === false) {
+    errors.push(
+      issue(
+        'INVALID_CITATION_ASSERTION',
+        'assertsRealCitation must be true for an official-source-metadata record that references a real official publication.',
+        'assertsRealCitation',
+      ),
+    );
+  }
 
   if (record.sourceUrl !== undefined && record.sourceUrl !== '' && !isHttpUrl(String(record.sourceUrl))) {
     errors.push(issue('INVALID_SOURCE_URL', 'Source URL must be a valid http:// or https:// address.', 'sourceUrl'));
@@ -828,38 +854,58 @@ export function validateCorpusManifest(input: unknown, options: SourceValidation
       errors.push(
         issue(
           'INVALID_CORPUS_KIND',
-          `Unsupported corpusKind; this repository ships only ${CORPUS_KINDS.join(', ')}.`,
+          `Unsupported corpusKind; supported kinds: ${CORPUS_KINDS.join(', ')}.`,
           'corpusKind',
         ),
       );
     }
   }
   const corpusAuthority = manifest.authority;
-  if (corpusAuthority !== undefined && corpusAuthority !== null && corpusAuthority !== NON_AUTHORITATIVE_DECLARATION) {
-    errors.push(
-      issue(
-        'INVALID_AUTHORITY_DECLARATION',
-        `authority must be "${NON_AUTHORITATIVE_DECLARATION}" when present; no shipped corpus is legal authority.`,
-        'authority',
-      ),
-    );
+  if (corpusAuthority !== undefined && corpusAuthority !== null) {
+    const allowedAuthority =
+      corpusKind === OFFICIAL_SOURCE_METADATA_CATEGORY
+        ? ['official-publication-metadata', NON_AUTHORITATIVE_DECLARATION]
+        : [NON_AUTHORITATIVE_DECLARATION];
+    if (!allowedAuthority.includes(String(corpusAuthority))) {
+      errors.push(
+        issue(
+          'INVALID_AUTHORITY_DECLARATION',
+          `authority must be one of ${allowedAuthority.join(', ')} for this corpus kind.`,
+          'authority',
+        ),
+      );
+    }
   }
   const corpusDisclaimer = manifest.disclaimer;
   if (corpusDisclaimer !== undefined && corpusDisclaimer !== null && !hasText(corpusDisclaimer)) {
     errors.push(issue('INVALID_DISCLAIMER', 'disclaimer must be a non-empty string when present.', 'disclaimer'));
   }
-  if (
-    manifest.assertsRealCitation !== undefined &&
-    manifest.assertsRealCitation !== null &&
-    manifest.assertsRealCitation !== false
-  ) {
-    errors.push(
-      issue(
-        'INVALID_CITATION_ASSERTION',
-        'assertsRealCitation, when present, must be false for a non-authoritative corpus.',
-        'assertsRealCitation',
-      ),
-    );
+  if (manifest.assertsRealCitation !== undefined && manifest.assertsRealCitation !== null) {
+    if (typeof manifest.assertsRealCitation !== 'boolean') {
+      errors.push(
+        issue(
+          'INVALID_CITATION_ASSERTION',
+          'assertsRealCitation must be a boolean when present.',
+          'assertsRealCitation',
+        ),
+      );
+    } else if (corpusKind === INTERNAL_EDUCATIONAL_CATEGORY && manifest.assertsRealCitation !== false) {
+      errors.push(
+        issue(
+          'INVALID_CITATION_ASSERTION',
+          'assertsRealCitation must be false for an internal educational corpus.',
+          'assertsRealCitation',
+        ),
+      );
+    } else if (corpusKind === OFFICIAL_SOURCE_METADATA_CATEGORY && manifest.assertsRealCitation !== true) {
+      errors.push(
+        issue(
+          'INVALID_CITATION_ASSERTION',
+          'assertsRealCitation must be true for an official-source-metadata corpus (it references real official publications by metadata only).',
+          'assertsRealCitation',
+        ),
+      );
+    }
   }
 
   let reviewed: string[] = [];
@@ -989,6 +1035,85 @@ export function validateCorpusManifest(input: unknown, options: SourceValidation
             label,
           ),
         );
+      }
+    });
+  }
+
+  // Official-source-metadata corpora reference real official publications (e.g. India Code) by
+  // metadata/provenance only. They may assert real official citation identifiers, but must not
+  // reproduce or fabricate statutory/procedural provision text. Human review and official URLs are required.
+  if (corpusKind === OFFICIAL_SOURCE_METADATA_CATEGORY) {
+    if (corpusAuthority === undefined || corpusAuthority === null) {
+      errors.push(
+        issue(
+          'MISSING_AUTHORITY_DECLARATION',
+          'An official-source-metadata corpus must declare authority: "official-publication-metadata".',
+          'authority',
+        ),
+      );
+    }
+    if (corpusDisclaimer === undefined || corpusDisclaimer === null) {
+      errors.push(
+        issue(
+          'MISSING_DISCLAIMER',
+          'An official-source-metadata corpus must carry a disclaimer stating it contains metadata/provenance only and is not reproduced legal text/legal advice.',
+          'disclaimer',
+        ),
+      );
+    }
+    if (manifest.assertsRealCitation === undefined || manifest.assertsRealCitation === null) {
+      errors.push(
+        issue(
+          'MISSING_CITATION_ASSERTION',
+          'An official-source-metadata corpus must explicitly set assertsRealCitation to true.',
+          'assertsRealCitation',
+        ),
+      );
+    }
+    const officialSources = Array.isArray(manifest.sources) ? manifest.sources : [];
+    officialSources.forEach((source, index) => {
+      if (!isObject(source)) return;
+      const label = `sources[${index}]`;
+      if (source.category === undefined || source.category === null) {
+        errors.push({
+          code: 'MISSING_OFFICIAL_CATEGORY',
+          message: `${label}: Each record must declare category: "${OFFICIAL_SOURCE_METADATA_CATEGORY}".`,
+          field: 'category',
+          severity: 'error',
+        });
+      }
+      if (source.assertsRealCitation === undefined || source.assertsRealCitation === null) {
+        errors.push({
+          code: 'MISSING_CITATION_ASSERTION',
+          message: `${label}: Each record must explicitly set assertsRealCitation to true.`,
+          field: 'assertsRealCitation',
+          severity: 'error',
+        });
+      }
+      if (!hasText(source.sourceUrl)) {
+        errors.push({
+          code: 'OFFICIAL_METADATA_MISSING_URL',
+          message: `${label}: Official-source-metadata records must include an official sourceUrl.`,
+          field: 'sourceUrl',
+          severity: 'error',
+        });
+      }
+      if (!hasText(source.provenance)) {
+        errors.push({
+          code: 'MISSING_PROVENANCE',
+          message: `${label}: Official-source-metadata records must include provenance describing the official source and verification.`,
+          field: 'provenance',
+          severity: 'error',
+        });
+      }
+      const excerpt = typeof source.excerpt === 'string' ? source.excerpt.trim() : '';
+      if (excerpt.length > 240) {
+        errors.push({
+          code: 'OFFICIAL_METADATA_EXCERPT_TOO_LONG',
+          message: `${label}: Official-source-metadata excerpts must be short metadata notes only (<=240 chars). Do not reproduce statutory/procedural text.`,
+          field: 'excerpt',
+          severity: 'error',
+        });
       }
     });
   }

@@ -31,9 +31,9 @@ const USAGE = [
   'and a sources array of LegalSource records. Optional pipeline metadata (acquisition, signoff,',
   'rights, versionPolicy, allowlistPolicy, staging) is documented in docs/legal-corpus/ACQUISITION_CHECKLIST.md.',
   '',
-  'The shipped docs/legal-corpus/manifest.json contains only internal ORIGINAL educational',
-  'summaries: non-authoritative, not legal advice, no real statutory/judgment/citation asserted.',
-  'The real official legal corpus is still pending external human verification (D-005/D-011).',
+  'The repository ships internal educational summaries (manifest.json) and may include official-source-metadata',
+  'manifests (e.g. official-sources.manifest.json) containing metadata/provenance only - never reproduced legal text.',
+  'Real official legal text verification/reliance still requires human legal review against official publications.',
   'This tool never verifies or fabricates anything.',
 ].join('\n');
 
@@ -89,11 +89,16 @@ function nextSteps(result: CorpusManifestResult): string[] {
   if (result.ok) {
     if (result.corpusKind === 'internal-educational-summary') {
       steps.push(
-        'These are internal original educational summaries only. The real official legal corpus is still pending external verification (D-005/D-011); do not cite them as law.',
+        'These are internal original educational summaries only. Do not cite them as law. For real legal reliance, use verified official publications.',
+      );
+    }
+    if (result.corpusKind === 'official-source-metadata') {
+      steps.push(
+        'These records are official publication metadata/provenance only; no legal text is reproduced. Consult the official linked source for authoritative text and verify current version/amendments.',
       );
     }
     steps.push(
-      'A named content owner must still sign off official text and rights before any record is authoritative (D-005/D-011).',
+      'A named content owner/legal reviewer must still sign off legal-text accuracy, applicability, and rights before legal reliance (D-005/D-011).',
     );
     steps.push(
       'Keep reviewedOfficialIdentifiers limited to exact citations a human checked; review version/effective dates before promotion.',

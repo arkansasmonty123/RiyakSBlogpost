@@ -67,16 +67,31 @@ describe('provenance validation', () => {
     expect(canCiteAsAuthoritative(withUrl)).toBe(true);
   });
 
-  it('keeps the seed free of verified statutory or judgment citations', () => {
+  it('keeps seed sources honest: official metadata verified with URLs, no fabricated provision text', () => {
     const sources = createInitialSave().legalSources;
+    expect(sources.length).toBeGreaterThanOrEqual(5);
+
     for (const s of sources) {
       expect(looksLikeSpecificCitation(s.citation)).toBe(false);
-      if (s.sourceType === 'statute' || s.sourceType === 'judgment') {
-        expect(s.verificationStatus).toBe('placeholder');
-        expect(canCiteAsAuthoritative(s)).toBe(false);
-      }
+      expect(String(s.excerpt ?? '')).not.toMatch(/\bsection\s+\d+\b/i);
+      expect(String(s.excerpt ?? '')).not.toMatch(/\barticle\s+\d+\b/i);
     }
-    expect(sources.filter(canCiteAsAuthoritative).map((s) => s.id)).toEqual(['ls-4']);
+
+    const official = sources.filter((s) => ['ls-bns', 'ls-bnss', 'ls-bsa', 'ls-constitution'].includes(s.id));
+    expect(official).toHaveLength(4);
+    for (const s of official) {
+      expect(s.sourceType).toBe('statute');
+      expect(s.jurisdiction).toBe('India');
+      expect(s.verificationStatus).toBe('verified');
+      expect(canCiteAsAuthoritative(s)).toBe(true);
+      expect(s.sourceUrl).toMatch(/^https:\/\/www\.indiacode\.nic\.in\//);
+      expect(s.excerpt).toBeUndefined();
+      expect(String(s.provenance)).toContain('metadata/provenance only');
+    }
+
+    const ls4 = sources.find((s) => s.id === 'ls-4');
+    expect(ls4?.verificationStatus).toBe('verified');
+    expect(canCiteAsAuthoritative(ls4!)).toBe(true);
   });
 });
 

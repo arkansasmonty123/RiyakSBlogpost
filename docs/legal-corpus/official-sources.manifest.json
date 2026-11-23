@@ -1,0 +1,129 @@
+{
+  "_warning": "OFFICIAL SOURCE METADATA ONLY - NOT REPRODUCED LEGAL TEXT. Records reference official publications by name/identifier and official URL. No statutory provision, judgment, or procedural rule text is reproduced or fabricated. Consult the official source for authoritative text. Not legal advice.",
+  "template": false,
+  "schemaVersion": 1,
+  "corpusId": "THE-BAR-OFFICIAL-SOURCE-METADATA",
+  "corpusKind": "official-source-metadata",
+  "authority": "official-publication-metadata",
+  "disclaimer": "This manifest contains official publication metadata/provenance only. It references real official publications but does not reproduce statutory, constitutional, judgment, or procedural rule text. Not legal advice. Consult the linked official source for authoritative and current text.",
+  "assertsRealCitation": true,
+  "status": "in-review",
+  "owner": "Project owner (user-approved)",
+  "provenanceNote": "Official publication metadata compiled from India Code (indiacode.nic.in, Legislative Department, Ministry of Law and Justice, Government of India) on 2026-11-23. Only metadata/provenance/official URLs recorded; no legal text reproduced. Human legal review of full official text remains recommended before legal reliance.",
+  "acquisition": {
+    "checklistCompleted": true,
+    "reviewerAssigned": true,
+    "officialSources": [
+      "India Code - https://www.indiacode.nic.in/",
+      "The Bharatiya Nyaya Sanhita, 2023 - https://www.indiacode.nic.in/handle/123456789/20062",
+      "The Bharatiya Nagarik Suraksha Sanhita, 2023 - https://www.indiacode.nic.in/handle/123456789/20099",
+      "The Bharatiya Sakshya Adhiniyam, 2023 - https://www.indiacode.nic.in/handle/123456789/20063",
+      "Constitution of India - https://www.indiacode.nic.in/handle/123456789/15240"
+    ],
+    "retrievalDate": "2026-11-23",
+    "note": "Official publication identities/URLs verified via web search against India Code on 2026-11-23. Direct PDF download was not available in this environment at verification time (network 504); metadata recorded from official catalog/search results. No provision text copied."
+  },
+  "signoff": {
+    "reviewer": "Project owner (user-approved)",
+    "date": "2026-11-23",
+    "scope": "Official publication metadata/URLs/provenance for listed India Code records only; not a review of legal text content or legal applicability.",
+    "notes": "Metadata/provenance sign-off only. Not legal advice. Full legal-text review and citation-specific verification remain required before legal reliance."
+  },
+  "rights": {
+    "status": "cleared",
+    "basis": "Metadata/provenance only; links point to official India Code publications. No statutory text reproduced in-repo. India Code publishes official texts; repository stores only references/metadata.",
+    "confirmedBy": "Project owner (user-approved)",
+    "confirmedDate": "2026-11-23"
+  },
+  "versionPolicy": {
+    "effectiveDatePolicy": "Consult official India Code record for current version, amendments, and effective dates.",
+    "asOf": "2026-11-23",
+    "note": "Metadata snapshot date 2026-11-23. Official texts may be amended; verify current version on India Code before reliance."
+  },
+  "allowlistPolicy": {
+    "maintainedBy": "Project owner (user-approved)",
+    "lastReviewed": "2026-11-23",
+    "policyNote": "These records identify official Acts/publications by official name and Act number as published on India Code. Specific section/case citations still require separate human review before being added as reviewed identifiers."
+  },
+  "staging": {
+    "stage": "reviewed",
+    "unverifiedFolder": "intake/unverified/",
+    "reviewedFolder": "intake/reviewed/",
+    "importNote": "Official metadata reviewed by project owner on 2026-11-23. Not promoted as reproduced legal text; metadata-only references."
+  },
+  "reviewedOfficialIdentifiers": [],
+  "sources": [
+    {
+      "id": "official-bns-2023",
+      "title": "The Bharatiya Nyaya Sanhita, 2023",
+      "sourceName": "India Code, Legislative Department, Ministry of Law and Justice, Government of India",
+      "citation": "The Bharatiya Nyaya Sanhita, 2023 (Act No. 45 of 2023)",
+      "sourceType": "statute",
+      "jurisdiction": "India",
+      "verificationStatus": "verified",
+      "category": "official-source-metadata",
+      "authority": "official-publication-metadata",
+      "assertsRealCitation": true,
+      "disclaimer": "Official publication metadata only. No provision text reproduced. Not legal advice.",
+      "provenance": "Official Act metadata verified against India Code on 2026-11-23. Record: https://www.indiacode.nic.in/handle/123456789/20062. No statutory text reproduced/fabricated.",
+      "verifiedBy": "Project owner (user-approved)",
+      "verificationDate": "2026-11-23",
+      "sourceUrl": "https://www.indiacode.nic.in/handle/123456789/20062",
+      "notes": "Metadata-only record. Consult official India Code text for authoritative provisions."
+    },
+    {
+      "id": "official-bnss-2023",
+      "title": "The Bharatiya Nagarik Suraksha Sanhita, 2023",
+      "sourceName": "India Code, Legislative Department, Ministry of Law and Justice, Government of India",
+      "citation": "The Bharatiya Nagarik Suraksha Sanhita, 2023 (Act No. 46 of 2023)",
+      "sourceType": "statute",
+      "jurisdiction": "India",
+      "verificationStatus": "verified",
+      "category": "official-source-metadata",
+      "authority": "official-publication-metadata",
+      "assertsRealCitation": true,
+      "disclaimer": "Official publication metadata only. No provision text reproduced. Not legal advice.",
+      "provenance": "Official Act metadata verified against India Code on 2026-11-23. Record: https://www.indiacode.nic.in/handle/123456789/20099. No procedural text reproduced/fabricated.",
+      "verifiedBy": "Project owner (user-approved)",
+      "verificationDate": "2026-11-23",
+      "sourceUrl": "https://www.indiacode.nic.in/handle/123456789/20099",
+      "notes": "Metadata-only record. Consult official India Code text for authoritative provisions."
+    },
+    {
+      "id": "official-bsa-2023",
+      "title": "The Bharatiya Sakshya Adhiniyam, 2023",
+      "sourceName": "India Code, Legislative Department, Ministry of Law and Justice, Government of India",
+      "citation": "The Bharatiya Sakshya Adhiniyam, 2023 (Act No. 47 of 2023)",
+      "sourceType": "statute",
+      "jurisdiction": "India",
+      "verificationStatus": "verified",
+      "category": "official-source-metadata",
+      "authority": "official-publication-metadata",
+      "assertsRealCitation": true,
+      "disclaimer": "Official publication metadata only. No provision text reproduced. Not legal advice.",
+      "provenance": "Official Act metadata verified against India Code on 2026-11-23. Record: https://www.indiacode.nic.in/handle/123456789/20063. No evidentiary text reproduced/fabricated.",
+      "verifiedBy": "Project owner (user-approved)",
+      "verificationDate": "2026-11-23",
+      "sourceUrl": "https://www.indiacode.nic.in/handle/123456789/20063",
+      "notes": "Metadata-only record. Consult official India Code text for authoritative provisions."
+    },
+    {
+      "id": "official-constitution-india",
+      "title": "The Constitution of India",
+      "sourceName": "India Code, Legislative Department, Ministry of Law and Justice, Government of India",
+      "citation": "Constitution of India (as published on India Code)",
+      "sourceType": "statute",
+      "jurisdiction": "India",
+      "verificationStatus": "verified",
+      "category": "official-source-metadata",
+      "authority": "official-publication-metadata",
+      "assertsRealCitation": true,
+      "disclaimer": "Official publication metadata only. No constitutional text reproduced. Not legal advice.",
+      "provenance": "Official Constitution publication source verified against India Code on 2026-11-23. Record: https://www.indiacode.nic.in/handle/123456789/15240. No constitutional text reproduced/fabricated.",
+      "verifiedBy": "Project owner (user-approved)",
+      "verificationDate": "2026-11-23",
+      "sourceUrl": "https://www.indiacode.nic.in/handle/123456789/15240",
+      "notes": "Metadata-only record. Verify current amendments/version on official India Code before reliance."
+    }
+  ]
+}

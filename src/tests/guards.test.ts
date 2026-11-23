@@ -12,9 +12,23 @@ describe('citation guardrails', () => {
 
   it('blocks unverified placeholder statute references', () => {
     const save = createInitialSave();
+    const sources = [
+      ...save.legalSources,
+      {
+        id: 'ls-placeholder-test',
+        title: 'Test placeholder statute',
+        sourceName: 'Placeholder',
+        citation: 'BNS (placeholder - verify exact provision before use)',
+        sourceType: 'statute' as const,
+        jurisdiction: 'India' as const,
+        verificationStatus: 'placeholder' as const,
+        provenance: 'Placeholder only.',
+        intake: 'seed' as const,
+      },
+    ];
     const result = checkDraftCitations(
       'As per BNS (placeholder - verify exact provision before use), accused is liable.',
-      save.legalSources,
+      sources,
     );
     expect(result.ok).toBe(false);
     expect(result.blocked.some((b) => b.toLowerCase().includes('unverified/placeholder'))).toBe(true);

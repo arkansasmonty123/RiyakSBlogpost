@@ -68,10 +68,11 @@ describe('App render smoke test', () => {
   it('renders source provenance, verification badges and the Source Intake workflow', () => {
     expect(researchHtml).toContain('Source Intake');
     expect(researchHtml).toContain('Add Source / Source Intake');
-    expect(researchHtml).toContain('PLACEHOLDER — NOT AUTHORITATIVE');
     expect(researchHtml).toContain('VERIFIED');
+    expect(researchHtml).toContain('The Bharatiya Nyaya Sanhita, 2023');
+    expect(researchHtml).toContain('https://www.indiacode.nic.in/handle/123456789/20062');
     expect(researchHtml).toContain('Provenance (non-authoritative note)');
-    expect(researchHtml).toContain('Warning: not verified. Do not cite this source as law.');
+    expect(researchHtml).toContain('metadata/provenance only');
     expect(researchHtml).toContain('NON-AUTHORITATIVE EXCERPT/SUMMARY');
     expect(researchHtml).toContain('Source Intake creates drafts only');
     expect(researchHtml).toContain('Citation / identifier:');

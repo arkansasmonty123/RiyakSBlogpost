@@ -108,3 +108,10 @@ Use this for future entries:
 - **Decision:** User approved completing remaining items ("everything") where feasible.
 - **Guardrails retained:** Never fabricate statutory provisions, judgments, citations, or procedural rules. No canonical-truth leakage. No unlicensed external assets.
 - **Implementation direction:** Build original in-repo art/assets, internal educational legal summaries (clearly non-authoritative, not real-law fabrications), and guarded Phase 6 local AI foundations/RAG over approved internal records. Document any real-world external verification limits honestly.
+
+## 2026-11-23 official source metadata ingestion
+
+- **Action:** Added verified official India Code metadata/provenance records for BNS (Act 45/2023), BNSS (Act 46/2023), BSA (Act 47/2023), and Constitution of India. Sources: indiacode.nic.in handles 20062/20099/20063/15240.
+- **Scope:** Metadata/provenance/official URLs only. No statutory, constitutional, judgment, or procedural rule text reproduced or fabricated.
+- **Artifacts:** `src/domain/seed.ts`, `docs/legal-corpus/official-sources.manifest.json`, `src/domain/sourceValidation.ts` (official-source-metadata kind support), validation scripts/tests/docs.
+- **Remaining human work:** Full legal-text review, citation-specific section/case verification, amendment/version review, formal legal sign-off for reliance; external licensed/final art sign-off.
