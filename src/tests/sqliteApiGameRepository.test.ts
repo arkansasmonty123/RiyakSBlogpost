@@ -224,3 +224,59 @@ describe('SqliteApiGameRepository optimistic concurrency', () => {
     expect(putBodies[0].expectedSavedAt).toBeUndefined();
   });
 });
+
+describe('SqliteApiGameRepository slot ID hardening', () => {
+  const invalidIds = ['', 'a/b', 'a b', 'a\nb', 'slöt', 'x'.repeat(65), 'a%2Fb'];
+
+  it('normalizes invalid slot IDs to the default slot instead of issuing malformed URLs', async () => {
+    const urls: string[] = [];
+    const repo = new SqliteApiGameRepository('', async (input) => {
+      urls.push(String(input));
+      return jsonResponse({ ok: false }, 404);
+    });
+
+    for (const id of invalidIds) await repo.loadGame(id);
+    expect(urls).toEqual(invalidIds.map(() => '/api/saves/default'));
+
+    await repo.loadGame('slot-1');
+    await repo.loadGame('_');
+    expect(urls.slice(invalidIds.length)).toEqual(['/api/saves/slot-1', '/api/saves/_']);
+  });
+
+  it('save/reset share the normalized slot so the concurrency guard stays consistent', async () => {
+    const putBodies: any[] = [];
+    const methods: string[] = [];
+    const repo = new SqliteApiGameRepository('', async (input, init) => {
+      const method = String(init?.method ?? 'GET');
+      methods.push(method);
+      expect(String(input)).toBe('/api/saves/default');
+      if (method === 'PUT') {
+        putBodies.push(JSON.parse(String(init?.body ?? '{}')));
+        return jsonResponse({ ok: true, slot: { savedAt: `stamp-${putBodies.length}` } });
+      }
+      return jsonResponse({ ok: true, deleted: true });
+    });
+
+    for (const id of invalidIds) expect((await repo.saveGame(id, createInitialSave())).ok).toBe(true);
+    expect(putBodies[0].expectedSavedAt).toBeUndefined();
+    expect(putBodies[1].expectedSavedAt).toBe('stamp-1');
+
+    await repo.resetGame('a/b');
+    expect(methods[methods.length - 1]).toBe('DELETE');
+    expect((await repo.saveGame('a/b', createInitialSave())).ok).toBe(true);
+    expect(putBodies[putBodies.length - 1].expectedSavedAt).toBeUndefined();
+  });
+
+  it('normalizes slot IDs before consulting the migration source', async () => {
+    const queried: string[] = [];
+    const repo = new SqliteApiGameRepository('', async () => jsonResponse({ ok: false }, 404), {
+      hasLocalSave: (id) => {
+        queried.push(id);
+        return false;
+      },
+      loadLocalSave: () => createInitialSave(),
+    });
+    await repo.loadGame('bad/id');
+    expect(queried).toEqual(['default']);
+  });
+});

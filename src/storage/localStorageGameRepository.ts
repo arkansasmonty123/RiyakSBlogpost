@@ -1,4 +1,5 @@
 import { DEFAULT_GAME_SLOT, type GameRepository } from './gameRepository';
+import { normalizeSlotId } from './slotId';
 import { LEGACY_KEY, loadSave, persistSave, resetSave, SAVE_KEY, type PersistResult, type StorageLike } from './save';
 import type { SaveGame } from '@/domain/types';
 
@@ -47,22 +48,23 @@ export class LocalStorageGameRepository implements GameRepository {
   constructor(private readonly storage: StorageLike = defaultBrowserStorage()) {}
 
   hasPersistedSave(slotId: string = DEFAULT_GAME_SLOT): boolean {
-    const raw = this.storage.getItem(slotRawKey(slotId));
+    const slot = normalizeSlotId(slotId);
+    const raw = this.storage.getItem(slotRawKey(slot));
     if (raw) return true;
-    if (slotId === DEFAULT_GAME_SLOT) return this.storage.getItem(LEGACY_KEY) !== null;
+    if (slot === DEFAULT_GAME_SLOT) return this.storage.getItem(LEGACY_KEY) !== null;
     return false;
   }
 
   loadGameSync(slotId: string = DEFAULT_GAME_SLOT): SaveGame {
-    return loadSave(slotStorage(this.storage, slotId));
+    return loadSave(slotStorage(this.storage, normalizeSlotId(slotId)));
   }
 
   saveGameSync(slotId: string, state: SaveGame): PersistResult {
-    return persistSave(state, slotStorage(this.storage, slotId));
+    return persistSave(state, slotStorage(this.storage, normalizeSlotId(slotId)));
   }
 
   resetGameSync(slotId: string = DEFAULT_GAME_SLOT): SaveGame {
-    return resetSave(slotStorage(this.storage, slotId));
+    return resetSave(slotStorage(this.storage, normalizeSlotId(slotId)));
   }
 
   async loadGame(slotId: string = DEFAULT_GAME_SLOT): Promise<SaveGame> {

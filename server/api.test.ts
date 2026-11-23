@@ -238,4 +238,27 @@ describe('ADR-001 persistence over HTTP (server/api.ts)', () => {
     expect(status).toBe(404);
     expect(body).toEqual({ ok: false, error: 'NOT_FOUND' });
   });
+
+  it('rejects slot IDs outside [A-Za-z0-9_-]{1,64} with 404 NOT_FOUND', async () => {
+    const invalidPaths = [
+      '/api/saves/',
+      '/api/saves/a%2Fb',
+      '/api/saves/a%20b',
+      '/api/saves/sl%C3%B6t',
+      `/api/saves/${'x'.repeat(65)}`,
+    ];
+    for (const urlPath of invalidPaths) {
+      const { status, body } = await requestJson(urlPath);
+      expect(status).toBe(404);
+      expect(body).toEqual({ ok: false, error: 'NOT_FOUND' });
+    }
+
+    const put = await requestJson('/api/saves/a%2Fb', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ payload: { version: 2 } }),
+    });
+    expect(put.status).toBe(404);
+    expect((await requestJson('/api/saves')).body.slots).toEqual([]);
+  });
 });

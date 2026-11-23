@@ -79,4 +79,17 @@ describe('GameRepository (localStorage adapter)', () => {
     const fresh = repo.resetGameSync(DEFAULT_GAME_SLOT);
     expect(fresh.player.name).not.toBe('Sync');
   });
+
+  it('normalizes invalid slot IDs to the default slot without creating stray keys', () => {
+    const storage = memoryStorage();
+    const repo = new LocalStorageGameRepository(storage);
+    const save = createInitialSave();
+    save.player.name = 'Normalized';
+
+    expect(repo.saveGameSync('a/b', save).ok).toBe(true);
+    expect(storage.getItem('the-bar-save-v2:slot:a/b')).toBeNull();
+    expect(repo.loadGameSync('a/b').player.name).toBe('Normalized');
+    expect(repo.loadGameSync(DEFAULT_GAME_SLOT).player.name).toBe('Normalized');
+    expect(repo.hasPersistedSave('a/b')).toBe(true);
+  });
 });

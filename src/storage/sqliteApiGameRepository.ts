@@ -1,4 +1,5 @@
 import { DEFAULT_GAME_SLOT, type GameRepository, type SaveOptions } from './gameRepository';
+import { normalizeSlotId } from './slotId';
 import { hydrateSave, SAVE_CONFLICT_REASON, toPersistedSave, type PersistResult } from './save';
 import { createInitialSave } from '@/domain/seed';
 import type { SaveGame } from '@/domain/types';
@@ -52,39 +53,41 @@ export class SqliteApiGameRepository implements GameRepository {
   }
 
   async loadGame(slotId: string = DEFAULT_GAME_SLOT): Promise<SaveGame> {
+    const slot = normalizeSlotId(slotId);
     // A fresh load makes the previous stamp untrusted until this response confirms it.
-    this.knownSavedAt.delete(slotId);
+    this.knownSavedAt.delete(slot);
     try {
-      const res = await this.fetchImpl(this.slotUrl(slotId), { method: 'GET' });
+      const res = await this.fetchImpl(this.slotUrl(slot), { method: 'GET' });
       if (res.status === 404) {
-        if (this.migration?.hasLocalSave(slotId)) {
-          const imported = this.migration.loadLocalSave(slotId);
+        if (this.migration?.hasLocalSave(slot)) {
+          const imported = this.migration.loadLocalSave(slot);
           // Best-effort import into server slot; do not fail load if import write fails.
           // The slot stamp is still unknown here, so the import never sends a stale guard.
-          await this.saveGame(slotId, imported);
+          await this.saveGame(slot, imported);
           return imported;
         }
         return createInitialSave();
       }
       if (!res.ok) throw new Error(`LOAD_FAILED:${res.status}`);
       const data = (await res.json()) as { ok?: boolean; slot?: { payload?: unknown } };
-      this.rememberSavedAt(slotId, data?.slot);
+      this.rememberSavedAt(slot, data?.slot);
       return hydrateSave(data?.slot?.payload);
     } catch {
       // Fail closed to a fresh, safe in-memory save; caller may choose fallback policy.
-      this.knownSavedAt.delete(slotId);
+      this.knownSavedAt.delete(slot);
       return createInitialSave();
     }
   }
 
   async saveGame(slotId: string, state: SaveGame, options?: SaveOptions): Promise<PersistResult> {
+    const slot = normalizeSlotId(slotId);
     const persisted = toPersistedSave(state);
-    const expectedSavedAt = options?.force ? undefined : this.knownSavedAt.get(slotId);
+    const expectedSavedAt = options?.force ? undefined : this.knownSavedAt.get(slot);
     const body: Record<string, unknown> = { payload: persisted };
     if (expectedSavedAt !== undefined) body.expectedSavedAt = expectedSavedAt;
 
     try {
-      const res = await this.fetchImpl(this.slotUrl(slotId), {
+      const res = await this.fetchImpl(this.slotUrl(slot), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -96,7 +99,7 @@ export class SqliteApiGameRepository implements GameRepository {
       }
       if (!res.ok) return { ok: false, reason: `HTTP_${res.status}` };
       const ack = (await res.json().catch(() => null)) as { slot?: unknown } | null;
-      this.rememberSavedAt(slotId, ack?.slot, persisted.savedAt);
+      this.rememberSavedAt(slot, ack?.slot, persisted.savedAt);
       return { ok: true };
     } catch (error) {
       return { ok: false, reason: error instanceof Error ? error.message : String(error) };
@@ -104,14 +107,15 @@ export class SqliteApiGameRepository implements GameRepository {
   }
 
   async resetGame(slotId: string = DEFAULT_GAME_SLOT): Promise<SaveGame> {
+    const slot = normalizeSlotId(slotId);
     try {
-      const res = await this.fetchImpl(this.slotUrl(slotId), { method: 'DELETE' });
+      const res = await this.fetchImpl(this.slotUrl(slot), { method: 'DELETE' });
       if (!res.ok && res.status !== 404) throw new Error(`RESET_FAILED:${res.status}`);
     } catch {
       // Fall through: always return a fresh in-memory save.
     }
     // The slot no longer exists (or we could not confirm it): forget any stale stamp.
-    this.knownSavedAt.delete(slotId);
+    this.knownSavedAt.delete(slot);
     return createInitialSave();
   }
 }

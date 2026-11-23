@@ -34,6 +34,7 @@ async function readBody(req: http.IncomingMessage, limitBytes = 2_000_000): Prom
   return JSON.parse(text);
 }
 
+// Keep this pattern in sync with SLOT_ID_PATTERN in src/storage/slotId.ts (ADR-003 risk #5).
 function slotIdFromPath(pathname: string): string | null {
   const m = pathname.match(/^\/api\/saves\/([a-zA-Z0-9_-]{1,64})$/);
   return m ? m[1] : null;
