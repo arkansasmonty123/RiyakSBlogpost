@@ -75,6 +75,8 @@ Checks: `npm run verify` (lint, format check, typecheck, tests, build).
 
 ## Tooling
 
+`project-courtroom/` is integrated via a `git subtree` merge, so its original commit history is preserved in this repository. The nested working copy keeps its own `.git` directory locally; changes made there must be committed and re-merged into this repository to appear here.
+
 This workspace uses local agent and tooling configuration that is intentionally versioned so the setup is reproducible:
 
 - `AGENTS.md` — repository working rules (read before making changes)
