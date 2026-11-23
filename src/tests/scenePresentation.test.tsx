@@ -76,6 +76,28 @@ describe('static scene presentation', () => {
     for (const forbidden of FORBIDDEN) expect(html.toLowerCase()).not.toContain(forbidden);
   });
 
+  it('renders the added decorative art inline, local and non-interactive', () => {
+    const entrance = sceneSvg(renderApp({ viewpoint: 'entrance' }));
+    const waiting = sceneSvg(renderApp({ viewpoint: 'waiting-area' }));
+    const bookshelf = sceneSvg(renderApp({ viewpoint: 'bookshelf' }));
+    const corridor = sceneSvg(renderApp({ viewpoint: 'corridor' }));
+
+    expect(entrance).toContain('data-art="portrait-frame"');
+    expect(waiting).toContain('data-art="portrait-frame"');
+    expect(bookshelf).toContain('data-art="file-cabinet"');
+    expect(corridor).toContain('data-art="file-cabinet"');
+
+    for (const svg of [entrance, waiting, bookshelf, corridor]) {
+      expect(svg).toContain('aria-hidden="true"');
+      expect(svg).not.toContain('<image');
+      expect(svg).not.toContain('data:image');
+      expect(svg).not.toContain('http://');
+      expect(svg).not.toContain('https://');
+      expect(svg).not.toContain('<button');
+      expect(svg).not.toContain('<animate');
+    }
+  });
+
   it('explains that the scene art is illustrative and every action has a control', () => {
     const html = renderApp({ viewpoint: 'corridor' });
     expect(html).toContain('the illustration is decorative; every action is a labelled control below');

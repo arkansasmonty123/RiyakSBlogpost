@@ -199,6 +199,49 @@ describe('source record validation (D-005/D-011 ingestion gate)', () => {
     const extended = { ...INTERNAL_SUMMARY, someFutureField: { nested: true } };
     expect(validateSourceRecord(extended).ok).toBe(true);
   });
+
+  it('validates optional internal-educational honesty markers on a record', () => {
+    const educational = {
+      ...INTERNAL_SUMMARY,
+      category: 'internal-educational-summary',
+      authority: 'non-authoritative',
+      assertsRealCitation: false,
+      disclaimer: 'Internal educational summary; not legal advice; not a statement of law.',
+    };
+    const result = validateSourceRecord(educational);
+    expect(result.ok).toBe(true);
+    // An explicitly non-authoritative original summary has no official text to link to.
+    expect(result.warnings.map((warning) => warning.code)).not.toContain('NO_OFFICIAL_URL');
+
+    expect(codes({ ...educational, category: 'official' })).toContain('INVALID_SOURCE_CATEGORY');
+    expect(codes({ ...educational, authority: 'authoritative' })).toContain('INVALID_AUTHORITY_DECLARATION');
+    expect(codes({ ...educational, assertsRealCitation: true })).toContain('INVALID_CITATION_ASSERTION');
+    expect(codes({ ...educational, disclaimer: '' })).toContain('INVALID_DISCLAIMER');
+  });
+
+  it('still rejects fabricated-looking citations and stand-in labels on marked educational records', () => {
+    const educational = {
+      ...INTERNAL_SUMMARY,
+      category: 'internal-educational-summary',
+      authority: 'non-authoritative',
+      assertsRealCitation: false,
+    };
+    // Real-looking string used ONLY to prove the gate rejects it; never asserted as law.
+    const specific = {
+      ...educational,
+      citation: 'Section 302 IPC',
+      jurisdiction: 'India' as const,
+      sourceType: 'statute' as const,
+      sourceUrl: 'https://example.invalid/official-text',
+    };
+    expect(codes(specific)).toContain('UNREVIEWED_SPECIFIC_CITATION');
+    expect(codes({ ...educational, citation: 'PLACEHOLDER (exact text not checked)' })).toContain(
+      'PLACEHOLDER_CANNOT_BE_VERIFIED',
+    );
+    expect(codes({ ...educational, citation: 'INTERNAL-EXAMPLE-0001' })).toContain(
+      'TEMPLATE_OR_EXAMPLE_CANNOT_BE_VERIFIED',
+    );
+  });
 });
 
 describe('human verification step uses the strict ingestion gate', () => {

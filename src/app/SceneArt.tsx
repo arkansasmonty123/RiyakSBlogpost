@@ -7,8 +7,10 @@
  *
  * The lightweight ORIGINAL SVG placeholders in public/assets/art/ (catalogued in
  * docs/art-pipeline/asset-manifest.json) are documented reference/originals for these
- * shapes. They are intentionally NOT loaded here at runtime: keeping the stage as inline
- * vectors preserves the offline, no-network, no-leakable-metadata guarantees asserted by
+ * shapes — including neutral framed busts, a three-drawer filing cabinet, a banker's lamp,
+ * a wall clock, a potted plant and generic document/scales icons. They are intentionally NOT
+ * loaded here at runtime: the matching detail below is drawn as inline vectors so the stage
+ * keeps the offline, no-network, no-leakable-metadata guarantees asserted by
  * src/tests/scenePresentation.test.tsx. A human owner may integrate approved assets behind
  * these same viewpoint ids after the section 8 sign-off in docs/art-pipeline/README.md.
  */
@@ -235,6 +237,81 @@ function WallClock({ x, y }: { x: number; y: number }) {
   );
 }
 
+/**
+ * Decorative framed bust: a generic, mood-neutral silhouette with no identifiable features.
+ * Mirrors the original neutral portrait SVGs; it conveys no knowledge, guilt or case fact.
+ */
+function PortraitFrame({
+  x,
+  y,
+  w = 88,
+  h = 110,
+  skin = '#c9a98a',
+  hair = '#d8d3c8',
+  coat = '#3d4756',
+}: {
+  x: number;
+  y: number;
+  w?: number;
+  h?: number;
+  skin?: string;
+  hair?: string;
+  coat?: string;
+}) {
+  const cx = x + w / 2;
+  const headR = w * 0.22;
+  const headCy = y + h * 0.38;
+  return (
+    <g data-art="portrait-frame">
+      <rect
+        x={x - 5}
+        y={y - 5}
+        width={w + 10}
+        height={h + 10}
+        rx="2"
+        fill={C.woodDark}
+        stroke={C.brassFaint}
+        strokeWidth="2"
+      />
+      <rect x={x} y={y} width={w} height={h} fill="#2a2119" />
+      <rect x={x + 4} y={y + 4} width={w - 8} height={h - 8} fill="#33404f" opacity="0.6" />
+      <path d={`M ${x + 8} ${y + h - 4} Q ${cx} ${y + h * 0.58} ${x + w - 8} ${y + h - 4} Z`} fill={coat} />
+      <circle cx={cx} cy={headCy} r={headR} fill={skin} />
+      <path
+        d={`M ${cx - headR} ${headCy} Q ${cx - headR} ${headCy - headR * 1.9} ${cx} ${headCy - headR * 1.9} Q ${cx + headR} ${headCy - headR * 1.9} ${cx + headR} ${headCy} Q ${cx} ${headCy - headR * 0.6} ${cx - headR} ${headCy} Z`}
+        fill={hair}
+      />
+      <rect
+        x={x + 2}
+        y={y + 2}
+        width={w - 4}
+        height={h - 4}
+        fill="none"
+        stroke={C.brassSoft}
+        strokeWidth="1"
+        opacity="0.5"
+      />
+    </g>
+  );
+}
+
+/** Generic three-drawer filing cabinet; its base centre is anchored at (x, y). */
+function FileCabinet({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
+  return (
+    <g data-art="file-cabinet" transform={`translate(${x} ${y}) scale(${s})`}>
+      <ellipse cx="0" cy="2" rx="52" ry="7" fill={C.shadow} opacity="0.35" />
+      <rect x="-50" y="-170" width="100" height="170" rx="4" fill="#46586b" stroke={C.brassSoft} strokeWidth="2" />
+      {[0, 1, 2].map((i) => (
+        <g key={i} transform={`translate(0 ${-164 + i * 54})`}>
+          <rect x="-44" y="0" width="88" height="50" rx="3" fill="#3a4a5b" stroke={C.brassFaint} strokeWidth="1" />
+          <rect x="-26" y="8" width="22" height="6" rx="1" fill={C.paper} opacity="0.75" />
+          <rect x="-16" y="34" width="32" height="4" rx="2" fill={C.brass} />
+        </g>
+      ))}
+    </g>
+  );
+}
+
 function EntranceScene() {
   return (
     <g>
@@ -274,6 +351,7 @@ function EntranceScene() {
         <rect x="82" y="26" width="5" height="48" fill={C.woodDark} />
         <FileStack x={16} y={16} count={3} s={0.9} />
       </g>
+      <PortraitFrame x={596} y={92} w={86} h={108} hair="#d8d3c8" coat="#3d4756" />
     </g>
   );
 }
@@ -345,6 +423,7 @@ function BookshelfScene() {
       <FileStack x={382} y={292} count={4} s={1.1} />
       <Paper x={506} y={280} w={72} h={36} lines={3} />
       <Lamp x={690} y={120} />
+      <FileCabinet x={730} y={372} s={0.7} />
     </g>
   );
 }
@@ -454,6 +533,7 @@ function CorridorScene() {
         <ellipse cx="424" cy="298" rx="9" ry="4" />
         <path d="M 417 296 Q 417 274 424 274 Q 431 274 431 296 Z" />
       </g>
+      <FileCabinet x={214} y={332} s={0.65} />
       <Lamp x={96} y={70} />
     </g>
   );
@@ -492,6 +572,7 @@ function WaitingScene() {
       </g>
       <Plant x={690} y={356} />
       <Lamp x={700} y={96} />
+      <PortraitFrame x={556} y={116} w={92} h={112} skin="#c99a72" hair="#231d1a" coat="#456267" />
     </g>
   );
 }

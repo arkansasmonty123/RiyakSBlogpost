@@ -262,4 +262,93 @@ describe('corpus manifest validation (legal-corpus pipeline)', () => {
     expect(result.duplicateIds).toEqual(['cm-1']);
     expect(result.sources?.duplicateIds).toEqual(['cm-1']);
   });
+
+  it('accepts the shipped internal original educational manifest as non-authoritative', () => {
+    const shipped = JSON.parse(readFileSync('docs/legal-corpus/manifest.json', { encoding: 'utf8' })) as Record<
+      string,
+      unknown
+    >;
+    const result = validateCorpusManifest(shipped);
+    expect(result.errors).toEqual([]);
+    expect(result.ok).toBe(true);
+    expect(result.corpusKind).toBe('internal-educational-summary');
+    expect(shipped.authority).toBe('non-authoritative');
+    expect(shipped.assertsRealCitation).toBe(false);
+    expect(shipped.reviewedOfficialIdentifiers).toEqual([]);
+    expect(shipped.template).toBeFalsy();
+
+    const sources = shipped.sources as Array<Record<string, unknown>>;
+    expect(sources.length).toBeGreaterThan(0);
+    for (const source of sources) {
+      expect(source.category).toBe('internal-educational-summary');
+      expect(source.authority).toBe('non-authoritative');
+      expect(source.assertsRealCitation).toBe(false);
+      expect(source.sourceType).toBe('summary');
+      expect(String(source.citation)).toMatch(/^INTERNAL-EDU-/);
+      expect(String(source.provenance)).toMatch(/original internal summary created for THE BAR prototype/i);
+    }
+  });
+
+  it('holds an internal educational corpus to honesty invariants', () => {
+    const educationalSource = {
+      ...INTERNAL_SUMMARY,
+      category: 'internal-educational-summary',
+      authority: 'non-authoritative',
+      assertsRealCitation: false,
+    };
+    const base = {
+      corpusKind: 'internal-educational-summary',
+      authority: 'non-authoritative',
+      disclaimer: 'Not legal advice; no real citation asserted.',
+      assertsRealCitation: false,
+      sources: [educationalSource],
+    };
+    expect(validateCorpusManifest(manifest(base)).ok).toBe(true);
+
+    expect(codes(validateCorpusManifest(manifest({ ...base, authority: undefined })))).toContain(
+      'MISSING_AUTHORITY_DECLARATION',
+    );
+    expect(codes(validateCorpusManifest(manifest({ ...base, authority: 'authoritative' })))).toContain(
+      'INVALID_AUTHORITY_DECLARATION',
+    );
+    expect(codes(validateCorpusManifest(manifest({ ...base, disclaimer: undefined })))).toContain('MISSING_DISCLAIMER');
+    expect(codes(validateCorpusManifest(manifest({ ...base, assertsRealCitation: true })))).toContain(
+      'INVALID_CITATION_ASSERTION',
+    );
+    expect(codes(validateCorpusManifest(manifest({ ...base, corpusKind: 'official-legal-corpus' })))).toContain(
+      'INVALID_CORPUS_KIND',
+    );
+    expect(
+      codes(validateCorpusManifest(manifest({ ...base, reviewedOfficialIdentifiers: ['INTERNAL-SUMMARY-0001'] }))),
+    ).toContain('EDUCATIONAL_CORPUS_WITH_ALLOWLIST');
+
+    const statute = { ...educationalSource, sourceType: 'statute' };
+    expect(codes(validateCorpusManifest(manifest({ ...base, sources: [statute] })))).toContain(
+      'EDUCATIONAL_CORPUS_NON_SUMMARY',
+    );
+
+    // A fictional specific-looking citation is used only to prove the educational corpus
+    // rejects it, even when an allowlist would otherwise permit it.
+    const specific = {
+      ...educationalSource,
+      citation: 'Section 999 of the Fictional Act',
+      sourceUrl: 'https://example.invalid/fictional-official-text',
+    };
+    expect(
+      codes(
+        validateCorpusManifest(
+          manifest({
+            ...base,
+            sources: [specific],
+            reviewedOfficialIdentifiers: ['Section 999 of the Fictional Act'],
+          }),
+        ),
+      ),
+    ).toContain('EDUCATIONAL_CORPUS_SPECIFIC_CITATION');
+
+    const missingCategory = { ...educationalSource, category: undefined };
+    expect(codes(validateCorpusManifest(manifest({ ...base, sources: [missingCategory] })))).toContain(
+      'MISSING_EDUCATIONAL_CATEGORY',
+    );
+  });
 });

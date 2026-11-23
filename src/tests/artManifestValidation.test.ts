@@ -150,6 +150,17 @@ describe('art manifest validation (Phase 5 art pipeline)', () => {
     );
   });
 
+  it('rejects asset files with unsupported (non-optimised) extensions', () => {
+    for (const extension of ['exe', 'psd', 'gif', 'mp3', 'jpg']) {
+      const asset = { ...APPROVED_ASSET, file: `props/chamber/desk.${extension}` };
+      expect(codes(validateArtManifest(manifest({ assets: [asset] })))).toContain('UNSUPPORTED_ASSET_EXTENSION');
+    }
+    for (const extension of ['svg', 'webp', 'png', 'SVG']) {
+      const asset = { ...APPROVED_ASSET, file: `props/chamber/desk.${extension}` };
+      expect(codes(validateArtManifest(manifest({ assets: [asset] })))).not.toContain('UNSUPPORTED_ASSET_EXTENSION');
+    }
+  });
+
   it('warns (without failing) on incomplete drafts', () => {
     const draft = {
       id: 'portrait-meera-neutral-v1',
@@ -237,11 +248,13 @@ describe('art manifest validation (Phase 5 art pipeline)', () => {
     expect(real.template).toBe(false);
     expect(result.ok).toBe(true);
     expect(result.errors).toEqual([]);
-    expect(result.assets?.total).toBeGreaterThan(0);
+    expect(result.assets?.total).toBe(13);
     expect(result.assets?.invalid).toBe(0);
     for (const asset of result.assets?.results ?? []) {
       expect(asset.ok).toBe(true);
     }
+    const kinds = new Set((real.assets as Array<Record<string, unknown>>).map((asset) => asset.kind));
+    expect(kinds).toEqual(new Set(['prop', 'portrait', 'ui-icon']));
 
     const template = JSON.parse(
       readFileSync('docs/art-pipeline/asset-manifest.template.json', { encoding: 'utf8' }),

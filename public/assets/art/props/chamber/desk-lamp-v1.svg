@@ -1,0 +1,9 @@
+<!-- Original in-repo placeholder created for THE BAR prototype; no third-party asset; CC0/project-owned by default for this repo -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+  <ellipse cx="236" cy="452" rx="120" ry="18" fill="#0b0d12" opacity="0.35" />
+  <rect x="230" y="180" width="12" height="264" fill="#6f5c33" />
+  <ellipse cx="236" cy="448" rx="92" ry="16" fill="#3d2e21" stroke="#9c8147" stroke-width="3" />
+  <path d="M92 176 Q236 108 380 176 Q236 214 92 176 Z" fill="#2f5b4a" stroke="#c8a75a" stroke-width="4" />
+  <rect x="84" y="172" width="304" height="10" rx="5" fill="#9c8147" />
+  <circle cx="236" cy="186" r="7" fill="#c8a75a" />
+</svg>

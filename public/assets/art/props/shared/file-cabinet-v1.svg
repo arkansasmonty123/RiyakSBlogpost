@@ -1,0 +1,13 @@
+<!-- Original in-repo placeholder created for THE BAR prototype; no third-party asset; CC0/project-owned by default for this repo -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+  <rect x="96" y="48" width="320" height="424" rx="6" fill="#46586b" stroke="#9c8147" stroke-width="3" />
+  <rect x="120" y="72" width="272" height="118" rx="4" fill="#3a4a5b" stroke="#6f5c33" stroke-width="2" />
+  <rect x="150" y="92" width="64" height="14" rx="2" fill="#ddd5c3" opacity="0.8" />
+  <rect x="200" y="146" width="112" height="10" rx="5" fill="#c8a75a" />
+  <rect x="120" y="202" width="272" height="118" rx="4" fill="#3a4a5b" stroke="#6f5c33" stroke-width="2" />
+  <rect x="150" y="222" width="64" height="14" rx="2" fill="#ddd5c3" opacity="0.8" />
+  <rect x="200" y="276" width="112" height="10" rx="5" fill="#c8a75a" />
+  <rect x="120" y="332" width="272" height="118" rx="4" fill="#3a4a5b" stroke="#6f5c33" stroke-width="2" />
+  <rect x="150" y="352" width="64" height="14" rx="2" fill="#ddd5c3" opacity="0.8" />
+  <rect x="200" y="406" width="112" height="10" rx="5" fill="#c8a75a" />
+</svg>

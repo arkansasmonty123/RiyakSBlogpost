@@ -18,9 +18,17 @@ const FORBIDDEN = ['canonicaltruth', 'actualevents', 'hiddenmotives', 'evidencea
 const EXPECTED_FILES = [
   'props/chamber/bookshelf-v1.svg',
   'props/chamber/desk-v1.svg',
+  'props/chamber/desk-lamp-v1.svg',
   'props/consultation/table-v1.svg',
   'props/reception/counter-v1.svg',
+  'props/shared/file-cabinet-v1.svg',
+  'props/shared/potted-plant-v1.svg',
+  'props/shared/wall-clock-v1.svg',
+  'portraits/meera/neutral-v1.svg',
+  'portraits/mentor/neutral-v1.svg',
+  'ui-icons/document-v1.svg',
   'ui-icons/evidence-v1.svg',
+  'ui-icons/scale-v1.svg',
 ];
 
 type AssetRecord = Record<string, unknown>;
@@ -57,7 +65,7 @@ describe('original in-repo art placeholder pipeline', () => {
   });
 
   it('records only lightweight original assets with explicit, honest provenance', () => {
-    expect(assets.length).toBe(5);
+    expect(assets.length).toBe(EXPECTED_FILES.length);
     for (const asset of assets) {
       expect(asset.origin).toBe('original');
       expect(asset.status).toBe('approved');
@@ -88,7 +96,10 @@ describe('original in-repo art placeholder pipeline', () => {
       expect(new TextEncoder().encode(content).length).toBe(asset.sizeBytes);
       total += new TextEncoder().encode(content).length;
     }
-    expect(total).toBe(4053);
+    // The manifest total must equal the real on-disk size of every committed SVG.
+    const onDiskTotal = EXPECTED_FILES.reduce((sum, file) => sum + new TextEncoder().encode(readSvg(file)).length, 0);
+    expect(total).toBe(onDiskTotal);
+    expect(validateArtManifest(manifest).totalSizeBytes).toBe(onDiskTotal);
   });
 
   it('covers exactly the shipped SVG files - no orphan assets and no missing records', () => {
@@ -96,6 +107,30 @@ describe('original in-repo art placeholder pipeline', () => {
     expect(recorded).toEqual([...EXPECTED_FILES].sort());
     expect(new Set(recorded).size).toBe(recorded.length);
     for (const file of recorded) expect(readSvg(file)).toContain('<svg');
+  });
+
+  it('covers prop, portrait and icon categories with ids that match their declared kind', () => {
+    const kinds = new Set(assets.map((asset) => String(asset.kind)));
+    expect(kinds).toEqual(new Set(['prop', 'portrait', 'ui-icon']));
+
+    const prefixByKind: Record<string, string> = { prop: 'prop-', portrait: 'portrait-', 'ui-icon': 'icon-' };
+    for (const asset of assets) {
+      const kind = String(asset.kind);
+      expect(String(asset.id).startsWith(prefixByKind[kind] ?? 'NO-KIND-')).toBe(true);
+    }
+
+    const portraits = assets.filter((asset) => asset.kind === 'portrait');
+    expect(portraits.length).toBeGreaterThanOrEqual(2);
+    for (const portrait of portraits) {
+      // Expressions come from the fixed domain set (neutral here); no case-truth in the id.
+      expect(String(portrait.id)).toMatch(/^portrait-[a-z-]+-neutral-v\d+$/);
+    }
+
+    for (const icon of assets.filter((asset) => asset.kind === 'ui-icon')) {
+      const svg = readSvg(String(icon.file));
+      expect(svg).toContain('currentColor');
+      expect(svg).toContain('viewBox="0 0 24 24"');
+    }
   });
 
   it('embeds provenance in every SVG and no remote, scripted or leak-bearing payload', () => {

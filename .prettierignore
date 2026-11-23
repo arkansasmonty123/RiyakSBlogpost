@@ -10,3 +10,6 @@ package-lock.json
 
 # Placeholder files that keep empty intake folders in git
 *.gitkeep
+
+# Playwright MCP artifacts
+.playwright-mcp/

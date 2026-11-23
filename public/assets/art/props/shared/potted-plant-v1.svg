@@ -1,0 +1,8 @@
+<!-- Original in-repo placeholder created for THE BAR prototype; no third-party asset; CC0/project-owned by default for this repo -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+  <path d="M256 300 Q176 240 188 132 Q236 188 256 300 Z" fill="#3d5c43" stroke="#26392a" stroke-width="3" />
+  <path d="M256 300 Q336 240 324 132 Q276 188 256 300 Z" fill="#4c6b4b" stroke="#26392a" stroke-width="3" />
+  <path d="M256 300 Q240 190 256 96 Q288 190 256 300 Z" fill="#557457" stroke="#26392a" stroke-width="3" />
+  <path d="M176 300 L336 300 L312 452 L200 452 Z" fill="#6b5138" stroke="#9c8147" stroke-width="4" />
+  <rect x="168" y="292" width="176" height="18" rx="4" fill="#3d2e21" stroke="#9c8147" stroke-width="3" />
+</svg>

@@ -41,6 +41,8 @@ export const ART_MANIFEST_STATUSES = ['blocked', 'draft', 'in-review', 'approved
 export const ART_ASSET_KINDS = ['viewpoint', 'portrait', 'prop', 'ui-icon', 'texture', 'sound', 'font'] as const;
 export const ART_ASSET_STATUSES = ['draft', 'approved', 'rejected'] as const;
 export const ART_ASSET_ORIGINS = ['original', 'licensed-third-party', 'ai-generated'] as const;
+/** Only optimised vector/WebP/PNG outputs are allowed into the pack (README section 5). */
+export const ART_ASSET_EXTENSIONS = ['svg', 'webp', 'png'] as const;
 
 /** Soft budgets (bytes): warnings only, never hard failures. Keeps Cloud Shell /home lean (D-019). */
 export const DEFAULT_PER_ASSET_BUDGET_BYTES = 1_048_576; // 1 MiB
@@ -127,6 +129,18 @@ export function validateArtAsset(asset: unknown, options: ArtValidationOptions =
     errors.push(
       issue('UNSAFE_ASSET_PATH', 'File must be a relative path with no absolute prefix or ".." segments.', 'file'),
     );
+  }
+  if (hasText(file) && isSafeRelativePath(file)) {
+    const extension = file.trim().split('.').pop()?.toLowerCase() ?? '';
+    if (!(ART_ASSET_EXTENSIONS as readonly string[]).includes(extension)) {
+      errors.push(
+        issue(
+          'UNSUPPORTED_ASSET_EXTENSION',
+          `Asset file must use an approved optimised format: ${ART_ASSET_EXTENSIONS.join(', ')}.`,
+          'file',
+        ),
+      );
+    }
   }
 
   const origin = record.origin;

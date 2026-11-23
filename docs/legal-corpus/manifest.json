@@ -1,0 +1,128 @@
+{
+  "_warning": "INTERNAL ORIGINAL EDUCATIONAL CORPUS - NOT A SOURCE OF LAW. Every record below is an original internal educational summary written for THE BAR prototype. Nothing here quotes or asserts a real statutory provision, judgment, reporter citation or procedural rule. Not legal advice. The real official legal corpus remains pending external human verification. This is NOT a template (template: false/absent) and is validated by `npm run validate:legal-corpus -- docs/legal-corpus/manifest.json`.",
+  "template": false,
+  "schemaVersion": 1,
+  "corpusId": "THE-BAR-INTERNAL-EDUCATIONAL-CORPUS",
+  "corpusKind": "internal-educational-summary",
+  "authority": "non-authoritative",
+  "disclaimer": "Internal original educational summaries for THE BAR prototype only. Not legal advice. No real statutory provision, judgment, case name, reporter citation or procedural rule is quoted, reproduced or asserted as verified law. Not a statement of the law of any real jurisdiction. Do not cite as legal authority.",
+  "assertsRealCitation": false,
+  "status": "draft",
+  "owner": "Project owner (user-approved)",
+  "intakeFolder": "intake/",
+  "provenanceNote": "Original internal educational summaries created for THE BAR prototype by the project team, not official legal text. No official publication was acquired, copied or verified for this corpus. Because the content is original rather than reproduced, no real citation is present and reviewedOfficialIdentifiers is intentionally empty. The real official legal corpus is still pending external human verification (D-005/D-011).",
+  "acquisition": {
+    "checklistCompleted": false,
+    "reviewerAssigned": true,
+    "officialSources": [],
+    "retrievalDate": null,
+    "note": "No official source acquired: these are original internal educational summaries, not reproduced legal text. The official-source acquisition checklist is therefore not applicable/complete and remains intentionally uncompleted. Real official corpus pending external verification."
+  },
+  "signoff": {
+    "reviewer": "Project owner (user-approved)",
+    "date": "2026-11-23",
+    "scope": "The four original internal educational summaries in this manifest, reviewed as internal educational content only.",
+    "notes": "Reviewed for educational clarity and non-authoritative labeling. No official legal text was reviewed or verified; no real citation was asserted. This signoff does not make any record a statement of law. The real official legal corpus still requires assignment of a legal content owner, official text, rights confirmation and a separate human verification."
+  },
+  "rights": {
+    "status": "cleared",
+    "basis": "Internal original content authored for THE BAR prototype; no third-party, official or licensed legal text is reproduced. Reproduction rights are the project's own original work.",
+    "confirmedBy": "Project owner (user-approved)",
+    "confirmedDate": "2026-11-23"
+  },
+  "versionPolicy": {
+    "effectiveDatePolicy": "Not applicable: these internal educational summaries carry no legal effective date and assert no version of any real law.",
+    "asOf": "2026-11-23",
+    "note": "No formal versioning/effective-date policy has been agreed (D-011 remains open). This corpus is internally authored and is not tied to any official publication or version. Real official corpus pending external verification."
+  },
+  "allowlistPolicy": {
+    "maintainedBy": "Project owner (user-approved)",
+    "lastReviewed": "2026-11-23",
+    "policyNote": "The reviewed-identifier allowlist is intentionally empty: this is an internal original educational corpus containing no reviewed official citation. The list is reserved for exact citations a human content owner checks against an official publication in a future real corpus."
+  },
+  "staging": {
+    "stage": "reviewed",
+    "unverifiedFolder": "intake/unverified/",
+    "reviewedFolder": "intake/reviewed/",
+    "importNote": "Internal original educational summaries reviewed by the project owner on 2026-11-23 for educational clarity and labeling. Not promoted as legal authority; real official legal corpus pending external verification."
+  },
+  "reviewedOfficialIdentifiers": [],
+  "sources": [
+    {
+      "id": "edu-court-roles",
+      "title": "Court roles in an adversarial hearing (internal outline)",
+      "sourceName": "THE BAR internal educational notes (original)",
+      "citation": "INTERNAL-EDU-COURT-ROLES",
+      "sourceType": "summary",
+      "jurisdiction": "Fictional",
+      "verificationStatus": "verified",
+      "category": "internal-educational-summary",
+      "authority": "non-authoritative",
+      "assertsRealCitation": false,
+      "disclaimer": "Internal educational summary; not legal advice; not the law of any real jurisdiction; do not cite as authority.",
+      "provenance": "Original internal summary created for THE BAR prototype; not official legal text. Authored by the project team to orient players to generic courtroom roles. No real statutory provision, judgment, case name, reporter citation or procedural rule is quoted or asserted. Reviewed internally on 2026-11-23 for educational clarity only, not for legal accuracy against any official source.",
+      "verifiedBy": "Project owner (user-approved)",
+      "verificationDate": "2026-11-23",
+      "intake": "seed",
+      "excerpt": "For gameplay, a hearing is organized around a few simplified roles: a presiding participant who keeps order and issues the outcome, a party presenting a case, a party responding to it, and witnesses who give accounts. This is a teaching abstraction, not a description of any real court's procedure or rules of evidence.",
+      "notes": "Non-authoritative internal educational content. 'Verified' here means the project owner checked it as original internal educational material, not that any law was verified."
+    },
+    {
+      "id": "edu-burden",
+      "title": "The idea of a burden of proof (internal outline)",
+      "sourceName": "THE BAR internal educational notes (original)",
+      "citation": "INTERNAL-EDU-BURDEN",
+      "sourceType": "summary",
+      "jurisdiction": "Fictional",
+      "verificationStatus": "verified",
+      "category": "internal-educational-summary",
+      "authority": "non-authoritative",
+      "assertsRealCitation": false,
+      "disclaimer": "Internal educational summary; not legal advice; not the law of any real jurisdiction; do not cite as authority.",
+      "provenance": "Original internal summary created for THE BAR prototype; not official legal text. Authored by the project team to explain a general idea used in the game's scoring. No real statutory provision, judgment, case name, reporter citation or procedural rule is quoted or asserted. Reviewed internally on 2026-11-23 for educational clarity only, not for legal accuracy against any official source.",
+      "verifiedBy": "Project owner (user-approved)",
+      "verificationDate": "2026-11-23",
+      "intake": "seed",
+      "excerpt": "Many dispute systems expect the party making an assertion to support it. The game models this loosely: the side advancing a claim is asked to connect it to the information available, and the response is tested against that same material. The game's thresholds are invented for play and do not reproduce any real standard of proof.",
+      "notes": "Non-authoritative internal educational content. No real legal standard or threshold is stated or implied."
+    },
+    {
+      "id": "edu-witnesses",
+      "title": "Witness accounts in two stages (internal outline)",
+      "sourceName": "THE BAR internal educational notes (original)",
+      "citation": "INTERNAL-EDU-WITNESSES",
+      "sourceType": "summary",
+      "jurisdiction": "Fictional",
+      "verificationStatus": "verified",
+      "category": "internal-educational-summary",
+      "authority": "non-authoritative",
+      "assertsRealCitation": false,
+      "disclaimer": "Internal educational summary; not legal advice; not the law of any real jurisdiction; do not cite as authority.",
+      "provenance": "Original internal summary created for THE BAR prototype; not official legal text. Authored by the project team to describe a two-stage witness interaction used in the game. No real statutory provision, judgment, case name, reporter citation or procedural rule is quoted or asserted. Reviewed internally on 2026-11-23 for educational clarity only, not for legal accuracy against any official source.",
+      "verifiedBy": "Project owner (user-approved)",
+      "verificationDate": "2026-11-23",
+      "intake": "seed",
+      "excerpt": "In the game a witness is first asked to give an account and then to answer questions from the opposing side. The two-stage structure is a simplified mechanic for pacing and scoring; it is not a statement of how examination is conducted in any real court, and no real rule of evidence is applied.",
+      "notes": "Non-authoritative internal educational content. The two-stage structure is a game mechanic, not a procedural rule."
+    },
+    {
+      "id": "edu-decision",
+      "title": "Writing a short reasoned outcome (internal outline)",
+      "sourceName": "THE BAR internal educational notes (original)",
+      "citation": "INTERNAL-EDU-DECISION",
+      "sourceType": "summary",
+      "jurisdiction": "Fictional",
+      "verificationStatus": "verified",
+      "category": "internal-educational-summary",
+      "authority": "non-authoritative",
+      "assertsRealCitation": false,
+      "disclaimer": "Internal educational summary; not legal advice; not the law of any real jurisdiction; do not cite as authority.",
+      "provenance": "Original internal summary created for THE BAR prototype; not official legal text. Authored by the project team to explain the game's written-outcome exercise. No real statutory provision, judgment, case name, reporter citation or procedural rule is quoted or asserted. Reviewed internally on 2026-11-23 for educational clarity only, not for legal accuracy against any official source.",
+      "verifiedBy": "Project owner (user-approved)",
+      "verificationDate": "2026-11-23",
+      "intake": "seed",
+      "excerpt": "The game asks players to finish with a brief outcome that states what they decided and why, pointing to the material they relied on. This is a general writing exercise about giving reasons; it does not imitate or reproduce any real judgment, and it asserts no rule about what a judicial decision must contain.",
+      "notes": "Non-authoritative internal educational content. No real judgment or judicial reasoning requirement is reproduced."
+    }
+  ]
+}

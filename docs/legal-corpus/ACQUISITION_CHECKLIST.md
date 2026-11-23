@@ -1,17 +1,31 @@
 # Source acquisition checklist & import staging (D-005 / D-011)
 
-> **Status (2026-11-23): PIPELINE READY — CORPUS BLOCKED.**
-> This is process/tooling documentation. **No official legal text has been acquired, ingested or
-> verified.** No statutory provision, judgment, reporter citation or procedural rule appears here.
-> The only example values are internal/fictional or explicitly marked `TEMPLATE`. The named
-> reviewer assignment and the formal versioning policy are still recorded as `Unknown` in
-> [`../DECISIONS.md`](../DECISIONS.md); do not write a policy or a reviewer name from memory.
+> **Status (2026-11-23): INTERNAL ORIGINAL EDUCATIONAL CORPUS PRESENT — REAL OFFICIAL CORPUS STILL PENDING EXTERNAL VERIFICATION.**
+> This is process/tooling documentation for acquiring **real official legal text**. **No official
+> legal text has been acquired, ingested or verified.** No statutory provision, judgment, reporter
+> citation or procedural rule appears here. The shipped `manifest.json` holds only original
+> internal educational summaries (non-authoritative, not legal advice, internal identifiers, no
+> real citations); it is **not** the result of this checklist and is not legal authority. The named
+> legal content owner and the formal versioning policy for real law are still recorded as
+> `Unknown` in [`../DECISIONS.md`](../DECISIONS.md); do not write a policy or a reviewer name from
+> memory.
 
 This checklist is the human workflow that turns an official publication into a validated corpus
 record. It complements [`README.md`](./README.md) (folder layout + manifest format) and
 [`../LEGAL_SOURCE_VERIFICATION.md`](../LEGAL_SOURCE_VERIFICATION.md) (no-fabrication rules + sign-off
 log). The runtime never reads these files; the validator only checks that attestations are present
 and well formed. It cannot confirm that a reviewer actually checked the text.
+
+**Scope note.** The internal original educational corpus in [`manifest.json`](./manifest.json) is
+explicitly **out of scope** of this official-source acquisition checklist. Its summaries were
+written internally for the prototype; they are not reproduced official text, so there is no
+publisher, official publication identifier, exact legal text, effective date or real citation to
+acquire. They carry `category: "internal-educational-summary"`, `authority: "non-authoritative"`,
+a disclaimer that they are not legal advice, internal identifiers only, and
+`assertsRealCitation: false`. Their `verified` status records only that the project owner reviewed
+them as internal educational material on 2026-11-23, not that any law was verified. The
+checklist below applies to the **real official corpus**, which is still pending external
+verification and must be built from [`manifest.template.json`](./manifest.template.json).
 
 ## 0. Stop conditions — do not start if any of these is true
 
@@ -200,13 +214,23 @@ hardening codes added with this checklist are:
 | `ACQUISITION_CHECKLIST_INCOMPLETE`                                                                             | Acquisition checklist is not marked complete.                       | warning  |
 | `MISSING_SIGNOFF` / `RIGHTS_NOT_CLEARED` / `NO_VERSION_POLICY` / `NO_ACQUISITION_RECORD` / `NO_STAGING_RECORD` | Gated corpus is missing an attestation.                             | warning  |
 
+The internal educational markers add hard errors that keep the shipped non-template manifest
+honest: `INVALID_CORPUS_KIND`, `INVALID_AUTHORITY_DECLARATION`, `INVALID_DISCLAIMER`,
+`INVALID_CITATION_ASSERTION`, `INVALID_SOURCE_CATEGORY`, `EDUCATIONAL_CORPUS_WITH_ALLOWLIST`,
+`EDUCATIONAL_CORPUS_NON_SUMMARY`, `EDUCATIONAL_CORPUS_SPECIFIC_CITATION` and
+`MISSING_AUTHORITY_DECLARATION` / `MISSING_DISCLAIMER` / `MISSING_CITATION_ASSERTION` /
+`MISSING_EDUCATIONAL_CATEGORY` / `MISSING_SOURCE_AUTHORITY`. A corpus declaring
+`corpusKind: "internal-educational-summary"` must contain only marked, non-authoritative original
+summaries with internal identifiers and no allowlist; this is the machine-enforced reason the
+shipped `manifest.json` can be real without fabricating law.
+
 ## 9. Running the validator
 
 ```bash
 # Shape template must be rejected (expected exit 1):
 npm run validate:legal-corpus -- --template
 
-# Real manifest (not shipped while blocked):
+# Shipped REAL manifest: internal ORIGINAL educational summaries only (expected exit 0):
 npm run validate:legal-corpus -- docs/legal-corpus/manifest.json
 
 # Record-only check:
@@ -217,10 +241,17 @@ Exit codes: `0` = valid, `1` = validation failure, `2` = usage/IO error. The rep
 `Summary` (errors/warnings), `STATUS: VALID` or `STATUS: BLOCKED`, and concrete `Next steps`
 derived from the codes emitted. Nothing is ingested or verified by either CLI.
 
-## 10. Blocked status (do not skip)
+## 10. Current status (do not skip)
 
-No real corpus manifest exists; `manifest.template.json` carries `template: true` and is rejected
-by design; `reviewedOfficialIdentifiers` is empty; the in-app seed contains only labeled
-placeholders and one internal fictional educational summary (not legal authority). Unblocks only
-when the legal content owner is assigned, supplies official text with confirmed rights, agrees the
-versioning policy and completes this checklist with a recorded sign-off.
+An internal original educational corpus **is present** in `manifest.json`: four original summaries
+marked `internal-educational-summary` / `non-authoritative` / not legal advice, internal identifiers
+only, no real citations, owner-signed 2026-11-23, rights recorded as original internal work. It is
+**not** a real official legal corpus and is not the result of this checklist.
+
+The real official corpus is **still pending external verification**: `manifest.template.json`
+carries `template: true` and is rejected by design; `reviewedOfficialIdentifiers` is intentionally
+empty; the official-source acquisition checklist is not complete (no official text exists to
+acquire); the in-app seed contains only labeled placeholders and one internal fictional educational
+summary (not legal authority). The real corpus unblocks only when a legal content owner is
+assigned, supplies official text with confirmed rights, agrees the versioning policy and completes
+this checklist with a recorded sign-off — never by filling the template from memory or AI output.

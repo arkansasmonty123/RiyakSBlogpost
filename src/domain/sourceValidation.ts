@@ -70,6 +70,17 @@ export const CORPUS_MANIFEST_STAGES = ['unverified', 'reviewed', 'promoted'] as 
 /** Rights states: no rights to reproduce, rights being checked, or rights confirmed by a human. */
 export const CORPUS_RIGHTS_STATUSES = ['none', 'pending', 'cleared'] as const;
 
+/**
+ * The only corpus kind shipped in this repository: original internal educational summaries.
+ * These are teaching material authored for the prototype, not legal authority. A *real* official
+ * legal corpus is a separate, human-reviewed effort and is not asserted by any shipped file.
+ */
+export const INTERNAL_EDUCATIONAL_CATEGORY = 'internal-educational-summary';
+/** Declaration required of an internal educational corpus/record: it is never legal authority. */
+export const NON_AUTHORITATIVE_DECLARATION = 'non-authoritative';
+/** Supported corpus kinds. Only the internal educational kind is present in this repository. */
+export const CORPUS_KINDS = [INTERNAL_EDUCATIONAL_CATEGORY] as const;
+
 function hasText(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
@@ -158,6 +169,45 @@ export function validateSourceRecord(source: unknown, options: SourceValidationO
   if (record.intake !== undefined && record.intake !== 'seed' && record.intake !== 'player-draft') {
     errors.push(issue('INVALID_INTAKE', "Intake must be 'seed' or 'player-draft' when present.", 'intake'));
   }
+
+  // Optional honesty markers for original internal educational summaries. They are validated
+  // when present (so a stand-in cannot silently claim to be authoritative law), but remain
+  // optional for backward compatibility with older records/manifests.
+  const category = record.category;
+  if (category !== undefined && category !== null && category !== INTERNAL_EDUCATIONAL_CATEGORY) {
+    errors.push(
+      issue(
+        'INVALID_SOURCE_CATEGORY',
+        `category must be "${INTERNAL_EDUCATIONAL_CATEGORY}" when present (the only supported non-authoritative record kind).`,
+        'category',
+      ),
+    );
+  }
+  const authority = record.authority;
+  if (authority !== undefined && authority !== null && authority !== NON_AUTHORITATIVE_DECLARATION) {
+    errors.push(
+      issue(
+        'INVALID_AUTHORITY_DECLARATION',
+        `authority must be "${NON_AUTHORITATIVE_DECLARATION}" when present; these records are never legal authority.`,
+        'authority',
+      ),
+    );
+  }
+  const disclaimer = record.disclaimer;
+  if (disclaimer !== undefined && disclaimer !== null && !hasText(disclaimer)) {
+    errors.push(issue('INVALID_DISCLAIMER', 'disclaimer must be a non-empty string when present.', 'disclaimer'));
+  }
+  const assertsRealCitation = record.assertsRealCitation;
+  if (assertsRealCitation !== undefined && assertsRealCitation !== false) {
+    errors.push(
+      issue(
+        'INVALID_CITATION_ASSERTION',
+        'assertsRealCitation, when present, must be false for an internal educational summary.',
+        'assertsRealCitation',
+      ),
+    );
+  }
+  const isInternalEducational = category === INTERNAL_EDUCATIONAL_CATEGORY;
 
   if (record.sourceUrl !== undefined && record.sourceUrl !== '' && !isHttpUrl(String(record.sourceUrl))) {
     errors.push(issue('INVALID_SOURCE_URL', 'Source URL must be a valid http:// or https:// address.', 'sourceUrl'));
@@ -251,7 +301,10 @@ export function validateSourceRecord(source: unknown, options: SourceValidationO
           'sourceUrl',
         ),
       );
-    } else if (!needsOfficialUrl && !hasText(record.sourceUrl)) {
+    } else if (!needsOfficialUrl && !hasText(record.sourceUrl) && !isInternalEducational) {
+      // An explicitly marked internal educational summary has no official text to point at by
+      // design, so an absent URL is expected rather than a warning. Unmarked summaries keep the
+      // existing warning so real-world authority is not silently accepted without a trace.
       warnings.push(
         issue(
           'NO_OFFICIAL_URL',
@@ -368,6 +421,8 @@ export interface CorpusManifestResult {
   duplicateIds?: string[];
   schemaVersion?: number;
   status?: string;
+  /** Declared corpus kind, when present (e.g. internal-educational-summary). */
+  corpusKind?: string;
 }
 
 /** Read an optional nested metadata object; a present non-object is always a hard error. */
@@ -764,6 +819,49 @@ export function validateCorpusManifest(input: unknown, options: SourceValidation
     );
   }
 
+  // Optional corpus-level honesty markers (see the internal educational manifest shipped in
+  // docs/legal-corpus/manifest.json). They are validated when present so a corpus cannot claim
+  // to be non-authoritative while asserting real citations, and remain optional for older files.
+  const corpusKind = manifest.corpusKind;
+  if (corpusKind !== undefined && corpusKind !== null) {
+    if (typeof corpusKind !== 'string' || !(CORPUS_KINDS as readonly string[]).includes(corpusKind)) {
+      errors.push(
+        issue(
+          'INVALID_CORPUS_KIND',
+          `Unsupported corpusKind; this repository ships only ${CORPUS_KINDS.join(', ')}.`,
+          'corpusKind',
+        ),
+      );
+    }
+  }
+  const corpusAuthority = manifest.authority;
+  if (corpusAuthority !== undefined && corpusAuthority !== null && corpusAuthority !== NON_AUTHORITATIVE_DECLARATION) {
+    errors.push(
+      issue(
+        'INVALID_AUTHORITY_DECLARATION',
+        `authority must be "${NON_AUTHORITATIVE_DECLARATION}" when present; no shipped corpus is legal authority.`,
+        'authority',
+      ),
+    );
+  }
+  const corpusDisclaimer = manifest.disclaimer;
+  if (corpusDisclaimer !== undefined && corpusDisclaimer !== null && !hasText(corpusDisclaimer)) {
+    errors.push(issue('INVALID_DISCLAIMER', 'disclaimer must be a non-empty string when present.', 'disclaimer'));
+  }
+  if (
+    manifest.assertsRealCitation !== undefined &&
+    manifest.assertsRealCitation !== null &&
+    manifest.assertsRealCitation !== false
+  ) {
+    errors.push(
+      issue(
+        'INVALID_CITATION_ASSERTION',
+        'assertsRealCitation, when present, must be false for a non-authoritative corpus.',
+        'assertsRealCitation',
+      ),
+    );
+  }
+
   let reviewed: string[] = [];
   if (manifest.reviewedOfficialIdentifiers !== undefined) {
     if (!Array.isArray(manifest.reviewedOfficialIdentifiers)) {
@@ -789,6 +887,110 @@ export function validateCorpusManifest(input: unknown, options: SourceValidation
 
   if (!Array.isArray(manifest.sources)) {
     errors.push(issue('MISSING_SOURCES', 'A corpus manifest requires a "sources" array.', 'sources'));
+  }
+
+  // A corpus that declares itself internal/original educational content is held to a strict,
+  // honesty-preserving shape: only clearly marked non-authoritative summaries, no specific-
+  // looking citations, no statute/judgment/rule records and no reviewed allowlist. This is what
+  // lets the shipped manifest be real (non-template) without fabricating any law.
+  if (corpusKind === INTERNAL_EDUCATIONAL_CATEGORY) {
+    if (corpusAuthority === undefined || corpusAuthority === null) {
+      errors.push(
+        issue(
+          'MISSING_AUTHORITY_DECLARATION',
+          'An internal educational corpus must declare authority: "non-authoritative".',
+          'authority',
+        ),
+      );
+    }
+    if (corpusDisclaimer === undefined || corpusDisclaimer === null) {
+      errors.push(
+        issue(
+          'MISSING_DISCLAIMER',
+          'An internal educational corpus must carry a disclaimer stating it is not legal advice and asserts no real citation.',
+          'disclaimer',
+        ),
+      );
+    }
+    if (manifest.assertsRealCitation === undefined || manifest.assertsRealCitation === null) {
+      errors.push(
+        issue(
+          'MISSING_CITATION_ASSERTION',
+          'An internal educational corpus must explicitly set assertsRealCitation to false.',
+          'assertsRealCitation',
+        ),
+      );
+    }
+    if (reviewed.length > 0) {
+      errors.push(
+        issue(
+          'EDUCATIONAL_CORPUS_WITH_ALLOWLIST',
+          'An internal educational corpus contains no reviewed official citations; reviewedOfficialIdentifiers must be empty.',
+          'reviewedOfficialIdentifiers',
+        ),
+      );
+    }
+    const educationalSources = Array.isArray(manifest.sources) ? manifest.sources : [];
+    const educationalIssue = (code: string, message: string, field: string, label: string): ValidationIssue => ({
+      code,
+      message: `${label}: ${message}`,
+      field,
+      severity: 'error',
+    });
+    educationalSources.forEach((source, index) => {
+      if (!isObject(source)) return;
+      const label = `sources[${index}]`;
+      if (source.sourceType !== 'summary') {
+        errors.push(
+          educationalIssue(
+            'EDUCATIONAL_CORPUS_NON_SUMMARY',
+            'An internal educational corpus may contain only "summary" records, never statute/judgment/rule records.',
+            'sourceType',
+            label,
+          ),
+        );
+      }
+      if (hasText(source.citation) && looksLikeSpecificCitation(String(source.citation))) {
+        errors.push(
+          educationalIssue(
+            'EDUCATIONAL_CORPUS_SPECIFIC_CITATION',
+            'An internal educational corpus must not contain specific-looking citations (section/article numbers, reporter references or case names).',
+            'citation',
+            label,
+          ),
+        );
+      }
+      if (source.category === undefined || source.category === null) {
+        errors.push(
+          educationalIssue(
+            'MISSING_EDUCATIONAL_CATEGORY',
+            `Each record must declare category: "${INTERNAL_EDUCATIONAL_CATEGORY}".`,
+            'category',
+            label,
+          ),
+        );
+      }
+      if (source.authority === undefined || source.authority === null) {
+        errors.push(
+          educationalIssue(
+            'MISSING_SOURCE_AUTHORITY',
+            `Each record must declare authority: "${NON_AUTHORITATIVE_DECLARATION}".`,
+            'authority',
+            label,
+          ),
+        );
+      }
+      if (source.assertsRealCitation === undefined || source.assertsRealCitation === null) {
+        errors.push(
+          educationalIssue(
+            'MISSING_CITATION_ASSERTION',
+            'Each record must explicitly set assertsRealCitation to false.',
+            'assertsRealCitation',
+            label,
+          ),
+        );
+      }
+    });
   }
 
   // The manifest's own allowlist is the machine-readable record of human review; any
@@ -844,5 +1046,6 @@ export function validateCorpusManifest(input: unknown, options: SourceValidation
     duplicateIds: batch.duplicateIds,
     ...(typeof schemaVersion === 'number' ? { schemaVersion } : {}),
     ...(status ? { status } : {}),
+    ...(typeof corpusKind === 'string' ? { corpusKind } : {}),
   };
 }

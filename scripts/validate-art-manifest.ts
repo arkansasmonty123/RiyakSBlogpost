@@ -70,6 +70,25 @@ function main(): number {
   process.stdout.write(`  assets: ${result.assets?.total ?? 0}\n`);
   process.stdout.write(`  total size: ${result.totalSizeBytes ?? 0} bytes\n`);
 
+  const byKind = new Map<string, number>();
+  const parsedAssets: unknown =
+    parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>).assets
+      : undefined;
+  const assetRecords: unknown[] = Array.isArray(parsedAssets) ? parsedAssets : [];
+  for (const asset of assetRecords) {
+    if (!asset || typeof asset !== 'object' || Array.isArray(asset)) continue;
+    const kind = (asset as Record<string, unknown>).kind;
+    if (typeof kind === 'string' && kind) byKind.set(kind, (byKind.get(kind) ?? 0) + 1);
+  }
+  if (byKind.size > 0) {
+    const summary = [...byKind.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([kind, count]) => `${kind}=${count}`)
+      .join(', ');
+    process.stdout.write(`  by kind: ${summary}\n`);
+  }
+
   for (const error of result.errors) reportIssue(error, 'manifest');
   for (const warning of result.warnings) reportIssue(warning, 'manifest');
 

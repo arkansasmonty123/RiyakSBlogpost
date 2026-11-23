@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { renderToString } from 'react-dom/server';
-import { App } from '@/app/App';
+import { App, RetrievedSourcesNotice } from '@/app/App';
 import { createResetUiState } from '@/app/sessionUi';
+import type { RetrievedSource } from '@/domain/ai/retrieval';
 import { isLocalAiPanelEnabled } from '@/config/env';
 import { createInitialSave } from '@/domain/seed';
 
@@ -68,6 +69,35 @@ describe('Local AI Lab panel', () => {
     expect(fresh.aiResponse).toBe('');
     expect(fresh.aiWarnings).toEqual([]);
     expect(fresh.aiError).toBe('');
+    expect(fresh.aiIncludeInternalSummaries).toBe(false);
+    expect(fresh.aiSources).toEqual([]);
+  });
+
+  it('shows the local provider, request status and the opt-in summaries toggle', () => {
+    const html = renderAiPanel();
+    expect(html).toContain('Provider: ');
+    expect(html).toContain('Local llama-server (llama.cpp)');
+    expect(html).toContain('/api/local-llm');
+    expect(html).toContain('Status: idle');
+    expect(html).toContain('Include approved internal legal summaries (non-authoritative)');
+    expect(html).toContain('type="checkbox"');
+  });
+
+  it('renders retrieved source provenance with a non-authoritative label', () => {
+    const sources: RetrievedSource[] = [
+      {
+        id: 'ls-4',
+        title: 'Evidence handling principle (educational summary)',
+        provenance: 'Internal educational summary for prototype gameplay; not legal advice.',
+        context: 'NON-AUTHORITATIVE internal summary',
+      },
+    ];
+    const html = renderToString(<RetrievedSourcesNotice sources={sources} />);
+    expect(html).toContain('Retrieved internal sources (non-authoritative)');
+    expect(html).toContain('ls-4');
+    expect(html).toContain('Internal educational summary for prototype gameplay');
+    expect(html).toContain('not legal authority');
+    expect(renderToString(<RetrievedSourcesNotice sources={[]} />)).toBe('');
   });
 
   it('honours the env-aware feature flag', () => {

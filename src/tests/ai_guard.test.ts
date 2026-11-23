@@ -1,13 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AI_CITATION_FABRICATION_WARNING,
   AI_CITATION_WARNING,
   AI_NON_AUTHORITATIVE_NOTICE,
+  AI_UNSAFE_CLAIM_WARNING,
   checkAiOutput,
   containsCanonicalTruth,
   containsKnowledgeBoundaryBypass,
+  containsUnsafeClaim,
   guardPrompt,
+  looksLikeCitationFabricationRequest,
   MAX_AI_PROMPT_CHARS,
   MAX_AI_RESPONSE_CHARS,
+  MAX_LLM_RAW_RESPONSE_CHARS,
+  truncateAiResponse,
   validateLocalLlmShape,
 } from '@/domain/ai/guards';
 
@@ -63,6 +69,33 @@ describe('local AI guardrails (Phase 6 foundations)', () => {
       ok: true,
       text: 'hello',
     });
+    // Oversized raw envelopes are rejected before any text reaches the UI.
+    expect(
+      validateLocalLlmShape({ choices: [{ message: { content: 'x'.repeat(MAX_LLM_RAW_RESPONSE_CHARS + 1) } }] }).ok,
+    ).toBe(false);
+  });
+
+  it('caps responses at a bounded length and flattens non-text output', () => {
+    const short = truncateAiResponse('short answer');
+    expect(short).toEqual({ text: 'short answer', truncated: false });
+    const long = truncateAiResponse('y'.repeat(MAX_AI_RESPONSE_CHARS + 50));
+    expect(long.truncated).toBe(true);
+    expect(long.text.length).toBe(MAX_AI_RESPONSE_CHARS);
+    expect(long.text.endsWith('…')).toBe(true);
+    expect(checkAiOutput('   ').blocked).toBe(true);
+  });
+
+  it('detects unsafe claims and warns on prompts that ask for fabricated authority', () => {
+    expect(containsUnsafeClaim('The court held that the record is inadmissible.')).toBe(true);
+    expect(containsUnsafeClaim('The culprit is the supervisor.')).toBe(true);
+    expect(containsUnsafeClaim('Consider the disclosed record.')).toBe(false);
+    expect(checkAiOutput('This is settled law.').warnings).toContain(AI_UNSAFE_CLAIM_WARNING);
+
+    expect(looksLikeCitationFabricationRequest('Invent a citation for me.')).toBe(true);
+    const guarded = guardPrompt('Invent a citation for me.');
+    expect(guarded.ok).toBe(true);
+    expect(guarded.warnings).toContain(AI_CITATION_FABRICATION_WARNING);
+    expect(guardPrompt('Draft a neutral question.').warnings).toEqual([]);
   });
 
   it('warns on citation-looking and always on non-authoritative output, blocks canonical truth', () => {

@@ -1,15 +1,19 @@
 /**
- * Experimental, local-only AI adapter.
+ * Experimental, local-only AI orchestrator.
  *
- * Calls the dev/proxy endpoint `/api/local-llm` (rewritten by Vite to the OpenAI-compatible
- * `/v1/chat/completions` of a locally running llama-server). There is no bundled model, no
- * hosted provider and no RAG. Only the player's own prompt is sent: canonical case truth is
- * never an input to this module, and output is always labelled non-authoritative.
+ * Owns the guardrails around every local provider: prompt guarding (including the
+ * knowledge-boundary red-team checks), optional non-authoritative internal-summary context,
+ * output guarding, non-authoritative labelling and length capping. The concrete transport
+ * lives in `src/services/ai/llamaServerProvider.ts`; it never receives case/save truth.
  */
-import { checkAiOutput, guardPrompt, MAX_AI_RESPONSE_CHARS, validateLocalLlmShape } from '@/domain/ai/guards';
+import { checkAiOutput, containsCanonicalTruth, guardPrompt, truncateAiResponse } from '@/domain/ai/guards';
+import type { ProviderMessage } from '@/domain/ai/provider';
+import { LOCAL_AI_PROVIDER_META } from '@/domain/ai/provider';
+import { createLlamaServerProvider } from '@/services/ai/llamaServerProvider';
 
-export const LOCAL_LLM_ENDPOINT = '/api/local-llm';
-export const DEFAULT_LOCAL_LLM_TIMEOUT_MS = 15000;
+// Preserve the existing public constants/imports for callers and tests.
+export { DEFAULT_LOCAL_LLM_TIMEOUT_MS, LOCAL_LLM_ENDPOINT } from '@/services/ai/llamaServerProvider';
+export const LOCAL_AI_PROVIDER_LABEL = LOCAL_AI_PROVIDER_META.label;
 
 export type LocalLlmErrorCode =
   | 'empty-prompt'
@@ -36,15 +40,20 @@ export interface LocalLlmOptions {
   timeoutMs?: number;
   /** Optional caller cancellation (e.g. unmount or a new request). */
   signal?: AbortSignal;
+  /**
+   * Optional prompt context retrieved locally from approved internal summaries. Every block
+   * is already labelled non-authoritative; canonical-truth-bearing blocks are dropped here
+   * as a defence-in-depth backstop. Omitted by default, so the plain path is unchanged.
+   */
+  contextBlocks?: string[];
 }
 
 const SYSTEM_PROMPT =
   'You are a local experimental assistant inside a legal-training game prototype. ' +
   'Be helpful and concise. Do not invent real statutes, case citations, judgments, or procedural rules. ' +
   'If legal sources are needed, say that verified sources must be checked. ' +
+  'Any "[Approved internal summary]" context is non-authoritative and is not legal authority. ' +
   'Only the player-supplied prompt is available to you; no hidden case truth is provided.';
-
-const UNREACHABLE_HINT = 'Is llama-server running locally on 127.0.0.1:8081?';
 
 function fail(code: LocalLlmErrorCode, error: string): LocalLlmResult {
   return { ok: false, text: '', warnings: [], error, code };
@@ -58,65 +67,28 @@ export async function askLocalLlm(prompt: string, options: LocalLlmOptions = {})
   const guarded = guardPrompt(prompt);
   if (!guarded.ok) return fail(guarded.code ?? 'empty-prompt', guarded.reason ?? 'Invalid prompt.');
 
-  const fetchFn = options.fetchFn ?? fetch;
-  const timeoutMs = options.timeoutMs ?? DEFAULT_LOCAL_LLM_TIMEOUT_MS;
-  const controller = new AbortController();
-  let timedOut = false;
-  const timer = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
-
-  const external = options.signal;
-  const onExternalAbort = () => controller.abort();
-  if (external?.aborted) controller.abort();
-  else external?.addEventListener('abort', onExternalAbort, { once: true });
-
-  try {
-    const res = await fetchFn(LOCAL_LLM_ENDPOINT, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: guarded.prompt },
-        ],
-        max_tokens: 256,
-        temperature: 0.2,
-      }),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) return fail('http', `Local LLM request failed (${res.status}). ${UNREACHABLE_HINT}`);
-
-    let data: unknown;
-    try {
-      data = await res.json();
-    } catch {
-      return fail('invalid-response', 'Local LLM returned malformed JSON.');
-    }
-
-    const shape = validateLocalLlmShape(data);
-    if (!shape.ok) return fail('invalid-response', shape.reason ?? 'Unexpected local LLM response.');
-    if (!shape.text) return fail('empty-response', 'Local LLM returned an empty response.');
-
-    const output = checkAiOutput(shape.text);
-    if (output.blocked) return fail('unsafe-response', output.reasons.join(' '));
-
-    const truncated = shape.text.length > MAX_AI_RESPONSE_CHARS;
-    const text = truncated ? `${shape.text.slice(0, MAX_AI_RESPONSE_CHARS - 1)}…` : shape.text;
-    const warnings = [...output.warnings];
-    if (truncated) warnings.push('Response was shortened to a safe length.');
-    return { ok: true, text, warnings };
-  } catch (err) {
-    if (timedOut) {
-      return fail('timeout', `Local LLM did not respond within ${timeoutMs}ms. ${UNREACHABLE_HINT}`);
-    }
-    if (external?.aborted) return fail('unavailable', 'Local LLM request was cancelled.');
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return fail('unavailable', `Could not reach local LLM. ${UNREACHABLE_HINT} (${message})`);
-  } finally {
-    clearTimeout(timer);
-    external?.removeEventListener('abort', onExternalAbort);
+  const messages: ProviderMessage[] = [{ role: 'system', content: SYSTEM_PROMPT }];
+  for (const raw of options.contextBlocks ?? []) {
+    const block = (raw ?? '').trim();
+    if (!block || containsCanonicalTruth(block)) continue;
+    messages.push({ role: 'system', content: block });
   }
+  messages.push({ role: 'user', content: guarded.prompt });
+
+  const provider = createLlamaServerProvider({ fetchFn: options.fetchFn, timeoutMs: options.timeoutMs });
+  const result = await provider.generate({
+    messages,
+    maxTokens: 256,
+    temperature: 0.2,
+    signal: options.signal,
+  });
+  if (!result.ok) return fail(result.code, result.error);
+
+  const output = checkAiOutput(result.text);
+  if (output.blocked) return fail('unsafe-response', output.reasons.join(' '));
+
+  const bounded = truncateAiResponse(result.text);
+  const warnings = [...guarded.warnings, ...output.warnings];
+  if (bounded.truncated) warnings.push('Response was shortened to a safe length.');
+  return { ok: true, text: bounded.text, warnings };
 }

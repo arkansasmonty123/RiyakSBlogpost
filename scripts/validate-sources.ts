@@ -96,6 +96,16 @@ function main(): number {
   }
 
   const batch = validateSourceRecords(sources, options);
+  const isEducational = (source: unknown): boolean => {
+    if (!source || typeof source !== 'object' || Array.isArray(source)) return false;
+    const record = source as Record<string, unknown>;
+    return record.category === 'internal-educational-summary' && record.authority === 'non-authoritative';
+  };
+  if (sources.length > 0 && sources.every(isEducational)) {
+    process.stdout.write(
+      'Corpus posture: internal original educational summaries (non-authoritative; not legal advice; no real legal citations).\n',
+    );
+  }
   const errors = batch.results.reduce((count, result) => count + result.errors.length, 0);
   const warnings = batch.results.reduce((count, result) => count + result.warnings.length, 0);
   for (const result of batch.results) {

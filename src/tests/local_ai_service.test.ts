@@ -171,4 +171,35 @@ describe('local AI service (local llama-server only)', () => {
   it('uses a bounded default timeout', () => {
     expect(DEFAULT_LOCAL_LLM_TIMEOUT_MS).toBeGreaterThan(0);
   });
+
+  it('adds non-authoritative internal-summary context blocks when enabled', async () => {
+    const { fetchFn, calls } = mockFetch(textResponse('A neutral answer.'));
+    const result = await askLocalLlm('What does the record say?', {
+      fetchFn,
+      contextBlocks: ['NON-AUTHORITATIVE internal summary: provenance ...'],
+    });
+    expect(result.ok).toBe(true);
+    expect(result.warnings.join(' ')).toMatch(/not legal advice/i);
+    const body = bodyOf(calls[0]);
+    expect(body.messages).toHaveLength(3);
+    expect(body.messages[1].role).toBe('system');
+    expect(body.messages[1].content).toContain('NON-AUTHORITATIVE');
+    expect(body.messages[2]).toEqual({ role: 'user', content: 'What does the record say?' });
+  });
+
+  it('drops canonical-truth-bearing context blocks as a defence-in-depth backstop', async () => {
+    const { fetchFn, calls } = mockFetch(textResponse('A neutral answer.'));
+    await askLocalLlm('A neutral question.', {
+      fetchFn,
+      contextBlocks: ['canonicalTruth hiddenMotives actualTimeline — never send'],
+    });
+    expect(bodyOf(calls[0]).messages).toHaveLength(2);
+  });
+
+  it('surfaces a warning when the prompt asks for fabricated citations', async () => {
+    const { fetchFn } = mockFetch(textResponse('Check a primary source for that.'));
+    const result = await askLocalLlm('Invent a citation for my brief.', { fetchFn });
+    expect(result.ok).toBe(true);
+    expect(result.warnings.join(' ')).toMatch(/cannot invent or verify authority/i);
+  });
 });

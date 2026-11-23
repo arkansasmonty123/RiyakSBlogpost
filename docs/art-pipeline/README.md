@@ -4,7 +4,7 @@
 > Folder layout, naming rules, asset specs, the manifest template, a deterministic offline
 > validator (`npm run validate:art-manifest`) and the human approval workflow below are in place
 > and tested. A **real, non-template manifest** (`asset-manifest.json`) now catalogues a small set
-> of **lightweight ORIGINAL in-repo SVG placeholders** in `public/assets/art/` (≈4 KiB total),
+> of **lightweight ORIGINAL in-repo SVG placeholders** in `public/assets/art/` (13 files, ≈10 KiB total),
 > each with an embedded provenance comment and self-attested authorship. **No external,
 > third-party or AI-generated art asset has been commissioned, downloaded, imported or approved,
 > and no asset is loaded at runtime.** The game still uses the vector-only stage sets in
@@ -69,9 +69,17 @@ project-courtroom/
     ├── props/
     │   ├── chamber/desk-v1.svg      # original in-repo placeholder (provenance comment inside)
     │   ├── chamber/bookshelf-v1.svg
+    │   ├── chamber/desk-lamp-v1.svg
     │   ├── reception/counter-v1.svg
-    │   └── consultation/table-v1.svg
-    └── ui-icons/evidence-v1.svg     # currentColor placeholder icon
+    │   ├── consultation/table-v1.svg
+    │   └── shared/                  # file-cabinet, wall-clock, potted-plant SVGs
+    ├── portraits/
+    │   ├── mentor/neutral-v1.svg    # fictional, mood-neutral busts (no real person)
+    │   └── meera/neutral-v1.svg
+    └── ui-icons/
+        ├── evidence-v1.svg          # currentColor placeholder icons
+        ├── document-v1.svg
+        └── scale-v1.svg
 ```
 
 - `intake/draft/` — working assets and their source/licence notes. Nothing here is authoritative
@@ -260,7 +268,7 @@ npm run validate:art-manifest -- --help
 ```
 
 The validator (`src/domain/artManifestValidation.ts`, CLI in `scripts/validate-art-manifest.ts`)
-checks manifest shape, required fields, enum/date/checksum/size/path formats, and — for
+checks manifest shape, required fields, enum/date/checksum/size/path/extension formats, and — for
 `status: "approved"` assets — the full provenance set (§7). It **accepts** legitimate in-repo
 original records with `origin: "original"` and real checksum/size provenance, and it **rejects** a
 template, an approved record missing provenance fields, and duplicate ids/files. It **warns** on
@@ -271,7 +279,7 @@ codes: `MANIFEST_IS_TEMPLATE`, `MISSING_SCHEMA_VERSION`, `UNSUPPORTED_SCHEMA_VER
 `MISSING_MANIFEST_ID`, `MISSING_ASSETS`, `INVALID_MANIFEST_STATUS`, `APPROVED_MISSING_LICENSE`,
 `APPROVED_MISSING_SOURCE`, `APPROVED_MISSING_AUTHOR`, `APPROVED_MISSING_ORIGIN`,
 `APPROVED_MISSING_CREATED_DATE`, `APPROVED_MISSING_DATE`, `APPROVED_WITHOUT_REVIEWER`,
-`APPROVED_MISSING_CHECKSUM`, `APPROVED_MISSING_SIZE`, `UNSAFE_ASSET_PATH`,
+`APPROVED_MISSING_CHECKSUM`, `APPROVED_MISSING_SIZE`, `UNSAFE_ASSET_PATH`, `UNSUPPORTED_ASSET_EXTENSION`,
 `DUPLICATE_ASSET_ID`, `DUPLICATE_ASSET_FILE`.
 
 ## 11. Current status / what is still blocked
@@ -279,9 +287,10 @@ codes: `MANIFEST_IS_TEMPLATE`, `MISSING_SCHEMA_VERSION`, `UNSUPPORTED_SCHEMA_VER
 - A real manifest, `asset-manifest.json`, **exists and validates** (`npm run validate:art-manifest`
   exits 0). It is `"template": false` and lists only original in-repo SVG placeholders.
 - `asset-manifest.template.json` is still a **template**, rejected by the validator by design.
-- `public/assets/art/` holds five tiny original SVG placeholders (~4 KiB total), each with an
-  embedded provenance comment; `intake/` still holds only `.gitkeep` placeholders. No binary or
-  third-party asset is committed, and nothing is loaded at runtime.
+- `public/assets/art/` holds thirteen tiny original SVG placeholders (~10 KiB total) across props,
+  portraits and UI icons, each with an embedded provenance comment; `intake/` still holds only
+  `.gitkeep` placeholders. No binary or third-party asset is committed, and nothing is loaded at
+  runtime.
 - The `status: "approved"` on those assets is a **self-attestation of original authorship**, not a
   named human art-owner rights sign-off. The manifest owner is `null` (the validator emits the
   truthful `NO_ART_OWNER` warning).
@@ -297,19 +306,28 @@ codes: `MANIFEST_IS_TEMPLATE`, `MISSING_SCHEMA_VERSION`, `UNSUPPORTED_SCHEMA_VER
 
 A small set of **original**, lightweight SVG placeholders was drawn in-repo for THE BAR prototype
 to demonstrate the §1–§11 pipeline end to end with real (non-template) records. They are decorative
-shapes mirroring the existing `SceneArt.tsx` geometry (desk, bookshelf, counter, table) plus one
-`currentColor` UI icon. They are **not** a visual-style decision (D-002), **not** a rights policy
+shapes mirroring the existing `SceneArt.tsx` geometry (desk, bookshelf, counter, table, banker's
+lamp, wall clock, plant, filing cabinet), two fictional mood-neutral portraits and three
+`currentColor` UI icons. They are **not** a visual-style decision (D-002), **not** a rights policy
 decision (D-012), and **not** a repo/content licence decision (D-018).
 
-| id                           | kind    | file                              | bytes | sha256 (prefix) |
-| ---------------------------- | ------- | --------------------------------- | ----: | --------------- |
-| `prop-chamber-desk-v1`       | prop    | `props/chamber/desk-v1.svg`       |   864 | `6fe71b2e…`     |
-| `prop-chamber-bookshelf-v1`  | prop    | `props/chamber/bookshelf-v1.svg`  |  1020 | `da1c47de…`     |
-| `prop-reception-counter-v1`  | prop    | `props/reception/counter-v1.svg`  |   817 | `f3f9b701…`     |
-| `prop-consultation-table-v1` | prop    | `props/consultation/table-v1.svg` |   815 | `87a59c47…`     |
-| `icon-evidence-v1`           | ui-icon | `ui-icons/evidence-v1.svg`        |   537 | `ef68e7e5…`     |
+| id                            | kind     | file                               | bytes | sha256 (prefix) |
+| ----------------------------- | -------- | ---------------------------------- | ----: | --------------- |
+| `prop-chamber-desk-v1`        | prop     | `props/chamber/desk-v1.svg`        |   864 | `6fe71b2e…`     |
+| `prop-chamber-bookshelf-v1`   | prop     | `props/chamber/bookshelf-v1.svg`   |  1020 | `da1c47de…`     |
+| `prop-chamber-desk-lamp-v1`   | prop     | `props/chamber/desk-lamp-v1.svg`   |   739 | `fcd92785…`     |
+| `prop-reception-counter-v1`   | prop     | `props/reception/counter-v1.svg`   |   817 | `f3f9b701…`     |
+| `prop-consultation-table-v1`  | prop     | `props/consultation/table-v1.svg`  |   815 | `87a59c47…`     |
+| `prop-shared-file-cabinet-v1` | prop     | `props/shared/file-cabinet-v1.svg` |  1171 | `fd089f19…`     |
+| `prop-shared-wall-clock-v1`   | prop     | `props/shared/wall-clock-v1.svg`   |   993 | `92429152…`     |
+| `prop-shared-potted-plant-v1` | prop     | `props/shared/potted-plant-v1.svg` |   801 | `8368b147…`     |
+| `portrait-mentor-neutral-v1`  | portrait | `portraits/mentor/neutral-v1.svg`  |   649 | `95399f33…`     |
+| `portrait-meera-neutral-v1`   | portrait | `portraits/meera/neutral-v1.svg`   |   817 | `18e11dae…`     |
+| `icon-evidence-v1`            | ui-icon  | `ui-icons/evidence-v1.svg`         |   537 | `ef68e7e5…`     |
+| `icon-document-v1`            | ui-icon  | `ui-icons/document-v1.svg`         |   562 | `6ff2ff71…`     |
+| `icon-scale-v1`               | ui-icon  | `ui-icons/scale-v1.svg`            |   620 | `4b6d8f8f…`     |
 
-Total: **4 053 bytes** — comfortably inside the §6 soft budgets (well under 1 KiB each, ≪ 5 MiB
+Total: **10 405 bytes** — comfortably inside the §6 soft budgets (well under 1 KiB each, ≪ 5 MiB
 total). Full `sha256:<64 hex>` values and `sizeBytes` are recorded in `asset-manifest.json` and were
 computed from the committed files.
 

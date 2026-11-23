@@ -102,3 +102,9 @@ Use this for future entries:
 - **Alternatives considered:** Keep everything in `$HOME` — rejected (hits 5GB limit). Strict total <1.5 GB — rejected after correction.
 - **Consequences / follow-up:** After session restart, re-install/re-symlink ephemeral artifacts. Monitor `df -h /home`. Configure `npm config set cache /tmp/opencode/npm-cache`; set `PLAYWRIGHT_BROWSERS_PATH` when needed.
 - **Verification:** `df -h /home /`; `mount`; ADR-000.
+
+## 2026-11-23 user approval
+
+- **Decision:** User approved completing remaining items ("everything") where feasible.
+- **Guardrails retained:** Never fabricate statutory provisions, judgments, citations, or procedural rules. No canonical-truth leakage. No unlicensed external assets.
+- **Implementation direction:** Build original in-repo art/assets, internal educational legal summaries (clearly non-authoritative, not real-law fabrications), and guarded Phase 6 local AI foundations/RAG over approved internal records. Document any real-world external verification limits honestly.

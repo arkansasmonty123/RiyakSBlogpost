@@ -81,3 +81,6 @@ docs/art-pipeline/intake/**
 *.aac
 *.mp4
 *.mov
+
+# Playwright MCP artifacts
+.playwright-mcp/

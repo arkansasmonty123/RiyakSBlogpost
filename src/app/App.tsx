@@ -52,7 +52,9 @@ import { loadDraftVersion, MAX_DRAFT_CHARS, saveDraftVersion, setCurrentDraft } 
 import { submitDraftForFeedback } from '@/domain/draftSubmission';
 import type { DraftSubmissionResult } from '@/domain/draftSubmission';
 import { MAX_AI_PROMPT_CHARS } from '@/domain/ai/guards';
-import { askLocalLlm } from '@/services/localLlm';
+import { retrieveApprovedInternalSummaries } from '@/domain/ai/retrieval';
+import type { RetrievedSource } from '@/domain/ai/retrieval';
+import { askLocalLlm, LOCAL_AI_PROVIDER_LABEL } from '@/services/localLlm';
 import type { LocalLlmResult } from '@/services/localLlm';
 import {
   addTheoryClaim,
@@ -153,6 +155,26 @@ export function SaveNoticeMessage({ notice }: { notice: string }) {
   );
 }
 
+/** Shows exactly which non-authoritative internal sources were used for an answer. */
+export function RetrievedSourcesNotice({ sources }: { sources: RetrievedSource[] }) {
+  if (sources.length === 0) return null;
+  return (
+    <div className="bg-bar-panel2 p-3 rounded border border-white/10 space-y-1">
+      <div className="text-xs text-bar-gold">Retrieved internal sources (non-authoritative)</div>
+      <ul className="list-disc pl-4 text-[11px] text-bar-muted space-y-1">
+        {sources.map((source) => (
+          <li key={source.id}>
+            <span className="text-bar-text">{source.id}</span> — {source.title}. Provenance: {source.provenance}
+          </li>
+        ))}
+      </ul>
+      <p className="text-[11px] text-amber-200">
+        These are internal educational summaries, not legal authority. Verify against primary sources.
+      </p>
+    </div>
+  );
+}
+
 function makeNotebookEntry(entry: Omit<NotebookEntry, 'id' | 'day'>, save: SaveGame): NotebookEntry {
   return { id: makeId('n'), day: save.clock.day, ...entry };
 }
@@ -216,6 +238,8 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const [aiResponse, setAiResponse] = useState(freshUi.aiResponse);
   const [aiWarnings, setAiWarnings] = useState<string[]>(freshUi.aiWarnings);
   const [aiError, setAiError] = useState(freshUi.aiError);
+  const [aiIncludeInternalSummaries, setAiIncludeInternalSummaries] = useState(freshUi.aiIncludeInternalSummaries);
+  const [aiSources, setAiSources] = useState<RetrievedSource[]>(freshUi.aiSources);
   const [aiLoading, setAiLoading] = useState(false);
   // Discard a late local-AI response if the user reset (or asked again) while it was in flight.
   const aiRequestId = useRef(0);
@@ -411,6 +435,8 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     setAiResponse(fresh.aiResponse);
     setAiWarnings(fresh.aiWarnings);
     setAiError(fresh.aiError);
+    setAiIncludeInternalSummaries(fresh.aiIncludeInternalSummaries);
+    setAiSources(fresh.aiSources);
     setAiLoading(false);
   }
 
@@ -446,11 +472,16 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
       return;
     }
     const requestId = ++aiRequestId.current;
+    // Retrieval runs only on the explicitly enabled toggle and reads only the in-app legal
+    // corpus (never the canonical case-truth record). Its blocks are labelled non-authoritative.
+    const sources = aiIncludeInternalSummaries ? retrieveApprovedInternalSummaries(save.legalSources, prompt) : [];
+    const contextBlocks = sources.map((source) => source.context);
     setAiLoading(true);
     setAiError('');
     setAiResponse('');
     setAiWarnings([]);
-    const result: LocalLlmResult = await askLocalLlm(prompt);
+    setAiSources(sources);
+    const result: LocalLlmResult = await askLocalLlm(prompt, { contextBlocks });
     if (requestId !== aiRequestId.current) return;
     setAiLoading(false);
     if (!result.ok) {
@@ -1462,6 +1493,13 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                   below is sent; hidden case truth is never provided to the model.
                 </p>
               </div>
+              <p className="text-[11px] text-bar-muted flex flex-wrap gap-x-3" role="status" aria-live="polite">
+                <span>
+                  Provider: <span className="text-bar-text">{LOCAL_AI_PROVIDER_LABEL}</span> · via{' '}
+                  <code className="text-bar-text">/api/local-llm</code> (local only)
+                </span>
+                <span>Status: {aiError ? 'last request failed' : aiResponse ? 'last request completed' : 'idle'}</span>
+              </p>
               <label className="block text-xs text-bar-muted" htmlFor="local-ai-prompt">
                 Prompt
               </label>
@@ -1478,6 +1516,16 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
               <p id="local-ai-hint" className="text-[11px] text-bar-muted">
                 Maximum {MAX_AI_PROMPT_CHARS} characters. Do not include hidden case information.
               </p>
+              <label className="flex items-start gap-2 text-xs text-bar-muted">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={aiIncludeInternalSummaries}
+                  onChange={(e) => setAiIncludeInternalSummaries(e.target.checked)}
+                  aria-describedby="local-ai-sources-hint"
+                />
+                <span id="local-ai-sources-hint">Include approved internal legal summaries (non-authoritative)</span>
+              </label>
               <div className="flex gap-2 items-center">
                 <button
                   type="button"
@@ -1513,14 +1561,18 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                   <div className="text-xs text-bar-gold">Response (unverified)</div>
                   <div className="whitespace-pre-wrap text-xs">{aiResponse}</div>
                   {aiWarnings.length > 0 && (
-                    <ul className="text-[11px] text-amber-200 list-disc pl-4 space-y-1">
-                      {aiWarnings.map((w, i) => (
-                        <li key={i}>{w}</li>
-                      ))}
-                    </ul>
+                    <div className="text-[11px] text-amber-200">
+                      <div className="uppercase tracking-wide">Guard notices</div>
+                      <ul className="list-disc pl-4 space-y-1 mt-1">
+                        {aiWarnings.map((w, i) => (
+                          <li key={i}>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
                   )}
                 </div>
               )}
+              <RetrievedSourcesNotice sources={aiSources} />
             </div>
           )}
 

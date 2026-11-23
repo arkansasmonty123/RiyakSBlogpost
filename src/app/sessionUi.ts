@@ -1,3 +1,4 @@
+import type { RetrievedSource } from '@/domain/ai/retrieval';
 import { shouldShowHelp } from '@/domain/onboarding';
 import type { SaveGame, SourceJurisdiction, SourceType } from '@/domain/types';
 
@@ -79,6 +80,10 @@ export interface ResetUiState {
   aiResponse: string;
   aiWarnings: string[];
   aiError: string;
+  /** Opt-in: retrieve approved internal non-authoritative summaries into the prompt. */
+  aiIncludeInternalSummaries: boolean;
+  /** Provenance of the internal sources used for the most recent answer. */
+  aiSources: RetrievedSource[];
 }
 
 /**
@@ -118,5 +123,7 @@ export function createResetUiState(save: SaveGame): ResetUiState {
     aiResponse: '',
     aiWarnings: [],
     aiError: '',
+    aiIncludeInternalSummaries: false,
+    aiSources: [],
   };
 }

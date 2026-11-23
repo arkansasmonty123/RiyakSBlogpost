@@ -31,8 +31,10 @@ const USAGE = [
   'and a sources array of LegalSource records. Optional pipeline metadata (acquisition, signoff,',
   'rights, versionPolicy, allowlistPolicy, staging) is documented in docs/legal-corpus/ACQUISITION_CHECKLIST.md.',
   '',
-  'No real corpus is shipped: D-005/D-011 remain blocked until a legal content owner supplies and',
-  'signs off official text. This tool never verifies or fabricates anything.',
+  'The shipped docs/legal-corpus/manifest.json contains only internal ORIGINAL educational',
+  'summaries: non-authoritative, not legal advice, no real statutory/judgment/citation asserted.',
+  'The real official legal corpus is still pending external human verification (D-005/D-011).',
+  'This tool never verifies or fabricates anything.',
 ].join('\n');
 
 function reportIssue(issue: ValidationIssue, label: string): void {
@@ -69,7 +71,27 @@ function nextSteps(result: CorpusManifestResult): string[] {
   if ([...codes].some((code) => code.startsWith('INVALID_') || code === 'NON_HUMAN_REVIEWER')) {
     steps.push('Correct the malformed field(s); see the field named in each error above.');
   }
+  if (
+    result.corpusKind === 'internal-educational-summary' ||
+    [...codes].some(
+      (code) =>
+        code.startsWith('EDUCATIONAL_CORPUS_') ||
+        code === 'INVALID_CORPUS_KIND' ||
+        code === 'MISSING_AUTHORITY_DECLARATION' ||
+        code === 'MISSING_DISCLAIMER' ||
+        code === 'MISSING_CITATION_ASSERTION',
+    )
+  ) {
+    steps.push(
+      'An internal educational corpus must hold only clearly marked, non-authoritative original summaries: no real-looking citations, no statute/judgment/rule records and no reviewed allowlist.',
+    );
+  }
   if (result.ok) {
+    if (result.corpusKind === 'internal-educational-summary') {
+      steps.push(
+        'These are internal original educational summaries only. The real official legal corpus is still pending external verification (D-005/D-011); do not cite them as law.',
+      );
+    }
     steps.push(
       'A named content owner must still sign off official text and rights before any record is authoritative (D-005/D-011).',
     );
@@ -109,7 +131,12 @@ function main(): number {
   const invalid = result.sources?.invalid ?? 0;
   process.stdout.write(`Corpus manifest: ${path}\n`);
   process.stdout.write(`  schemaVersion: ${result.schemaVersion ?? '(missing)'}\n`);
+  process.stdout.write(`  corpus kind: ${result.corpusKind ?? '(not declared)'}\n`);
   process.stdout.write(`  status: ${result.status ?? '(missing)'}\n`);
+  if (result.corpusKind === 'internal-educational-summary') {
+    process.stdout.write('  authority: non-authoritative — not legal advice; no real legal citations asserted\n');
+    process.stdout.write('  note: real official legal corpus pending external verification (D-005/D-011)\n');
+  }
   process.stdout.write(`  source records: ${total} (${total - invalid} valid, ${invalid} invalid)\n`);
   process.stdout.write(`  duplicate ids: ${result.duplicateIds?.length ? result.duplicateIds.join(', ') : 'none'}\n`);
   process.stdout.write(`Summary: ${result.errors.length} error(s), ${result.warnings.length} warning(s)\n`);
