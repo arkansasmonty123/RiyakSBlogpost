@@ -3,8 +3,9 @@ import { SceneArt } from '@/app/SceneArt';
 import { createResetUiState, emptySourceForm, EXPLICIT_SAVE_NOTICE, RESET_CONFIRMATION } from '@/app/sessionUi';
 import type { SaveStatus, SourceFormState } from '@/app/sessionUi';
 import { config, isLocalAiPanelEnabled } from '@/config/env';
-import { DEFAULT_GAME_SLOT } from '@/storage/gameRepository';
-import { localStorageGameRepository } from '@/storage/localStorageGameRepository';
+import { createInitialSave } from '@/domain/seed';
+import { DEFAULT_GAME_SLOT, type GameRepository } from '@/storage/gameRepository';
+import { getGameRepository } from '@/storage/getGameRepository';
 import type { PersistResult } from '@/storage/save';
 import { recordAudit } from '@/domain/audit';
 import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/completion';
@@ -123,6 +124,92 @@ type WorkPanel = (typeof PANELS)[number];
 /** `completion` is reached only after the final brief closes the chapter. */
 type Panel = WorkPanel | 'completion';
 
+/**
+ * ADR-001: the localStorage adapter also exposes sync methods, so the default mode can boot
+ * without a loading frame. The sqlite-api adapter implements only the async GameRepository
+ * contract; the absence of `loadGameSync` is the capability check (no env reads in the UI).
+ */
+export type SyncGameRepository = GameRepository & {
+  loadGameSync(slotId?: string): SaveGame;
+  saveGameSync(slotId: string, state: SaveGame): PersistResult;
+  resetGameSync(slotId?: string): SaveGame;
+};
+
+export function isSyncGameRepository(repository: GameRepository): repository is SyncGameRepository {
+  return typeof (repository as Partial<SyncGameRepository>).loadGameSync === 'function';
+}
+
+export interface SessionBoot {
+  repository: GameRepository;
+  sync: SyncGameRepository | null;
+}
+
+/** Resolve the configured adapter once per mounted session. */
+export function createSessionBoot(repository: GameRepository): SessionBoot {
+  return { repository, sync: isSyncGameRepository(repository) ? repository : null };
+}
+
+/** Local boot hydrates synchronously; async adapters start from `null` and show a loading state. */
+export function loadInitialSave(boot: SessionBoot): SaveGame | null {
+  return boot.sync ? boot.sync.loadGameSync(DEFAULT_GAME_SLOT) : null;
+}
+
+/** First load for async adapters. Repositories fail closed, but a boot must never throw. */
+export async function loadBootSave(boot: SessionBoot): Promise<SaveGame> {
+  try {
+    return await boot.repository.loadGame(DEFAULT_GAME_SLOT);
+  } catch {
+    return createInitialSave();
+  }
+}
+
+/** Save through the configured adapter, using the sync path when the adapter offers one. */
+export function persistSaveThrough(boot: SessionBoot, next: SaveGame): PersistResult | Promise<PersistResult> {
+  return boot.sync
+    ? boot.sync.saveGameSync(DEFAULT_GAME_SLOT, next)
+    : boot.repository.saveGame(DEFAULT_GAME_SLOT, next);
+}
+
+/** Reset through the configured adapter, using the sync path when the adapter offers one. */
+export function resetSaveThrough(boot: SessionBoot): SaveGame | Promise<SaveGame> {
+  return boot.sync ? boot.sync.resetGameSync(DEFAULT_GAME_SLOT) : boot.repository.resetGame(DEFAULT_GAME_SLOT);
+}
+
+function SessionLoading() {
+  return (
+    <div
+      className="min-h-screen bg-bar-bg text-bar-text flex items-center justify-center"
+      role="status"
+      aria-live="polite"
+    >
+      <p className="text-sm text-bar-muted">Loading your case file…</p>
+    </div>
+  );
+}
+
+/**
+ * Boots the configured repository. Local mode renders the full tree on the first pass (no
+ * flicker); sqlite-api mode shows a small loading state until the async load resolves.
+ */
+export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
+  const [boot] = useState(() => createSessionBoot(getGameRepository()));
+  const [loadedSave, setLoadedSave] = useState<SaveGame | null>(() => loadInitialSave(boot));
+
+  useEffect(() => {
+    if (loadedSave) return;
+    let active = true;
+    void loadBootSave(boot).then((save) => {
+      if (active) setLoadedSave(save);
+    });
+    return () => {
+      active = false;
+    };
+  }, [boot, loadedSave]);
+
+  if (!loadedSave) return <SessionLoading />;
+  return <GameApp boot={boot} initialSave={loadedSave} initialPanel={initialPanel} />;
+}
+
 /** Polite, in-header feedback about local persistence; never exposes storage internals. */
 export function SaveStatusMessage({ status }: { status: SaveStatus }) {
   if (status === 'idle') return null;
@@ -203,8 +290,17 @@ function FileSection({ title, items, empty }: { title: string; items: string[]; 
   );
 }
 
-export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
-  const [save, setSave] = useState<SaveGame>(() => localStorageGameRepository.loadGameSync(DEFAULT_GAME_SLOT));
+/** The game itself. All transient state derives from `initialSave`, so an async load mounts it fresh. */
+function GameApp({
+  boot,
+  initialSave,
+  initialPanel = 'case',
+}: {
+  boot: SessionBoot;
+  initialSave: SaveGame;
+  initialPanel?: Panel;
+}) {
+  const [save, setSave] = useState<SaveGame>(initialSave);
   // Experimental local-AI lab (Phase 6 foundations). Env-aware, never a hosted provider.
   const localAiEnabled = isLocalAiPanelEnabled();
   // Single source of truth for initial UI values; reset reuses the same blueprint.
@@ -244,6 +340,10 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const [aiLoading, setAiLoading] = useState(false);
   // Discard a late local-AI response if the user reset (or asked again) while it was in flight.
   const aiRequestId = useRef(0);
+  // Async adapters can settle out of order: serialize writes and ignore stale save status.
+  // The localStorage path stays synchronous and bypasses this queue entirely.
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const saveGeneration = useRef(0);
 
   // Move keyboard focus to the workspace heading after a panel change, but not on first
   // load. Comparing to the last rendered panel (instead of a "first render" flag) keeps
@@ -376,16 +476,36 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     assertNoCanonicalTruthLeak(caseSummary);
   }
 
+  function applyPersistResult(result: PersistResult) {
+    setSaveStatus(result.ok ? 'saved' : 'error');
+  }
+
+  function persist(next: SaveGame) {
+    if (boot.sync) {
+      applyPersistResult(persistSaveThrough(boot, next) as PersistResult);
+      return;
+    }
+    const generation = ++saveGeneration.current;
+    const write = () => persistSaveThrough(boot, next) as Promise<PersistResult>;
+    saveQueue.current = saveQueue.current
+      .then(write, write)
+      .then((result) => {
+        if (generation === saveGeneration.current) applyPersistResult(result);
+      })
+      .catch(() => {
+        if (generation === saveGeneration.current) applyPersistResult({ ok: false, reason: 'SAVE_FAILED' });
+      });
+  }
+
   function update(mutator: (s: SaveGame) => SaveGame) {
     setSave((prev) => {
       const next = mutator(structuredClone(prev));
       // Defensive backstop: every append also uses addNotebookEntry, but this keeps any
       // future direct mutation from growing an in-memory save past the cap before persisting.
       capNotebook(next.notebook);
-      const result: PersistResult = localStorageGameRepository.saveGameSync(DEFAULT_GAME_SLOT, next);
       // Keep the functional update so several mutations in one handler still compose.
       // A failed write is reported politely instead of throwing; progress stays in memory.
-      setSaveStatus(result.ok ? 'saved' : 'error');
+      persist(next);
       return next;
     });
   }
@@ -401,8 +521,11 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
    * Complete session reset. One path for both entry points: a fresh save plus every
    * transient UI value from the same blueprint, so no stale id or filter survives.
    */
-  function resetSession() {
-    const freshSave = localStorageGameRepository.resetGameSync(DEFAULT_GAME_SLOT);
+  async function resetSession() {
+    // A reset invalidates any in-flight async save so its result cannot relight the status.
+    saveGeneration.current += 1;
+    const reset = resetSaveThrough(boot);
+    const freshSave = boot.sync ? (reset as SaveGame) : await (reset as Promise<SaveGame>);
     const fresh = createResetUiState(freshSave);
     setSave(freshSave);
     setPanel(fresh.panel);
@@ -443,7 +566,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
 
   /** Shared, explicit confirmation for every "start over" action. */
   function requestReset() {
-    if (confirm(RESET_CONFIRMATION)) resetSession();
+    if (confirm(RESET_CONFIRMATION)) void resetSession();
   }
 
   /** Explicit Save stays on the current panel and confirms beside the button, without navigating. */
