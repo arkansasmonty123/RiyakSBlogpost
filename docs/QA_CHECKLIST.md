@@ -1,6 +1,6 @@
 # QA Checklist — THE BAR (P0 prototype)
 
-**Last run:** 2026-11-22 · **Repo:** `project-courtroom` · **Branch:** `main` @ `c4f15a1`
+**Last run:** 2026-11-23 · **Repo:** `project-courtroom` · **Branch:** `main` @ `45df4e3` (PR5) · **See also:** [`COMPLETION-REPORT.md`](./COMPLETION-REPORT.md)
 
 This checklist records the storage-safe QA matrix for the local P0 prototype. It
 separates what is enforced by deterministic tests in CI from what needs a browser,
@@ -13,17 +13,18 @@ the acceptance surface.
 All commands run from the repository root. No command below installs browsers or
 downloads large artifacts into `$HOME`.
 
-| #   | Area                     | Check                                                                                                                                                                               | Command / method                            | Type                | Gate                                               |
-| --- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------- | -------------------------------------------------- |
-| 1   | Types                    | TypeScript project builds clean                                                                                                                                                     | `npm run typecheck`                         | Deterministic       | Blocking                                           |
-| 2   | Tests                    | Full suite green                                                                                                                                                                    | `npm test`                                  | Deterministic       | Blocking                                           |
-| 3   | Build                    | Production bundle builds                                                                                                                                                            | `npm run build`                             | Deterministic       | Blocking                                           |
-| 4   | Render smoke             | App tree renders without crash / no canonical truth in SSR HTML                                                                                                                     | `npm test` → `src/tests/uiSmoke.test.tsx`   | Deterministic (SSR) | Blocking                                           |
-| 5   | A11y structure           | Skip link, `<main>`/`<header>`/`<nav>`, single `h1`, ARIA reference targets resolve, all controls/form fields/links/buttons have accessible names, feedback is a polite live region | `npm test` → `src/tests/a11ySmoke.test.tsx` | Deterministic (SSR) | Blocking                                           |
-| 6   | Guardrails               | No canonical-truth leak, no fabricated provisions/judgments, citation guard, knowledge boundaries, save v1→v2 migration, audit log cap                                              | `npm test` (domain + guard tests)           | Deterministic       | Blocking                                           |
-| 7   | Legal sources            | Provenance/verification gate on seed + example records                                                                                                                              | `npm run validate:sources -- --seed`        | Deterministic       | Non-blocking (corpus blocked by D-005/D-011)       |
-| 8   | Layout / visual          | Mobile 390×844 and desktop 1440×900; no console errors; skip link, `<main>` and `h1` present                                                                                        | Manual/Playwright browser smoke (see §4)    | Browser             | Previously observed; re-run when browser available |
-| 9   | Keyboard / screen reader | Tab order, focus-visible, SR announcements, real axe scan                                                                                                                           | Manual / axe                                | Browser + human     | Not in CI — known gap (§5)                         |
+| #   | Area                     | Check                                                                                                                                                                                                                                        | Command / method                            | Type                | Gate                                               |
+| --- | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- | ------------------- | -------------------------------------------------- |
+| 1   | Types                    | TypeScript project builds clean                                                                                                                                                                                                              | `npm run typecheck`                         | Deterministic       | Blocking                                           |
+| 2   | Tests                    | Full suite green (263 tests / 32 files)                                                                                                                                                                                                      | `npm test`                                  | Deterministic       | Blocking                                           |
+| 3   | Build                    | Production bundle builds                                                                                                                                                                                                                     | `npm run build`                             | Deterministic       | Blocking                                           |
+| 3a  | One-command gate         | Lint + format + types + tests + build in one local command                                                                                                                                                                                   | `npm run verify`                            | Deterministic       | Blocking                                           |
+| 4   | Render smoke             | App tree renders without crash / no canonical truth in SSR HTML                                                                                                                                                                              | `npm test` → `src/tests/uiSmoke.test.tsx`   | Deterministic (SSR) | Blocking                                           |
+| 5   | A11y structure           | Skip link, `<main>`/`<header>`/`<nav>`, single `h1`, ARIA reference targets resolve, all controls/form fields/links/buttons have accessible names, feedback is a polite live region                                                          | `npm test` → `src/tests/a11ySmoke.test.tsx` | Deterministic (SSR) | Blocking                                           |
+| 6   | Guardrails               | No canonical-truth leak (incl. stripped saves), no fabricated provisions/judgments, citation guard, knowledge boundaries, save v1→v2 migration, audit log cap, chapter integrity, notebook cap, draft/A2 coherence, failure-safe save status | `npm test` (domain + guard tests)           | Deterministic       | Blocking                                           |
+| 7   | Legal sources            | Provenance/verification gate on seed + example records                                                                                                                                                                                       | `npm run validate:sources -- --seed`        | Deterministic       | Non-blocking (corpus blocked by D-005/D-011)       |
+| 8   | Layout / visual          | Mobile 390×844 and desktop 1440×900; no console errors; skip link, `<main>` and `h1` present                                                                                                                                                 | Manual/Playwright browser smoke (see §4)    | Browser             | Previously observed; re-run when browser available |
+| 9   | Keyboard / screen reader | Tab order, focus-visible, SR announcements, real axe scan                                                                                                                                                                                    | Manual / axe                                | Browser + human     | Not in CI — known gap (§5)                         |
 
 Notes:
 
@@ -34,28 +35,38 @@ Notes:
 - **Guardrail invariants are non-negotiable:** no fabricated statutes/judgments/
   citations, canonical truth/character knowledge/player knowledge stay separate,
   authenticity is never resolved for the player, and AI stays stubbed/disabled.
+- **PR1–PR5 hardening coverage (all deterministic, in `npm test`):** save privacy
+  (`savePrivacy.test.ts`) and save failure/status (`saveStatus.test.tsx`); lock-reason
+  guidance and chapter integrity (`chapterIntegrity.test.ts`, `progression.test.ts`,
+  `uiSmoke.test.tsx`); draft submission coherence and A2 auto-review
+  (`draftSubmission.test.ts`); reset/replay and draft autosave (`sessionReset.test.ts`,
+  `completion.test.tsx`); disabled empty actions, panel focus, career payoff and
+  notebook cap (`panelPolish.test.tsx`, `notebookCap.test.ts`, `completion.test.tsx`).
+  The final-day warning is covered by `uiSmoke.test.tsx`. These are the only verifications
+  claimed for those changes — no real browser, axe or screen-reader run is implied.
 
-## 2. Commands run for this hardening pass (actual results)
+## 2. Commands run for the final completion pass (actual results)
 
-Run from `project-courtroom` with `node_modules` symlinked to
-`/tmp/opencode/project-courtroom/node_modules`.
+Run from `project-courtroom` with local `node_modules` (no `/tmp` symlink in this
+environment). All results below are actual outputs from the PR6 pass at HEAD `45df4e3`.
 
-| Command                                       | Result                                                                        |
-| --------------------------------------------- | ----------------------------------------------------------------------------- |
-| `npx vitest run src/tests/a11ySmoke.test.tsx` | PASS — 5/5 tests                                                              |
-| `npm run typecheck`                           | PASS (no output, exit 0)                                                      |
-| `npm test`                                    | PASS — **182/182 tests, 22 files** (up from 177/177, 21 files)                |
-| `npm run build`                               | PASS — `dist/index.html` 0.42 kB, CSS 15.98 kB, JS 409.79 kB (gzip 115.12 kB) |
-| `df -h /home`                                 | **2.8 G available** of 4.8 G (39% used) — above the >2 GB budget (D-019)      |
+| Command                                       | Result                                                                                                   |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `npm run verify`                              | PASS (exit 0) — runs `lint`, `format:check`, `typecheck`, `test`, `build` in sequence                    |
+| ↳ `npm test`                                  | PASS — **263/263 tests, 32/32 files**                                                                    |
+| ↳ `npm run build`                             | PASS — `dist/index.html` 0.42 kB, CSS 16.63 kB, JS 422.95 kB (gzip 118.54 kB)                            |
+| `npm run validate:sources -- --seed`          | PASS (exit 0) — 4 records valid, 0 invalid; one expected `NO_OFFICIAL_URL` WARN for the internal summary |
+| `npm run validate:legal-corpus -- --template` | Expected FAIL (exit 1) — `MANIFEST_IS_TEMPLATE`; nothing ingested                                        |
+| `npm run validate:art-manifest -- --template` | Expected FAIL (exit 1) — `MANIFEST_IS_TEMPLATE`; nothing downloaded/ingested/approved                    |
+| `df -h /home`                                 | **2.5 G available** of 4.8 G (46% used) — above the >2 GB budget (D-019)                                 |
 
-A11y changes made in this pass (all minimal, no UI churn):
+`git status --short` was checked before the orchestrator's final commit (see
+[`COMPLETION-REPORT.md`](./COMPLETION-REPORT.md) §4 for the captured output).
 
-- `aria-controls` on the "How to play" and "Add Source / Source Intake" toggles
-  is only emitted while the controlled panel is expanded, so it never points at
-  an element that is not in the DOM.
-- The action-feedback block in the Conversations panel is now a polite
-  `role="status"` live region so senior/system messages are announced.
-- Added `src/tests/a11ySmoke.test.tsx` (5 deterministic SSR tests) and this doc.
+Earlier a11y hardening (still covered by `npm test`, unchanged in this pass):
+`aria-controls` emitted only while a panel is expanded; the action-feedback block
+uses a polite `role="status"` live region; `src/tests/a11ySmoke.test.tsx` holds 5
+deterministic SSR tests. This is structural a11y only — see §5.
 
 ## 3. Previously observed browser smoke (recorded, not re-run here)
 
@@ -96,6 +107,13 @@ already has them, or follow the safe Cloud Shell flow in §6.
   installed here (§3 records the earlier observation).
 - **Legal corpus blocked (D-005/D-011):** no real verified sources; `validate:sources`
   is a provenance gate, not content approval.
+- **Canonical truth is stripped from saves, not from the client bundle.** The runtime
+  never projects it into player state and `persistSave` omits it, but the seed ships
+  inside the JS bundle; a determined player can inspect that bundle. This is not a
+  competitive-secrecy boundary (see `COMPLETION-REPORT.md` §5).
+- **localStorage is not a security boundary.** Saves are player-side data, malleable
+  and unencrypted; on load, canonical truth is rehydrated from the seed, so a tampered
+  save cannot rewrite it.
 - **Runtime AI / RAG not implemented (Phase 6):** everything is deterministic/stubbed.
 
 ## 6. Cloud Shell storage-safe workflow (keep >2 GB on `/home`)

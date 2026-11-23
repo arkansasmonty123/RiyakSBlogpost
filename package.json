@@ -14,6 +14,7 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
+    "verify": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build",
     "validate:sources": "vite-node scripts/validate-sources.ts",
     "validate:legal-corpus": "vite-node scripts/validate-legal-corpus.ts",
     "validate:art-manifest": "vite-node scripts/validate-art-manifest.ts",
