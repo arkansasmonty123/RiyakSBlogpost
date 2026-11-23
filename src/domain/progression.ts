@@ -14,14 +14,27 @@ function nextSlot(slot: GameClock['slot']): GameClock['slot'] {
   return 'morning';
 }
 
-/** An assignment unlocks only by in-game day AND by reviewed prerequisite work. */
-export function isAssignmentUnlocked(assignment: Assignment, save: SaveGame): boolean {
-  if (save.clock.day < assignment.day) return false;
+/**
+ * Why an assignment is currently locked, for player-facing guidance:
+ * - 'day': the in-game day has not been reached (the player can advance time).
+ * - 'prerequisite': the day is reached but prior reviewed work is missing (go to Assignments).
+ * - null: the assignment is unlocked.
+ *
+ * Day is checked first: an assignment can be locked for both reasons, and the day gate is
+ * the one the player can act on by advancing time (which is impossible past MAX_DAY).
+ */
+export function assignmentLockReason(assignment: Assignment, save: SaveGame): 'day' | 'prerequisite' | null {
+  if (save.clock.day < assignment.day) return 'day';
   if (assignment.unlockAfter) {
     const prerequisite = save.assignments.find((a) => a.id === assignment.unlockAfter);
-    if (!prerequisite || prerequisite.status !== 'reviewed') return false;
+    if (!prerequisite || prerequisite.status !== 'reviewed') return 'prerequisite';
   }
-  return true;
+  return null;
+}
+
+/** An assignment unlocks only by in-game day AND by reviewed prerequisite work. */
+export function isAssignmentUnlocked(assignment: Assignment, save: SaveGame): boolean {
+  return assignmentLockReason(assignment, save) === null;
 }
 
 /** Promote locked assignments whose day/prerequisites are now satisfied. Mutates the given save. */
@@ -44,6 +57,8 @@ export interface Objective {
   noteProgress: string;
   flagProgress: string;
   status: Assignment['status'];
+  /** Why this assignment is locked, so guidance can point to time or to prior work. */
+  lockReason: 'day' | 'prerequisite' | null;
 }
 
 /** The first unfinished assignment, with progress counted from player-visible state only. */
@@ -72,6 +87,7 @@ export function currentObjective(save: SaveGame): Objective | null {
     noteProgress: `${notesDone}/${requiredKinds.length}`,
     flagProgress: `${flagsDone}/${requiredFlags.length}`,
     status: assignment.status,
+    lockReason: assignmentLockReason(assignment, save),
   };
 }
 

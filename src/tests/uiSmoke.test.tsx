@@ -2,7 +2,31 @@ import { describe, expect, it } from 'vitest';
 import { renderToString } from 'react-dom/server';
 import { App } from '@/app/App';
 import { createInitialSave } from '@/domain/seed';
+import type { SaveGame } from '@/domain/types';
 import { SAVE_KEY } from '@/storage/save';
+
+/** Render the real tree against a given save using a minimal localStorage stub. */
+function renderWithSave(save: SaveGame, initialPanel?: 'assignments'): string {
+  const data: Record<string, string> = { [SAVE_KEY]: JSON.stringify(save) };
+  const globals = globalThis as Record<string, unknown>;
+  const previousWindow = globals.window;
+  globals.window = {
+    localStorage: {
+      getItem: (key: string) => data[key] ?? null,
+      setItem: (key: string, value: string) => {
+        data[key] = value;
+      },
+      removeItem: (key: string) => {
+        delete data[key];
+      },
+    },
+  };
+  try {
+    return renderToString(initialPanel ? <App initialPanel={initialPanel} /> : <App />).replace(/<!-- -->/g, '');
+  } finally {
+    globals.window = previousWindow;
+  }
+}
 
 /**
  * Lightweight UI smoke checks: render the real component tree in Node so a runtime
@@ -283,6 +307,31 @@ describe('App render smoke test', () => {
       ]) {
         expect(lower).not.toContain(forbidden);
       }
+    }
+  });
+
+  it('shows the final-day warning on Day 10 but never on Day 1', () => {
+    const day1 = createInitialSave();
+    const day10 = createInitialSave();
+    day10.clock.day = 10;
+
+    expect(renderWithSave(day1)).not.toContain('Final day — time no longer advances.');
+    expect(renderWithSave(day10)).toContain(
+      'Final day — time no longer advances. Complete the senior review and submit the final brief.',
+    );
+  });
+
+  it('points day-locked guidance to time and prerequisite-locked guidance to prior work', () => {
+    const day1 = createInitialSave();
+    const day6 = createInitialSave();
+    day6.clock.day = 6;
+
+    const day1Html = renderWithSave(day1, 'assignments');
+    const day6Html = renderWithSave(day6, 'assignments');
+    expect(day1Html).toContain('Unlocks on Day 3. Advance time when ready.');
+    expect(day6Html).toContain('Complete and submit/review the prior assignment first.');
+    for (const html of [day1Html, day6Html]) {
+      expect(html).not.toContain('Locks until Day');
     }
   });
 });

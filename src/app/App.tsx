@@ -28,6 +28,7 @@ import { buildCaseSummary } from '@/domain/caseSummary';
 import { pluralize } from '@/domain/evidenceSynthesis';
 import {
   advanceClock,
+  assignmentLockReason,
   currentObjective,
   isAssignmentUnlocked,
   makeId,
@@ -262,10 +263,16 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     if (!objective) {
       return { panel: 'case' as Panel, text: 'Review your case file and notebook for what remains.' };
     }
-    if (objective.status === 'locked') {
+    if (objective.lockReason === 'day') {
       return {
         panel: 'assignments' as Panel,
-        text: `Locked until Day ${objective.unlockDay}. Advance time from the chamber window or header when ready.`,
+        text: `Unlocks on Day ${objective.unlockDay}. Advance time when ready.`,
+      };
+    }
+    if (objective.lockReason === 'prerequisite') {
+      return {
+        panel: 'assignments' as Panel,
+        text: 'Complete and submit/review the prior assignment first.',
       };
     }
     if (objective.assignmentId === 'a7') {
@@ -870,6 +877,14 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
           role="status"
           aria-live="polite"
         >
+          {save.clock.day === MAX_DAY && !chapterComplete && (
+            <div
+              role="note"
+              className="mb-3 px-3 py-2 rounded border border-bar-gold/40 bg-bar-gold/10 text-xs sm:text-sm text-bar-gold"
+            >
+              Final day — time no longer advances. Complete the senior review and submit the final brief.
+            </div>
+          )}
           <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-1 min-w-0">
               <div className="text-xs uppercase tracking-wide text-bar-muted">Current objective</div>
@@ -899,12 +914,17 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                         Casework {objective.flagProgress}
                       </span>
                     )}
-                    {objective.status === 'locked' && (
-                      <span className="px-2 py-0.5 rounded border border-yellow-400/30 text-yellow-200 bg-yellow-400/5">
-                        Locked until Day {objective.unlockDay}
-                      </span>
-                    )}
                   </div>
+                  {objective.lockReason === 'day' && (
+                    <p className="text-xs text-yellow-200 mt-1">
+                      Unlocks on Day {objective.unlockDay}. Advance time when ready.
+                    </p>
+                  )}
+                  {objective.lockReason === 'prerequisite' && (
+                    <p className="text-xs text-yellow-200 mt-1">
+                      Complete and submit/review the prior assignment first.
+                    </p>
+                  )}
                 </>
               ) : (
                 <div className="text-sm text-bar-muted">
@@ -1516,6 +1536,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
               </p>
               {save.assignments.map((a: Assignment) => {
                 const unlocked = isAssignmentUnlocked(a, save);
+                const lockReason = assignmentLockReason(a, save);
                 const isCurrent = objective?.assignmentId === a.id;
                 const statusClass =
                   a.status === 'reviewed'
@@ -1549,7 +1570,9 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                     </div>
                     {!unlocked && a.status === 'locked' && (
                       <p className="text-xs text-yellow-200 mt-2">
-                        Locks until Day {a.day} and prior work is reviewed.
+                        {lockReason === 'day'
+                          ? `Unlocks on Day ${a.day}. Advance time when ready.`
+                          : 'Complete and submit/review the prior assignment first.'}
                       </p>
                     )}
                     {a.feedback && (

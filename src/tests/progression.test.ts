@@ -3,8 +3,10 @@ import { createInitialSave } from '@/domain/seed';
 import { reviewEvidence, addEvidenceNote, discoverEvidenceItem } from '@/domain/evidence';
 import {
   advanceClock,
+  assignmentLockReason,
   currentObjective,
   isAssignmentUnlocked,
+  MAX_DAY,
   refreshAssignmentUnlocks,
   reviewAssignment,
 } from '@/domain/progression';
@@ -121,5 +123,34 @@ describe('day-based assignment progression', () => {
     expect(reviewAssignment(save, 'a3').ok).toBe(true);
     // The extended chapter continues with the Day 6 client-interview record.
     expect(currentObjective(save)?.assignmentId).toBe('a4');
+  });
+});
+
+describe('assignment lock reasons for player guidance', () => {
+  it('distinguishes a day gate from an unmet prerequisite', () => {
+    const save = createInitialSave();
+    const a2 = save.assignments.find((a) => a.id === 'a2')!;
+
+    // Day 1: both the day and the a1 prerequisite are unmet; the actionable gate is the day.
+    expect(assignmentLockReason(a2, save)).toBe('day');
+
+    advanceToDay(save, 3);
+    expect(assignmentLockReason(a2, save)).toBe('prerequisite');
+
+    discoverAndReview(save, 'ev-1');
+    addVerifiedSourceNote(save);
+    expect(reviewAssignment(save, 'a1').ok).toBe(true);
+    expect(assignmentLockReason(a2, save)).toBeNull();
+    expect(isAssignmentUnlocked(a2, save)).toBe(true);
+  });
+
+  it('reports the final assignment as prerequisite-locked on Day 10, not day-locked', () => {
+    const save = createInitialSave();
+    const a8 = save.assignments.find((a) => a.id === 'a8')!;
+    advanceToDay(save, MAX_DAY);
+    // Day 10 reached but a7 not reviewed: guidance must point to prior work, never to time
+    // (time cannot advance past the final day).
+    expect(assignmentLockReason(a8, save)).toBe('prerequisite');
+    expect(isAssignmentUnlocked(a8, save)).toBe(false);
   });
 });
