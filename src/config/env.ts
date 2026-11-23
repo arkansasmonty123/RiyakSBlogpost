@@ -3,7 +3,9 @@
  *
  * Only VITE_* build-time values are read. They are optional: the app boots with safe
  * defaults and no secrets. Runtime AI is intentionally disabled in P0, so provider,
- * endpoint and key values can never enable a network/model path here.
+ * endpoint and key values can never enable a network/model path here. The separate
+ * experimental local-AI lab (Phase 6 foundations) is opt-out via VITE_ENABLE_LOCAL_AI
+ * and is handled by `isLocalAiPanelEnabled` below, not by the runtime provider config.
  */
 
 export type RuntimeAiProvider = 'disabled';
@@ -27,6 +29,8 @@ export interface EnvSource {
   VITE_RUNTIME_AI_PROVIDER?: string;
   VITE_RUNTIME_AI_ENDPOINT?: string;
   VITE_RUNTIME_AI_API_KEY?: string;
+  /** Experimental local-AI lab: set to "false" to hide the panel. Never a secret. */
+  VITE_ENABLE_LOCAL_AI?: string;
 }
 
 export const DEFAULT_APP_NAME = 'THE BAR';
@@ -79,3 +83,15 @@ export function loadConfig(source: EnvSource = defaultEnvSource()): ConfigResult
 
 /** App-wide validated config; uses defaults when no env vars are provided. */
 export const config: AppConfig = loadConfig().config;
+
+/**
+ * Phase 6 foundation: feature flag for the experimental Local AI Lab panel.
+ *
+ * Enabled by default (pragmatic for an opt-in-by-use lab in dev/preview); set
+ * `VITE_ENABLE_LOCAL_AI=false` to hide it entirely. Kept out of `loadConfig` so the
+ * P0 "runtime AI disabled" contract/obj shape stays unchanged. This flag never enables a
+ * hosted provider or bundles a model: the panel only targets the local llama-server proxy.
+ */
+export function isLocalAiPanelEnabled(source: EnvSource = defaultEnvSource()): boolean {
+  return readString(source.VITE_ENABLE_LOCAL_AI).toLowerCase() !== 'false';
+}

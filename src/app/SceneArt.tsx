@@ -4,6 +4,13 @@
  * These are decorative compositions only: every interactive object remains a real,
  * labelled button rendered by App. There are no image assets, no animation and no
  * case content — just architectural cues (desk, books, window, door, corridor).
+ *
+ * The lightweight ORIGINAL SVG placeholders in public/assets/art/ (catalogued in
+ * docs/art-pipeline/asset-manifest.json) are documented reference/originals for these
+ * shapes. They are intentionally NOT loaded here at runtime: keeping the stage as inline
+ * vectors preserves the offline, no-network, no-leakable-metadata guarantees asserted by
+ * src/tests/scenePresentation.test.tsx. A human owner may integrate approved assets behind
+ * these same viewpoint ids after the section 8 sign-off in docs/art-pipeline/README.md.
  */
 import type { ReactElement } from 'react';
 

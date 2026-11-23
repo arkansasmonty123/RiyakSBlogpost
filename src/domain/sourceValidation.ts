@@ -45,14 +45,30 @@ export interface BatchValidationResult {
   ok: boolean;
   total: number;
   invalid: number;
+  /** IDs that appear on more than one record (normalized by trimming). */
+  duplicateIds: string[];
   results: BatchRecordResult[];
 }
 
 const VERIFICATION_STATUSES: readonly SourceVerificationStatus[] = ['verified', 'unverified', 'placeholder'];
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const PLACEHOLDER_WORD = /\bplaceholder\b/i;
+/**
+ * A record that labels itself a template/example/sample is a shape demonstration, never law.
+ * It may exist as a non-authoritative draft, but it can never carry a verified status.
+ */
+const NON_AUTHORITATIVE_MARKER = /\b(?:template|example|sample|tbd|todo|do\s+not\s+use|not\s+for\s+use)\b/i;
+/** Names that are not a named human reviewer and must never count as a sign-off. */
+const NON_HUMAN_REVIEWER = /\b(?:tbd|todo|placeholder|automatic|auto|system|n\/?a|none|unknown)\b/i;
+/** Uppercase-only: a human may legitimately be named "Ai", but never labeled "AI". */
+const AI_REVIEWER = /\bAI\b/;
 /** Real-world authority needs an official source URL; internal fictional summaries do not. */
 const REAL_AUTHORITY_TYPES: ReadonlySet<string> = new Set(['statute', 'judgment', 'rule']);
+
+/** Stages of the offline intake/import flow documented in docs/legal-corpus/ACQUISITION_CHECKLIST.md. */
+export const CORPUS_MANIFEST_STAGES = ['unverified', 'reviewed', 'promoted'] as const;
+/** Rights states: no rights to reproduce, rights being checked, or rights confirmed by a human. */
+export const CORPUS_RIGHTS_STATUSES = ['none', 'pending', 'cleared'] as const;
 
 function hasText(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -77,6 +93,15 @@ function normalizeIdentifier(value: string): string {
 
 function issue(code: string, message: string, field?: string, severity: ValidationSeverity = 'error'): ValidationIssue {
   return field ? { code, message, field, severity } : { code, message, severity };
+}
+
+/** Text of selected string fields, used only to detect self-labelled stand-ins. */
+function markerText(record: Record<string, unknown>, fields: readonly string[]): string {
+  return fields.map((field) => (hasText(record[field]) ? String(record[field]) : '')).join(' ');
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
 /** Validate a single source record. Accepts unknown input so untrusted corpus JSON is safe. */
@@ -161,13 +186,9 @@ export function validateSourceRecord(source: unknown, options: SourceValidationO
     }
   }
 
-  const placeholderMarked = PLACEHOLDER_WORD.test(
-    [
-      hasText(record.title) ? record.title : '',
-      hasText(record.sourceName) ? record.sourceName : '',
-      hasText(record.citation) ? record.citation : '',
-    ].join(' '),
-  );
+  const identityText = markerText(record, ['title', 'sourceName', 'citation']);
+  const placeholderMarked = PLACEHOLDER_WORD.test(identityText);
+  const nonAuthoritativeMarked = NON_AUTHORITATIVE_MARKER.test(identityText);
 
   if (record.verificationStatus === 'verified') {
     // `provenance` and `citation` are already required above for every record; for a
@@ -181,11 +202,28 @@ export function validateSourceRecord(source: unknown, options: SourceValidationO
         ),
       );
     }
+    if (nonAuthoritativeMarked) {
+      errors.push(
+        issue(
+          'TEMPLATE_OR_EXAMPLE_CANNOT_BE_VERIFIED',
+          'A record labeled template/example/sample (or TBD/do-not-use) is a non-authoritative shape example and can never be marked verified.',
+          'verificationStatus',
+        ),
+      );
+    }
     if (!hasText(record.verifiedBy)) {
       errors.push(
         issue(
           'VERIFIED_WITHOUT_REVIEWER',
           'A verified record must name the human/content owner who reviewed it (verifiedBy).',
+          'verifiedBy',
+        ),
+      );
+    } else if (NON_HUMAN_REVIEWER.test(String(record.verifiedBy)) || AI_REVIEWER.test(String(record.verifiedBy))) {
+      errors.push(
+        issue(
+          'NON_HUMAN_REVIEWER',
+          'verifiedBy must name a human/content owner; generic values such as TBD, auto, AI, system or unknown are not a sign-off.',
           'verifiedBy',
         ),
       );
@@ -255,37 +293,67 @@ export function validateSourceRecord(source: unknown, options: SourceValidationO
 /** Validate a whole corpus file in one deterministic pass, preserving record positions. */
 export function validateSourceRecords(input: unknown, options: SourceValidationOptions = {}): BatchValidationResult {
   const records: unknown[] = Array.isArray(input) ? input : input === undefined ? [] : [input];
+  const recordId = (record: unknown): string | undefined => {
+    const raw = isObject(record) ? record.id : undefined;
+    return hasText(raw) ? (raw as string).trim() : undefined;
+  };
+  const ids = records.map(recordId);
+  const counts = new Map<string, number>();
+  const firstIndex = new Map<string, number>();
+  ids.forEach((id, index) => {
+    if (!id) return;
+    counts.set(id, (counts.get(id) ?? 0) + 1);
+    if (!firstIndex.has(id)) firstIndex.set(id, index);
+  });
+  const duplicateIds = [...counts.entries()].filter(([, count]) => count > 1).map(([id]) => id);
+
   const results: BatchRecordResult[] = records.map((record, index) => {
     const result = validateSourceRecord(record, options);
-    const rawId =
-      record && typeof record === 'object' && !Array.isArray(record)
-        ? (record as Record<string, unknown>).id
-        : undefined;
+    const id = ids[index];
+    const errors = [...result.errors];
+    const warnings = [...result.warnings];
+    // Keep the first occurrence; every later reuse of the same id is a hard blocker so a
+    // corpus cannot silently overwrite or shadow one record with another.
+    if (id && duplicateIds.includes(id) && index !== firstIndex.get(id)) {
+      errors.push(
+        issue(
+          'DUPLICATE_SOURCE_ID',
+          `Duplicate source id "${id}". Ids must be unique within a corpus; the first occurrence is sources[${firstIndex.get(id)}].`,
+          'id',
+        ),
+      );
+    }
     return {
       index,
-      ...(hasText(rawId) ? { id: rawId } : {}),
-      ...result,
+      ...(id ? { id } : {}),
+      ok: errors.length === 0,
+      errors,
+      warnings,
     };
   });
   return {
     ok: results.every((result) => result.ok),
     total: results.length,
     invalid: results.filter((result) => !result.ok).length,
+    duplicateIds,
     results,
   };
 }
 
 /**
  * Corpus manifest support for the offline intake pipeline documented in
- * `docs/legal-corpus/README.md`. A manifest is the container a human content owner uses to
- * present a batch of source records for validation: it carries the small amount of metadata
- * the pipeline needs (schema version, internal corpus id, owner/status and the reviewed
- * allowlist) plus the `sources` array validated by `validateSourceRecords`.
+ * `docs/legal-corpus/README.md` and `docs/legal-corpus/ACQUISITION_CHECKLIST.md`. A manifest is
+ * the container a human content owner uses to present a batch of source records for validation:
+ * it carries the pipeline metadata (schema version, internal corpus id, owner/status, reviewed
+ * allowlist, acquisition/sign-off/rights/version/staging attestations) plus the `sources` array
+ * validated by `validateSourceRecords`.
  *
  * This function is deliberately read-only and deterministic. It verifies only that the
- * required human attestation/metadata exists; it never invents legal text, never verifies a
- * source on its own, and rejects anything explicitly marked as a template so that a
- * shape/example file can never be mistaken for a real corpus.
+ * required human attestation/metadata exists and is well formed; it never invents legal text,
+ * never verifies a source on its own, and rejects anything explicitly marked as a template so
+ * that a shape/example file can never be mistaken for a real corpus. All pipeline metadata is
+ * optional for backward compatibility; a present-but-malformed field is an error, while an
+ * absent/incomplete attestation on a gated (in-review/approved) corpus is a warning.
  */
 export const CORPUS_MANIFEST_SCHEMA_VERSION = 1;
 export const CORPUS_MANIFEST_STATUSES = ['blocked', 'draft', 'in-review', 'approved'] as const;
@@ -296,8 +364,339 @@ export interface CorpusManifestResult {
   warnings: ValidationIssue[];
   /** Source-level results, preserved with record positions for clear reporting. */
   sources?: BatchValidationResult;
+  /** IDs repeated across sources[] (blockers, reported on the later records). */
+  duplicateIds?: string[];
   schemaVersion?: number;
   status?: string;
+}
+
+/** Read an optional nested metadata object; a present non-object is always a hard error. */
+function optionalManifestObject(
+  manifest: Record<string, unknown>,
+  field: string,
+  code: string,
+  errors: ValidationIssue[],
+): Record<string, unknown> | undefined {
+  const value = manifest[field];
+  if (value === undefined || value === null) return undefined;
+  if (!isObject(value)) {
+    errors.push(issue(code, `${field} must be an object when present.`, field));
+    return undefined;
+  }
+  return value;
+}
+
+function optionalString(
+  parent: Record<string, unknown>,
+  field: string,
+  parentName: string,
+  code: string,
+  errors: ValidationIssue[],
+): string | undefined {
+  const value = parent[field];
+  if (value === undefined || value === null) return undefined;
+  if (!hasText(value)) {
+    errors.push(
+      issue(code, `${parentName}.${field} must be a non-empty string when present.`, `${parentName}.${field}`),
+    );
+    return undefined;
+  }
+  return String(value);
+}
+
+function optionalDate(
+  parent: Record<string, unknown>,
+  field: string,
+  parentName: string,
+  code: string,
+  errors: ValidationIssue[],
+): string | undefined {
+  const value = parent[field];
+  if (value === undefined || value === null || value === '') return undefined;
+  if (!hasText(value) || !isIsoDate(value)) {
+    errors.push(issue(code, `${parentName}.${field} must use YYYY-MM-DD format.`, `${parentName}.${field}`));
+    return undefined;
+  }
+  return String(value).trim();
+}
+
+function optionalBoolean(
+  parent: Record<string, unknown>,
+  field: string,
+  parentName: string,
+  code: string,
+  errors: ValidationIssue[],
+): boolean | undefined {
+  const value = parent[field];
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'boolean') {
+    errors.push(issue(code, `${parentName}.${field} must be a boolean when present.`, `${parentName}.${field}`));
+    return undefined;
+  }
+  return value;
+}
+
+function optionalStringArray(
+  parent: Record<string, unknown>,
+  field: string,
+  parentName: string,
+  code: string,
+  errors: ValidationIssue[],
+): void {
+  const value = parent[field];
+  if (value === undefined || value === null) return;
+  if (!Array.isArray(value) || !value.every(hasText)) {
+    errors.push(
+      issue(
+        code,
+        `${parentName}.${field} must be an array of non-empty strings when present.`,
+        `${parentName}.${field}`,
+      ),
+    );
+  }
+}
+
+/**
+ * Validate the optional pipeline metadata defined in the acquisition checklist. Structural
+ * errors are hard blockers; incomplete-but-well-formed attestations on an approved/in-review
+ * corpus are warnings so historical manifests remain readable (backward compatible).
+ */
+function validateManifestMetadata(
+  manifest: Record<string, unknown>,
+  status: string | undefined,
+  reviewedIds: string[],
+  errors: ValidationIssue[],
+  warnings: ValidationIssue[],
+): void {
+  const gated = status === 'in-review' || status === 'approved';
+
+  if (manifest.provenanceNote !== undefined && manifest.provenanceNote !== null && !hasText(manifest.provenanceNote)) {
+    errors.push(
+      issue('INVALID_CORPUS_PROVENANCE', 'provenanceNote must be a non-empty string when present.', 'provenanceNote'),
+    );
+  }
+
+  // Acquisition checklist: did a human obtain exact text from an acceptable official source?
+  const acquisition = optionalManifestObject(manifest, 'acquisition', 'INVALID_ACQUISITION', errors);
+  if (acquisition) {
+    const completed = optionalBoolean(
+      acquisition,
+      'checklistCompleted',
+      'acquisition',
+      'INVALID_ACQUISITION_CHECKLIST',
+      errors,
+    );
+    optionalBoolean(acquisition, 'reviewerAssigned', 'acquisition', 'INVALID_ACQUISITION_CHECKLIST', errors);
+    optionalStringArray(acquisition, 'officialSources', 'acquisition', 'INVALID_ACQUISITION_SOURCES', errors);
+    optionalDate(acquisition, 'retrievalDate', 'acquisition', 'INVALID_ACQUISITION_DATE', errors);
+    if (completed !== true) {
+      warnings.push(
+        issue(
+          'ACQUISITION_CHECKLIST_INCOMPLETE',
+          'The source-acquisition checklist is not marked complete; see docs/legal-corpus/ACQUISITION_CHECKLIST.md.',
+          'acquisition.checklistCompleted',
+          'warning',
+        ),
+      );
+    }
+  } else if (gated) {
+    warnings.push(
+      issue(
+        'NO_ACQUISITION_RECORD',
+        'No acquisition record is attached to a gated corpus; record publisher, exact text and retrieval date/version.',
+        'acquisition',
+        'warning',
+      ),
+    );
+  }
+
+  // Reviewer sign-off: a named human and a date, never an AI/auto/TBD value.
+  const signoff = optionalManifestObject(manifest, 'signoff', 'INVALID_SIGNOFF', errors);
+  if (signoff) {
+    const reviewer = optionalString(signoff, 'reviewer', 'signoff', 'INVALID_SIGNOFF_REVIEWER', errors);
+    const date = optionalDate(signoff, 'date', 'signoff', 'INVALID_SIGNOFF_DATE', errors);
+    optionalString(signoff, 'scope', 'signoff', 'INVALID_SIGNOFF_SCOPE', errors);
+    optionalString(signoff, 'notes', 'signoff', 'INVALID_SIGNOFF_NOTES', errors);
+    if (!reviewer || !date) {
+      errors.push(
+        issue(
+          'INCOMPLETE_SIGNOFF',
+          'A signoff block must name a human reviewer and date before it can be treated as a review.',
+          'signoff',
+        ),
+      );
+    } else if (NON_HUMAN_REVIEWER.test(reviewer) || AI_REVIEWER.test(reviewer)) {
+      errors.push(
+        issue(
+          'NON_HUMAN_SIGNOFF_REVIEWER',
+          'signoff.reviewer must be a named human/content owner, not TBD, auto, AI, system or unknown.',
+          'signoff.reviewer',
+        ),
+      );
+    }
+  } else if (gated) {
+    warnings.push(
+      issue(
+        'MISSING_SIGNOFF',
+        'A gated corpus must still carry a named human signoff (signoff.reviewer and signoff.date).',
+        'signoff',
+        'warning',
+      ),
+    );
+  }
+
+  // Rights/licensing: 'cleared' is an explicit claim that needs a basis and a human confirmer.
+  let rightsStatus: string | undefined;
+  const rights = optionalManifestObject(manifest, 'rights', 'INVALID_RIGHTS', errors);
+  if (rights) {
+    const rawStatus = rights.status;
+    if (rawStatus === undefined || rawStatus === null) {
+      warnings.push(
+        issue(
+          'RIGHTS_STATUS_MISSING',
+          'rights.status is unset; record whether reproduction rights exist.',
+          'rights.status',
+          'warning',
+        ),
+      );
+    } else if (!hasText(rawStatus) || !(CORPUS_RIGHTS_STATUSES as readonly string[]).includes(String(rawStatus))) {
+      errors.push(
+        issue(
+          'INVALID_RIGHTS_STATUS',
+          `rights.status must be one of: ${CORPUS_RIGHTS_STATUSES.join(', ')}.`,
+          'rights.status',
+        ),
+      );
+    } else {
+      rightsStatus = String(rawStatus);
+    }
+    const basis = optionalString(rights, 'basis', 'rights', 'INVALID_RIGHTS_BASIS', errors);
+    const confirmedBy = optionalString(rights, 'confirmedBy', 'rights', 'INVALID_RIGHTS_CONFIRMER', errors);
+    optionalString(rights, 'license', 'rights', 'INVALID_RIGHTS_LICENSE', errors);
+    optionalDate(rights, 'confirmedDate', 'rights', 'INVALID_RIGHTS_DATE', errors);
+    if (rightsStatus === 'cleared' && (!basis || !confirmedBy)) {
+      errors.push(
+        issue(
+          'RIGHTS_CLEARANCE_INCOMPLETE',
+          'rights.status "cleared" requires a rights.basis (official publication/license) and a rights.confirmedBy human.',
+          'rights',
+        ),
+      );
+    }
+  }
+  if (gated && rightsStatus !== 'cleared') {
+    warnings.push(
+      issue(
+        'RIGHTS_NOT_CLEARED',
+        'Reproduction rights are not recorded as cleared for this gated corpus.',
+        'rights.status',
+        'warning',
+      ),
+    );
+  }
+
+  // Version / effective-date policy note (the formal policy is still an open decision).
+  const versionPolicy = optionalManifestObject(manifest, 'versionPolicy', 'INVALID_VERSION_POLICY', errors);
+  if (versionPolicy) {
+    optionalString(versionPolicy, 'effectiveDatePolicy', 'versionPolicy', 'INVALID_VERSION_POLICY', errors);
+    optionalDate(versionPolicy, 'asOf', 'versionPolicy', 'INVALID_VERSION_POLICY_AS_OF', errors);
+    optionalString(versionPolicy, 'note', 'versionPolicy', 'INVALID_VERSION_POLICY', errors);
+    optionalString(versionPolicy, 'supersedes', 'versionPolicy', 'INVALID_VERSION_POLICY', errors);
+  } else if (status === 'approved') {
+    warnings.push(
+      issue(
+        'NO_VERSION_POLICY',
+        'No version/effective-date policy note is attached to an approved corpus (D-011 policy is still open).',
+        'versionPolicy',
+        'warning',
+      ),
+    );
+  }
+
+  // Allowlist workflow: who maintains it, and when they last reviewed the identifiers.
+  const allowlistPolicy = optionalManifestObject(manifest, 'allowlistPolicy', 'INVALID_ALLOWLIST_POLICY', errors);
+  if (allowlistPolicy) {
+    optionalString(allowlistPolicy, 'maintainedBy', 'allowlistPolicy', 'INVALID_ALLOWLIST_POLICY', errors);
+    optionalDate(allowlistPolicy, 'lastReviewed', 'allowlistPolicy', 'INVALID_ALLOWLIST_POLICY_DATE', errors);
+    optionalString(allowlistPolicy, 'policyNote', 'allowlistPolicy', 'INVALID_ALLOWLIST_POLICY', errors);
+  }
+  if (reviewedIds.length > 0 && !allowlistPolicy) {
+    warnings.push(
+      issue(
+        'REVIEWED_IDS_WITHOUT_ALLOWLIST_POLICY',
+        'Reviewed identifiers are present but no allowlist policy records who maintains them.',
+        'allowlistPolicy',
+        'warning',
+      ),
+    );
+  }
+
+  // Import staging flow: unverified -> reviewed -> promoted. Warn on mismatches with status.
+  let stage: string | undefined;
+  const staging = optionalManifestObject(manifest, 'staging', 'INVALID_STAGING', errors);
+  if (staging) {
+    const rawStage = staging.stage;
+    if (!hasText(rawStage)) {
+      errors.push(
+        issue('MISSING_STAGING_STAGE', 'staging.stage is required when a staging block is present.', 'staging.stage'),
+      );
+    } else if (!(CORPUS_MANIFEST_STAGES as readonly string[]).includes(String(rawStage))) {
+      errors.push(
+        issue(
+          'INVALID_STAGING_STAGE',
+          `staging.stage must be one of: ${CORPUS_MANIFEST_STAGES.join(', ')}.`,
+          'staging.stage',
+        ),
+      );
+    } else {
+      stage = String(rawStage);
+    }
+    optionalString(staging, 'unverifiedFolder', 'staging', 'INVALID_STAGING', errors);
+    optionalString(staging, 'reviewedFolder', 'staging', 'INVALID_STAGING', errors);
+    optionalString(staging, 'importNote', 'staging', 'INVALID_STAGING', errors);
+  } else if (gated) {
+    warnings.push(
+      issue('NO_STAGING_RECORD', 'No import staging record is attached to this gated corpus.', 'staging', 'warning'),
+    );
+  }
+  if (stage === 'promoted' && status !== 'approved') {
+    warnings.push(
+      issue('STAGE_STATUS_MISMATCH', 'staging.stage "promoted" expects status "approved".', 'staging.stage', 'warning'),
+    );
+  }
+  const sources = Array.isArray(manifest.sources) ? manifest.sources : [];
+  const hasVerifiedSource = sources.some((source) => isObject(source) && source.verificationStatus === 'verified');
+  if (stage === 'unverified' && hasVerifiedSource) {
+    warnings.push(
+      issue(
+        'UNSTAGED_VERIFIED_SOURCES',
+        'Records are still staged as "unverified" but the corpus contains verified sources.',
+        'staging.stage',
+        'warning',
+      ),
+    );
+  }
+
+  // A reviewed allowlist entry that matches no source is stale; it must not silently grant
+  // authority to a future citation that was never checked by the named reviewer.
+  if (reviewedIds.length > 0) {
+    const cited = new Set<string>();
+    for (const source of sources) {
+      if (isObject(source) && hasText(source.citation)) cited.add(normalizeIdentifier(String(source.citation)));
+    }
+    for (const id of reviewedIds) {
+      if (!cited.has(normalizeIdentifier(id))) {
+        warnings.push(
+          issue(
+            'UNUSED_REVIEWED_IDENTIFIER',
+            `Reviewed identifier "${id}" does not match any source citation in this corpus. Remove it or add the record a human actually reviewed.`,
+            'reviewedOfficialIdentifiers',
+            'warning',
+          ),
+        );
+      }
+    }
+  }
 }
 
 export function validateCorpusManifest(input: unknown, options: SourceValidationOptions = {}): CorpusManifestResult {
@@ -435,11 +834,14 @@ export function validateCorpusManifest(input: unknown, options: SourceValidation
     );
   }
 
+  validateManifestMetadata(manifest, status, reviewed, errors, warnings);
+
   return {
     ok: errors.length === 0,
     errors,
     warnings,
     sources: batch,
+    duplicateIds: batch.duplicateIds,
     ...(typeof schemaVersion === 'number' ? { schemaVersion } : {}),
     ...(status ? { status } : {}),
   };

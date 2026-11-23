@@ -1,0 +1,15 @@
+<!-- Original in-repo placeholder created for THE BAR prototype; no third-party asset; CC0/project-owned by default for this repo -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+  <rect x="30" y="40" width="452" height="432" fill="#2b2119" stroke="#9c8147" stroke-width="3" />
+  <rect x="30" y="184" width="452" height="10" fill="#6b5138" />
+  <rect x="30" y="328" width="452" height="10" fill="#6b5138" />
+  <g stroke="#101318" stroke-width="1">
+    <rect x="48" y="84" width="26" height="100" fill="#63393b" />
+    <rect x="76" y="100" width="22" height="84" fill="#456267" />
+    <rect x="100" y="72" width="30" height="112" fill="#46586b" />
+    <rect x="290" y="90" width="24" height="94" fill="#c8a75a" />
+    <rect x="316" y="78" width="28" height="106" fill="#63393b" />
+  </g>
+  <rect x="48" y="228" width="120" height="100" fill="#ddd5c3" stroke="#7c735f" />
+  <rect x="60" y="242" width="60" height="3" fill="#9c8147" />
+</svg>

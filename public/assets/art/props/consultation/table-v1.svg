@@ -1,0 +1,12 @@
+<!-- Original in-repo placeholder created for THE BAR prototype; no third-party asset; CC0/project-owned by default for this repo -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+  <ellipse cx="256" cy="300" rx="200" ry="70" fill="#3d2e21" />
+  <ellipse cx="256" cy="284" rx="200" ry="70" fill="#6b5138" stroke="#9c8147" stroke-width="2" />
+  <rect x="246" y="350" width="20" height="110" fill="#3d2e21" />
+  <ellipse cx="256" cy="462" rx="90" ry="12" fill="#3d2e21" />
+  <g transform="translate(214 258) rotate(-6)">
+    <rect width="84" height="56" rx="2" fill="#ddd5c3" stroke="#7c735f" />
+    <rect x="10" y="14" width="52" height="3" fill="#9c8147" />
+    <rect x="10" y="24" width="64" height="3" fill="#b7ae9b" />
+  </g>
+</svg>

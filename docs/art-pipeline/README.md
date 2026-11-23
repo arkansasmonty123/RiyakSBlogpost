@@ -1,12 +1,17 @@
 # Art asset pipeline (Phase 5 — D-002 / D-012 / D-018)
 
-> **Status (2026-11-23): SCAFFOLD READY — REAL ASSETS PENDING.**
+> **Status (2026-11-23): SCAFFOLD + ORIGINAL-PLACEHOLDER PACK READY — OWNER SIGN-OFF PENDING.**
 > Folder layout, naming rules, asset specs, the manifest template, a deterministic offline
 > validator (`npm run validate:art-manifest`) and the human approval workflow below are in place
-> and tested. **No external art asset has been commissioned, downloaded, imported or approved.**
-> The game still uses only in-repo CSS/SVG placeholder art (`src/app/SceneArt.tsx`,
-> `src/styles/index.css`). Real assets remain blocked until the owners of
-> [D-002 (visual style)](../DECISIONS.md), [D-012 (asset rights)](../DECISIONS.md) and
+> and tested. A **real, non-template manifest** (`asset-manifest.json`) now catalogues a small set
+> of **lightweight ORIGINAL in-repo SVG placeholders** in `public/assets/art/` (≈4 KiB total),
+> each with an embedded provenance comment and self-attested authorship. **No external,
+> third-party or AI-generated art asset has been commissioned, downloaded, imported or approved,
+> and no asset is loaded at runtime.** The game still uses the vector-only stage sets in
+> `src/app/SceneArt.tsx`. The `status: "approved"` on those asset records means only "approved as
+> an original, project-owned placeholder by its author" — it is **not** the named human art-owner
+> rights sign-off of §8. Real assets and any runtime integration remain blocked until the owners
+> of [D-002 (visual style)](../DECISIONS.md), [D-012 (asset rights)](../DECISIONS.md) and
 > [D-018 (content/asset licence)](../DECISIONS.md) decide, a named art owner/reviewer is assigned,
 > and each asset passes the approval flow in §8. No visual style, licence or provenance claim is
 > approved by this scaffold.
@@ -32,7 +37,15 @@ act, never a guess by tooling or AI.**
   blank and keep the asset in `draft`.
 - **Templates are not manifests.** `asset-manifest.template.json` carries `"template": true`; the
   validator **rejects** it by design (`npm run validate:art-manifest -- --template` must exit 1).
-  Copying the template and filling in example values does not approve anything.
+  Copying the template and filling in example values does not approve anything. The real
+  `asset-manifest.json` carries `"template": false` and only self-attested original work.
+- **"Approved" originals are not a rights sign-off.** The original SVG placeholders are marked
+  `status: "approved"` with `origin: "original"` and CC0/project-owned provenance. This is the
+  author's factual attestation that the work was created in-repo with no third-party rights to
+  clear — it is **not** a fabricated human reviewer name or a claim that D-002/D-012/D-018 are
+  resolved. `approvedBy` explicitly says "self-attested original work; NOT a named human
+  art-owner rights sign-off". A human must still follow §8 before any of it is treated as a
+  rights-cleared pack or integrated at runtime.
 - **No canonical-truth leakage in art or metadata.** Filenames, asset ids, notes and embedded
   metadata must not encode case facts, hidden motives, authenticity results, "who moved first",
   or the content of privileged conversations. See `docs/ART_DIRECTION.md` §3–4 and the no-leak
@@ -45,27 +58,32 @@ act, never a guess by tooling or AI.**
 ```text
 project-courtroom/
 ├── docs/art-pipeline/
-│   ├── README.md                    # this document (process + blocked status)
+│   ├── README.md                    # this document (process + current status)
 │   ├── asset-manifest.template.json # TEMPLATE / NOT AN APPROVED MANIFEST — never ingestible
+│   ├── asset-manifest.json          # REAL manifest: original in-repo SVG placeholders only
 │   └── intake/
 │       ├── draft/     .gitkeep      # working files + provenance notes; non-authoritative
 │       └── approved/  .gitkeep      # human-checked files + sign-off notes (only after §8)
 └── public/assets/art/
-    ├── .gitkeep                     # empty placeholder; binary files ignored until approved
-    ├── viewpoints/                  # location/viewpoint backgrounds (created on first import)
-    ├── portraits/                   # character expression portraits
-    ├── props/                       # reusable object/detail art
-    └── ui-icons/                    # interface icons
+    ├── .gitkeep                     # tracked placeholder; binaries ignored until approved
+    ├── props/
+    │   ├── chamber/desk-v1.svg      # original in-repo placeholder (provenance comment inside)
+    │   ├── chamber/bookshelf-v1.svg
+    │   ├── reception/counter-v1.svg
+    │   └── consultation/table-v1.svg
+    └── ui-icons/evidence-v1.svg     # currentColor placeholder icon
 ```
 
 - `intake/draft/` — working assets and their source/licence notes. Nothing here is authoritative
   or referenced by the app. Text notes and manifests are tracked; binaries are ignored.
 - `intake/approved/` — exact files the named reviewer checked, plus the sign-off note and the
   manifest entry. Only material that passes §8 may be promoted here.
-- `public/assets/art/` — Vite serves this folder at `/assets/art/`. It stays empty (only
-  `.gitkeep`) while assets are blocked. Category subfolders are created on first approved import.
-- `asset-manifest.json` (at `docs/art-pipeline/`) is **not shipped** while the decisions are
-  blocked. Create it from the template only after §8 is complete.
+- `public/assets/art/` — Vite serves this folder at `/assets/art/`. It now holds only tiny
+  **original SVG placeholders** (`*.svg` is allowed by `.gitignore`); binaries remain ignored
+  until approved. Category subfolders for viewpoints/portraits are created on first approved import.
+- `asset-manifest.json` (at `docs/art-pipeline/`) **is shipped** for these original placeholders.
+  It is a real manifest (`"template": false`), not a licence claim or a rights sign-off. Add any
+  third-party/generated asset only by following §8; do not fill fields from memory or AI output.
 
 ## 3. Naming conventions
 
@@ -232,8 +250,10 @@ as "licensed" or "verified" without the recorded evidence above.
 # Prove the shipped template is NOT an approved manifest (expected exit code 1):
 npm run validate:art-manifest -- --template
 
-# Validate the real manifest once it exists (not shipped while blocked):
+# Validate the real manifest of original in-repo SVG placeholders (expected exit code 0):
 npm run validate:art-manifest -- docs/art-pipeline/asset-manifest.json
+# With no path, that same real manifest is the default:
+npm run validate:art-manifest
 
 # Help / usage:
 npm run validate:art-manifest -- --help
@@ -241,22 +261,78 @@ npm run validate:art-manifest -- --help
 
 The validator (`src/domain/artManifestValidation.ts`, CLI in `scripts/validate-art-manifest.ts`)
 checks manifest shape, required fields, enum/date/checksum/size/path formats, and — for
-`status: "approved"` assets — the full human-attested provenance set (§7). It **warns** on soft
-size-budget overruns, incomplete drafts, unconfirmed generative rights and unresolved decisions.
-It never downloads, imports, verifies or approves anything. Key error codes:
-`MANIFEST_IS_TEMPLATE`, `MISSING_SCHEMA_VERSION`, `UNSUPPORTED_SCHEMA_VERSION`,
+`status: "approved"` assets — the full provenance set (§7). It **accepts** legitimate in-repo
+original records with `origin: "original"` and real checksum/size provenance, and it **rejects** a
+template, an approved record missing provenance fields, and duplicate ids/files. It **warns** on
+soft size-budget overruns, incomplete drafts, unconfirmed generative rights, an unassigned owner
+and unresolved decisions. It never downloads, imports, verifies or approves anything, and it does
+not check that a named human actually reviewed a licence — that remains a human act. Key error
+codes: `MANIFEST_IS_TEMPLATE`, `MISSING_SCHEMA_VERSION`, `UNSUPPORTED_SCHEMA_VERSION`,
 `MISSING_MANIFEST_ID`, `MISSING_ASSETS`, `INVALID_MANIFEST_STATUS`, `APPROVED_MISSING_LICENSE`,
 `APPROVED_MISSING_SOURCE`, `APPROVED_MISSING_AUTHOR`, `APPROVED_MISSING_ORIGIN`,
 `APPROVED_MISSING_CREATED_DATE`, `APPROVED_MISSING_DATE`, `APPROVED_WITHOUT_REVIEWER`,
-`APPROVED_MISSING_CHECKSUM`, `APPROVED_MISSING_SIZE`, `UNSAFE_ASSET_PATH`.
+`APPROVED_MISSING_CHECKSUM`, `APPROVED_MISSING_SIZE`, `UNSAFE_ASSET_PATH`,
+`DUPLICATE_ASSET_ID`, `DUPLICATE_ASSET_FILE`.
 
-## 11. Current blocked status
+## 11. Current status / what is still blocked
 
-- No real manifest exists; `asset-manifest.json` is intentionally not shipped.
-- `asset-manifest.template.json` is a **template**, rejected by the validator by design.
-- `public/assets/art/` and `intake/` contain only empty `.gitkeep` placeholders.
+- A real manifest, `asset-manifest.json`, **exists and validates** (`npm run validate:art-manifest`
+  exits 0). It is `"template": false` and lists only original in-repo SVG placeholders.
+- `asset-manifest.template.json` is still a **template**, rejected by the validator by design.
+- `public/assets/art/` holds five tiny original SVG placeholders (~4 KiB total), each with an
+  embedded provenance comment; `intake/` still holds only `.gitkeep` placeholders. No binary or
+  third-party asset is committed, and nothing is loaded at runtime.
+- The `status: "approved"` on those assets is a **self-attestation of original authorship**, not a
+  named human art-owner rights sign-off. The manifest owner is `null` (the validator emits the
+  truthful `NO_ART_OWNER` warning).
 - D-002, D-012 and D-018 remain `Unknown`, and no art owner/reviewer is assigned
-  ([`../DECISIONS.md`](../DECISIONS.md)). The shipped visuals remain the CSS/SVG placeholders.
-- Unblocks only when the owners decide the three items, supply rights-cleared original/licensed
-  assets, and sign off using the §8 workflow. See [`../ART_DIRECTION.md`](../ART_DIRECTION.md) for
-  the provisional style direction, palette and character/environment rules.
+  ([`../DECISIONS.md`](../DECISIONS.md)). The shipped visuals remain the CSS/SVG placeholders in
+  `src/app/SceneArt.tsx`.
+- Unblocks full integration only when the owners decide the three items, supply rights-cleared
+  original/licensed assets, and sign off using the §8 workflow. See
+  [`../ART_DIRECTION.md`](../ART_DIRECTION.md) for the provisional style direction, palette and
+  character/environment rules.
+
+## 12. Original in-repo placeholder pack (2026-11-23)
+
+A small set of **original**, lightweight SVG placeholders was drawn in-repo for THE BAR prototype
+to demonstrate the §1–§11 pipeline end to end with real (non-template) records. They are decorative
+shapes mirroring the existing `SceneArt.tsx` geometry (desk, bookshelf, counter, table) plus one
+`currentColor` UI icon. They are **not** a visual-style decision (D-002), **not** a rights policy
+decision (D-012), and **not** a repo/content licence decision (D-018).
+
+| id                           | kind    | file                              | bytes | sha256 (prefix) |
+| ---------------------------- | ------- | --------------------------------- | ----: | --------------- |
+| `prop-chamber-desk-v1`       | prop    | `props/chamber/desk-v1.svg`       |   864 | `6fe71b2e…`     |
+| `prop-chamber-bookshelf-v1`  | prop    | `props/chamber/bookshelf-v1.svg`  |  1020 | `da1c47de…`     |
+| `prop-reception-counter-v1`  | prop    | `props/reception/counter-v1.svg`  |   817 | `f3f9b701…`     |
+| `prop-consultation-table-v1` | prop    | `props/consultation/table-v1.svg` |   815 | `87a59c47…`     |
+| `icon-evidence-v1`           | ui-icon | `ui-icons/evidence-v1.svg`        |   537 | `ef68e7e5…`     |
+
+Total: **4 053 bytes** — comfortably inside the §6 soft budgets (well under 1 KiB each, ≪ 5 MiB
+total). Full `sha256:<64 hex>` values and `sizeBytes` are recorded in `asset-manifest.json` and were
+computed from the committed files.
+
+Provenance policy for these files:
+
+- Each SVG embeds the comment: _"Original in-repo placeholder created for THE BAR prototype; no
+  third-party asset; CC0/project-owned by default for this repo"_.
+- `origin: "original"`, `license: "CC0-1.0 (original in-repo work, project-owned; no third-party
+rights)"`, author = "THE BAR prototype (in-repo author)".
+- **No third-party artwork, no downloaded pack, no scraped image, no real identifiable person and
+  no generative/AI output** is involved. No licence or reviewer name is claimed from memory.
+- `approvedDate` is the creation date; `approvedBy` is an explicit self-attestation that names no
+  human reviewer and states that the §8 sign-off is still pending. The manifest owner is `null`.
+- No legible case text, no canonical-truth/authenticity/guilt signal, no personal data, no motion
+  and no remote references are embedded; files are `aria-hidden` and `focusable="false"`.
+- They are **not wired into the app at runtime** (`SceneArt.tsx` remains the shipped, inline-vector
+  stage). Integrating them later must follow §8 and keep hotspot ids/action strings unchanged.
+
+Verify with:
+
+```bash
+npm run validate:art-manifest                                      # default real manifest → exit 0
+npm run validate:art-manifest -- docs/art-pipeline/asset-manifest.json
+npm run validate:art-manifest -- --template                        # rejected → exit 1
+grep -c "Original in-repo placeholder created for THE BAR" public/assets/art/**/*.svg
+```

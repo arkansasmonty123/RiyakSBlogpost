@@ -435,6 +435,45 @@ export function validateArtManifest(input: unknown, options: ArtValidationOption
     }
   }
 
+  // A real manifest must map each id and committed file to exactly one asset record; duplicates
+  // would make checksum/size provenance ambiguous. Offline and deterministic, no file IO.
+  const seenIds = new Map<string, number>();
+  const seenFiles = new Map<string, number>();
+  assetInput.forEach((asset, index) => {
+    if (!asset || typeof asset !== 'object' || Array.isArray(asset)) return;
+    const record = asset as Record<string, unknown>;
+    if (hasText(record.id)) {
+      const id = record.id.trim();
+      const first = seenIds.get(id);
+      if (first !== undefined) {
+        errors.push(
+          issue(
+            'DUPLICATE_ASSET_ID',
+            `Asset id "${id}" is repeated (first at assets[${first}]); ids must be unique.`,
+            'id',
+          ),
+        );
+      } else {
+        seenIds.set(id, index);
+      }
+    }
+    if (hasText(record.file)) {
+      const file = record.file.trim();
+      const first = seenFiles.get(file);
+      if (first !== undefined) {
+        errors.push(
+          issue(
+            'DUPLICATE_ASSET_FILE',
+            `Asset file "${file}" is repeated (first at assets[${first}]); each committed file needs one provenance record.`,
+            'file',
+          ),
+        );
+      } else {
+        seenFiles.set(file, index);
+      }
+    }
+  });
+
   // Consistency guidance: non-blocking, but makes a half-prepared pack obvious.
   if (!hasText(manifest.owner) && batch.total > 0) {
     warnings.push(

@@ -155,6 +155,49 @@ describe('source record validation (D-005/D-011 ingestion gate)', () => {
     const batch = validateSourceRecords(createInitialSave().legalSources);
     expect(batch.ok).toBe(true);
     expect(batch.invalid).toBe(0);
+    expect(batch.duplicateIds).toEqual([]);
+  });
+
+  it('detects duplicate ids and only invalidates the later occurrences', () => {
+    const duplicate = { ...INTERNAL_SUMMARY, title: 'Later record with the same internal id' };
+    const batch = validateSourceRecords([INTERNAL_SUMMARY, duplicate]);
+    expect(batch.ok).toBe(false);
+    expect(batch.total).toBe(2);
+    expect(batch.invalid).toBe(1);
+    expect(batch.duplicateIds).toEqual(['v-1']);
+    expect(batch.results[0].ok).toBe(true);
+    expect(batch.results[1].errors.map((error) => error.code)).toContain('DUPLICATE_SOURCE_ID');
+    expect(batch.results[1].errors.find((error) => error.code === 'DUPLICATE_SOURCE_ID')?.field).toBe('id');
+    // Distinct ids remain valid; whitespace-only differences are normalized by trimming.
+    expect(validateSourceRecords([INTERNAL_SUMMARY, { ...INTERNAL_SUMMARY, id: 'v-2' }]).ok).toBe(true);
+  });
+
+  it('rejects verified records that label themselves template/example/sample/TBD', () => {
+    // Fictional internal identifiers used only to prove template stand-ins cannot be verified.
+    for (const citation of ['TEMPLATE-ONLY-0001', 'INTERNAL-EXAMPLE-0001', 'SAMPLE-SUMMARY-01', 'TBD-INTERNAL-01']) {
+      const record: LegalSource = { ...INTERNAL_SUMMARY, citation };
+      expect(codes(record), citation).toContain('TEMPLATE_OR_EXAMPLE_CANNOT_BE_VERIFIED');
+      expect(validateSourceRecord(record).ok, citation).toBe(false);
+    }
+    // The same stand-in is fine when it is explicitly non-authoritative.
+    const unverified = {
+      ...INTERNAL_SUMMARY,
+      citation: 'TEMPLATE-ONLY-0001',
+      verificationStatus: 'placeholder' as const,
+    };
+    expect(codes(unverified)).not.toContain('TEMPLATE_OR_EXAMPLE_CANNOT_BE_VERIFIED');
+  });
+
+  it('rejects generic/auto reviewer names as a verified sign-off', () => {
+    for (const verifiedBy of ['TBD', 'auto', 'AI', 'system', 'unknown']) {
+      expect(codes({ ...INTERNAL_SUMMARY, verifiedBy }), verifiedBy).toContain('NON_HUMAN_REVIEWER');
+    }
+    expect(validateSourceRecord({ ...INTERNAL_SUMMARY, verifiedBy: 'Named internal reviewer' }).ok).toBe(true);
+  });
+
+  it('ignores unknown extra fields so the gate is forward compatible', () => {
+    const extended = { ...INTERNAL_SUMMARY, someFutureField: { nested: true } };
+    expect(validateSourceRecord(extended).ok).toBe(true);
   });
 });
 

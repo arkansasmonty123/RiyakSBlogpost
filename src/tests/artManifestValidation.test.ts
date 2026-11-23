@@ -227,4 +227,39 @@ describe('art manifest validation (Phase 5 art pipeline)', () => {
     expect(validateArtAsset(null).errors[0]?.code).toBe('INVALID_ASSET');
     expect(validateArtAsset('asset').errors[0]?.code).toBe('INVALID_ASSET');
   });
+
+  it('accepts a real manifest of original in-repo records while rejecting the template', () => {
+    const real = JSON.parse(readFileSync('docs/art-pipeline/asset-manifest.json', { encoding: 'utf8' })) as Record<
+      string,
+      unknown
+    >;
+    const result = validateArtManifest(real);
+    expect(real.template).toBe(false);
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+    expect(result.assets?.total).toBeGreaterThan(0);
+    expect(result.assets?.invalid).toBe(0);
+    for (const asset of result.assets?.results ?? []) {
+      expect(asset.ok).toBe(true);
+    }
+
+    const template = JSON.parse(
+      readFileSync('docs/art-pipeline/asset-manifest.template.json', { encoding: 'utf8' }),
+    ) as unknown;
+    expect(codes(validateArtManifest(template))).toContain('MANIFEST_IS_TEMPLATE');
+  });
+
+  it('rejects duplicate asset ids and duplicate file paths', () => {
+    const duplicateId = validateArtManifest(
+      manifest({ assets: [APPROVED_ASSET, { ...APPROVED_ASSET, id: APPROVED_ASSET.id }] }),
+    );
+    expect(duplicateId.ok).toBe(false);
+    expect(codes(duplicateId)).toContain('DUPLICATE_ASSET_ID');
+
+    const duplicateFile = validateArtManifest(
+      manifest({ assets: [APPROVED_ASSET, { ...APPROVED_ASSET, id: 'other-id' }] }),
+    );
+    expect(duplicateFile.ok).toBe(false);
+    expect(codes(duplicateFile)).toContain('DUPLICATE_ASSET_FILE');
+  });
 });

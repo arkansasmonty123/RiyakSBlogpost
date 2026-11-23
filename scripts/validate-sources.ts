@@ -96,18 +96,29 @@ function main(): number {
   }
 
   const batch = validateSourceRecords(sources, options);
+  const errors = batch.results.reduce((count, result) => count + result.errors.length, 0);
+  const warnings = batch.results.reduce((count, result) => count + result.warnings.length, 0);
   for (const result of batch.results) {
     const label = `record ${result.index + 1}${result.id ? ` "${result.id}"` : ''}`;
     for (const error of result.errors) reportIssue(error, label);
     for (const warning of result.warnings) reportIssue(warning, label);
   }
+  process.stdout.write(
+    `Summary: ${batch.total} record(s), ${batch.invalid} invalid, ${errors} error(s), ${warnings} warning(s).` +
+      (batch.duplicateIds.length ? ` Duplicate ids: ${batch.duplicateIds.join(', ')}.` : '') +
+      '\n',
+  );
 
   if (batch.ok) {
-    process.stdout.write(`PASS: ${batch.total} record(s) valid, ${batch.invalid} invalid.\n`);
+    process.stdout.write('STATUS: VALID — nothing was ingested or verified by this tool.\n');
+    process.stdout.write(
+      '  - A named content owner must still sign off official text before any record is authoritative (D-005/D-011).\n',
+    );
     return 0;
   }
+  process.stderr.write('STATUS: BLOCKED — no records were ingested or verified.\n');
   process.stderr.write(
-    `FAIL: ${batch.invalid} of ${batch.total} record(s) invalid. No records were ingested or verified.\n`,
+    '  - Fix the errors above; keep stand-ins non-authoritative and only allowlist citations a human checked.\n',
   );
   return 1;
 }

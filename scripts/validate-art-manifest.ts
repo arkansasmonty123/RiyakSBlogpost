@@ -5,8 +5,11 @@
  *   npm run validate:art-manifest -- --template
  *
  * The --template form validates the shipped shape template and is EXPECTED TO FAIL: it proves
- * that a template can never be mistaken for an approved, rights-cleared asset pack. Nothing is
- * downloaded, written, ingested or approved by this tool.
+ * that a template can never be mistaken for an approved, rights-cleared asset pack. With no path,
+ * the real manifest (docs/art-pipeline/asset-manifest.json) is used; it currently records only
+ * lightweight ORIGINAL in-repo SVG placeholders with self-attested authorship. Nothing is
+ * downloaded, written, ingested or approved by this tool, and D-002/D-012/D-018 still await the
+ * named owner's human sign-off.
  *
  * Exit codes: 0 = all assets valid, 1 = manifest/assets failed validation,
  * 2 = usage/IO error.
@@ -32,8 +35,9 @@ const USAGE = [
   'license, source, author, origin, createdDate, approvedDate, approvedBy, sha256 checksum, sizeBytes.',
   'See docs/art-pipeline/README.md.',
   '',
-  'No real assets are shipped: D-002/D-012/D-018 remain blocked until the owner chooses a style,',
-  'clears asset rights and decides the content/asset licence. This tool never approves anything.',
+  'The real manifest records only lightweight ORIGINAL in-repo SVG placeholders (self-attested',
+  'authorship, no third-party assets). D-002/D-012/D-018 still await the named owner: choose a',
+  'style, clear asset rights and decide the content/asset licence. This tool never approves anything.',
 ].join('\n');
 
 function reportIssue(issue: ArtValidationIssue, label: string): void {
@@ -55,7 +59,7 @@ function main(): number {
     parsed = JSON.parse(readFileSync(path, { encoding: 'utf8' })) as unknown;
   } catch (error) {
     process.stderr.write(`Could not read/parse art manifest at "${path}": ${String(error)}\n`);
-    process.stderr.write('No real art manifest is shipped yet. Use --template to check the template.\n');
+    process.stderr.write('Pass a valid manifest path, or use --template to validate the shipped template.\n');
     return 2;
   }
 

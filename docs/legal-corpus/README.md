@@ -12,6 +12,11 @@ This directory is a **process/tooling scaffold**, not a corpus. Nothing in it is
 The runtime never reads these files; they exist so a human content owner has a deterministic,
 reviewable path from official publication to a validated record.
 
+The step-by-step human workflow (acquisition checklist, reviewer sign-off, rights/licensing,
+version/effective-date notes, allowlist workflow and import staging) is in
+[`ACQUISITION_CHECKLIST.md`](./ACQUISITION_CHECKLIST.md). It is the companion to this folder-layout /
+manifest-format reference and to [`../LEGAL_SOURCE_VERIFICATION.md`](../LEGAL_SOURCE_VERIFICATION.md).
+
 ## 1. Non-negotiables (read first)
 
 - **No fabrication.** Never write a statutory provision, section/article number, judgment name,
@@ -38,7 +43,8 @@ no-fabrication rules, acceptable official sources and sign-off log.
 
 ```text
 docs/legal-corpus/
-├── README.md                 # this document (process + blocked status)
+├── README.md                 # this document (folder layout + manifest format)
+├── ACQUISITION_CHECKLIST.md  # human acquisition, sign-off, rights, version, allowlist, staging
 ├── manifest.template.json    # TEMPLATE / NOT LEGAL AUTHORITY — never ingestible
 ├── manifest.json             # NOT SHIPPED — created only after human review and sign-off
 └── intake/
@@ -102,10 +108,31 @@ allowlist entry. A record whose `title`, `sourceName` or `citation` contains `pl
 never be `verified`. Full field contract and error codes:
 [`../LEGAL_SOURCE_VERIFICATION.md`](../LEGAL_SOURCE_VERIFICATION.md).
 
+### Optional pipeline metadata (all new fields are optional / backward compatible)
+
+These fields carry the human attestations from
+[`ACQUISITION_CHECKLIST.md`](./ACQUISITION_CHECKLIST.md). A present-but-malformed field is an error;
+an absent/incomplete attestation on an `in-review`/`approved` corpus is a warning.
+
+| Field             | Meaning / rule                                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- |
+| `provenanceNote`  | Non-empty corpus-level provenance summary.                                                                  |
+| `acquisition`     | `{ checklistCompleted, reviewerAssigned, officialSources, retrievalDate }` — exact-text acquisition record. |
+| `signoff`         | `{ reviewer, date, scope?, notes? }` — named human + `YYYY-MM-DD`; `TBD`/`auto`/`AI` are rejected.          |
+| `rights`          | `{ status: none\|pending\|cleared, basis?, license?, confirmedBy?, confirmedDate? }` — reproduction rights. |
+| `versionPolicy`   | `{ effectiveDatePolicy?, asOf?, note?, supersedes? }` — version/effective-date facts (policy still open).   |
+| `allowlistPolicy` | `{ maintainedBy?, lastReviewed?, policyNote? }` — who maintains `reviewedOfficialIdentifiers`.              |
+| `staging`         | `{ stage: unverified\|reviewed\|promoted, unverifiedFolder?, reviewedFolder?, importNote? }`.               |
+
+`rights.status: "cleared"` requires `basis` and `confirmedBy`. A `signoff` block requires both a
+human `reviewer` and a `date`. Duplicate record `id`s are rejected (`DUPLICATE_SOURCE_ID`).
+No real values are shipped: the template uses `TEMPLATE`/`null` placeholders and is always rejected.
+
 ## 4. Verification workflow (summary)
 
 1. **Acquire** exact text from an acceptable official source (§5 of the verification doc);
-   record publisher, publication identifier and retrieval date/version in the intake notes.
+   work through the [`ACQUISITION_CHECKLIST.md`](./ACQUISITION_CHECKLIST.md) items and record
+   publisher, publication identifier and retrieval date/version in the intake notes.
 2. **Draft** a source record in `intake/unverified/` with `verificationStatus: "unverified"` and
    faithful `provenance`. Never fill `verifiedBy`/`verificationDate` at this stage.
 3. **Run the validator** against a manifest containing the draft:
@@ -149,7 +176,8 @@ npm run validate:legal-corpus -- --help
 - `manifest.template.json` is a **template**, rejected by the validator by design.
 - The in-app seed contains explicit statutory placeholders and one verified internal fictional
   educational summary (not legal authority). No person is recorded as having verified real law.
-- The reviewed-identifier allowlist is empty, and the reviewer/versioning decisions remain
-  `Unknown` ([`../DECISIONS.md`](../DECISIONS.md), D-005/D-011).
-- Unblocks only when the legal content owner is assigned, supplies official text with rights, and
-  signs off using the documented workflow.
+- The reviewed-identifier allowlist is empty, no acquisition checklist is completed, and the
+  reviewer/versioning decisions remain `Unknown` ([`../DECISIONS.md`](../DECISIONS.md), D-005/D-011).
+- Unblocks only when the legal content owner is assigned, supplies official text with confirmed
+  rights, agrees the versioning policy and signs off using the documented workflow — never by
+  filling the template from memory or AI output.

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { SceneArt } from '@/app/SceneArt';
 import { createResetUiState, emptySourceForm, EXPLICIT_SAVE_NOTICE, RESET_CONFIRMATION } from '@/app/sessionUi';
 import type { SaveStatus, SourceFormState } from '@/app/sessionUi';
-import { config } from '@/config/env';
+import { config, isLocalAiPanelEnabled } from '@/config/env';
 import { loadSave, persistSave, resetSave } from '@/storage/save';
 import type { PersistResult } from '@/storage/save';
 import { recordAudit } from '@/domain/audit';
@@ -51,6 +51,9 @@ import {
 import { loadDraftVersion, MAX_DRAFT_CHARS, saveDraftVersion, setCurrentDraft } from '@/domain/draft';
 import { submitDraftForFeedback } from '@/domain/draftSubmission';
 import type { DraftSubmissionResult } from '@/domain/draftSubmission';
+import { MAX_AI_PROMPT_CHARS } from '@/domain/ai/guards';
+import { askLocalLlm } from '@/services/localLlm';
+import type { LocalLlmResult } from '@/services/localLlm';
 import {
   addTheoryClaim,
   getTheorySupport,
@@ -81,6 +84,7 @@ const PANELS = [
   'notebook',
   'journal',
   'dialogue',
+  'ai',
 ] as const;
 
 /** Plain-language names so guidance reads like an action, not an internal panel id. */
@@ -95,6 +99,7 @@ const PANEL_LABELS: Record<Panel, string> = {
   notebook: 'notebook',
   journal: 'timeline',
   dialogue: 'conversations',
+  ai: 'local AI lab',
   completion: 'chapter summary',
 };
 
@@ -177,6 +182,8 @@ function FileSection({ title, items, empty }: { title: string; items: string[]; 
 
 export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const [save, setSave] = useState<SaveGame>(() => loadSave());
+  // Experimental local-AI lab (Phase 6 foundations). Env-aware, never a hosted provider.
+  const localAiEnabled = isLocalAiPanelEnabled();
   // Single source of truth for initial UI values; reset reuses the same blueprint.
   const freshUi = createResetUiState(save);
   const [panel, setPanel] = useState<Panel>(initialPanel);
@@ -205,6 +212,13 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const [showHelp, setShowHelp] = useState(freshUi.showHelp);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(freshUi.saveStatus);
   const [saveNotice, setSaveNotice] = useState(freshUi.saveNotice);
+  const [aiPrompt, setAiPrompt] = useState(freshUi.aiPrompt);
+  const [aiResponse, setAiResponse] = useState(freshUi.aiResponse);
+  const [aiWarnings, setAiWarnings] = useState<string[]>(freshUi.aiWarnings);
+  const [aiError, setAiError] = useState(freshUi.aiError);
+  const [aiLoading, setAiLoading] = useState(false);
+  // Discard a late local-AI response if the user reset (or asked again) while it was in flight.
+  const aiRequestId = useRef(0);
 
   // Move keyboard focus to the workspace heading after a panel change, but not on first
   // load. Comparing to the last rendered panel (instead of a "first render" flag) keeps
@@ -392,6 +406,12 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     setShowHelp(fresh.showHelp);
     setSaveStatus(fresh.saveStatus);
     setSaveNotice(fresh.saveNotice);
+    aiRequestId.current += 1;
+    setAiPrompt(fresh.aiPrompt);
+    setAiResponse(fresh.aiResponse);
+    setAiWarnings(fresh.aiWarnings);
+    setAiError(fresh.aiError);
+    setAiLoading(false);
   }
 
   /** Shared, explicit confirmation for every "start over" action. */
@@ -417,6 +437,28 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
       setCurrentDraft(s, draft);
       return s;
     });
+  }
+
+  async function askLocalAi() {
+    const prompt = aiPrompt.trim();
+    if (!prompt) {
+      setAiError('Enter a prompt.');
+      return;
+    }
+    const requestId = ++aiRequestId.current;
+    setAiLoading(true);
+    setAiError('');
+    setAiResponse('');
+    setAiWarnings([]);
+    const result: LocalLlmResult = await askLocalLlm(prompt);
+    if (requestId !== aiRequestId.current) return;
+    setAiLoading(false);
+    if (!result.ok) {
+      setAiError(result.error ?? 'Local LLM request failed.');
+      return;
+    }
+    setAiResponse(result.text);
+    setAiWarnings(result.warnings);
   }
 
   /** Dismiss first-day guidance and remember the choice across saves. */
@@ -1121,7 +1163,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
             </p>
           </div>
           <nav aria-label="Work panels" className="flex gap-2 flex-wrap mb-4 text-sm">
-            {PANELS.map((p) => {
+            {PANELS.filter((p) => localAiEnabled || p !== 'ai').map((p) => {
               const recommended = nextStep.panel === p && panel !== p;
               return (
                 <button
@@ -1403,6 +1445,81 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
               )}
               {dialogueScenes.length === 0 && (
                 <p className="text-xs text-bar-muted">No new conversations today. Advance time to unlock more.</p>
+              )}
+            </div>
+          )}
+
+          {localAiEnabled && panel === 'ai' && (
+            <div className="space-y-3 text-sm">
+              <div className="bg-bar-panel2 p-3 rounded border border-bar-gold/25">
+                <p className="text-[11px] uppercase tracking-wide text-bar-muted">Experimental — non-authoritative</p>
+                <h3 className="text-base text-bar-gold mt-0.5">Local AI Lab</h3>
+                <p className="text-xs text-bar-muted mt-1">
+                  Runs a local model from <code className="text-bar-text">/tmp</code> through llama-server
+                  (127.0.0.1:8081). The model in <code className="text-bar-text">/tmp</code> may be unavailable or
+                  missing — if it is not running, you will see an error below. Output may be inaccurate or hallucinated,
+                  is <strong>not legal advice</strong>, and is never authoritative legal research. Only your prompt
+                  below is sent; hidden case truth is never provided to the model.
+                </p>
+              </div>
+              <label className="block text-xs text-bar-muted" htmlFor="local-ai-prompt">
+                Prompt
+              </label>
+              <textarea
+                id="local-ai-prompt"
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                rows={5}
+                maxLength={MAX_AI_PROMPT_CHARS}
+                aria-describedby="local-ai-hint"
+                className="w-full bg-bar-bg border border-white/10 rounded p-2 text-xs"
+                placeholder="Ask for help drafting, summarizing your notes, or brainstorming questions... (no legal citations will be trusted)"
+              />
+              <p id="local-ai-hint" className="text-[11px] text-bar-muted">
+                Maximum {MAX_AI_PROMPT_CHARS} characters. Do not include hidden case information.
+              </p>
+              <div className="flex gap-2 items-center">
+                <button
+                  type="button"
+                  onClick={() => void askLocalAi()}
+                  disabled={aiLoading || !aiPrompt.trim()}
+                  className="px-3 py-1.5 rounded bg-bar-gold text-bar-bg text-xs font-medium disabled:opacity-50"
+                >
+                  {aiLoading ? 'Asking local model…' : 'Ask local model'}
+                </button>
+                <span className="text-[11px] text-bar-muted">Model: Qwen 2.5 1.5B Instruct (Q4_K_M, local)</span>
+              </div>
+              {aiLoading && (
+                <p role="status" aria-live="polite" className="text-xs text-bar-muted">
+                  Waiting for the local model…
+                </p>
+              )}
+              {aiError && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="text-xs text-red-300 bg-red-950/30 border border-red-400/30 rounded p-2"
+                >
+                  {aiError}
+                </div>
+              )}
+              {aiResponse && !aiLoading && (
+                <div
+                  role="region"
+                  aria-label="Local AI response"
+                  aria-busy={aiLoading}
+                  className="bg-bar-panel2 p-3 rounded border border-white/10 space-y-2"
+                >
+                  <div className="text-xs text-bar-gold">Response (unverified)</div>
+                  <div className="whitespace-pre-wrap text-xs">{aiResponse}</div>
+                  {aiWarnings.length > 0 && (
+                    <ul className="text-[11px] text-amber-200 list-disc pl-4 space-y-1">
+                      {aiWarnings.map((w, i) => (
+                        <li key={i}>{w}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
             </div>
           )}

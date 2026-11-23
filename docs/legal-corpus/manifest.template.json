@@ -1,5 +1,5 @@
 {
-  "_warning": "TEMPLATE ONLY - NOT A LEGAL CORPUS AND NOT LEGAL AUTHORITY. The `template: true` flag makes this file non-ingestible: `npm run validate:legal-corpus -- --template` MUST fail. Never fill fields from memory or AI output. Only a named human content owner may create a real manifest by following docs/LEGAL_SOURCE_VERIFICATION.md.",
+  "_warning": "TEMPLATE ONLY - NOT A LEGAL CORPUS AND NOT LEGAL AUTHORITY. The `template: true` flag makes this file non-ingestible: `npm run validate:legal-corpus -- --template` MUST fail. Never fill fields from memory or AI output. Only a named human content owner may create a real manifest by following docs/LEGAL_SOURCE_VERIFICATION.md and docs/legal-corpus/ACQUISITION_CHECKLIST.md.",
   "template": true,
   "schemaVersion": 1,
   "corpusId": "EXAMPLE-CORPUS-TEMPLATE-DO-NOT-USE",
@@ -7,6 +7,38 @@
   "owner": null,
   "intakeFolder": "intake/",
   "note": "Pipeline ready, corpus blocked (D-005/D-011). No official source has been supplied, ingested or verified. reviewedOfficialIdentifiers must stay empty until exact text is human-reviewed.",
+  "provenanceNote": "TEMPLATE ONLY - not a real provenance record; replace through the human review workflow.",
+  "acquisition": {
+    "checklistCompleted": false,
+    "reviewerAssigned": false,
+    "officialSources": [],
+    "retrievalDate": null
+  },
+  "signoff": null,
+  "rights": {
+    "status": "pending",
+    "basis": null,
+    "license": null,
+    "confirmedBy": null,
+    "confirmedDate": null
+  },
+  "versionPolicy": {
+    "effectiveDatePolicy": "TEMPLATE ONLY - no agreed policy; D-011 decision is Unknown.",
+    "asOf": null,
+    "note": "TEMPLATE ONLY - do not treat as an agreed versioning policy.",
+    "supersedes": null
+  },
+  "allowlistPolicy": {
+    "maintainedBy": "TEMPLATE - unassigned",
+    "lastReviewed": null,
+    "policyNote": "TEMPLATE ONLY - the allowlist is empty until a human reviews exact text."
+  },
+  "staging": {
+    "stage": "unverified",
+    "unverifiedFolder": "intake/unverified/",
+    "reviewedFolder": "intake/reviewed/",
+    "importNote": "TEMPLATE ONLY - no import has occurred."
+  },
   "reviewedOfficialIdentifiers": [],
   "sources": [
     {
@@ -20,7 +52,7 @@
       "provenance": "Internal fictional example for workflow testing; not a real legal authority and not a statutory citation.",
       "verifiedBy": "Internal prototype review",
       "verificationDate": "2026-11-22",
-      "notes": "Non-authoritative. Replace only through the documented human review workflow.",
+      "notes": "TEMPLATE / NON-AUTHORITATIVE. Replace only through the documented human review workflow.",
       "intake": "seed"
     },
     {

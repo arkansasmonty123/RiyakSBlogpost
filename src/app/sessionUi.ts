@@ -75,6 +75,10 @@ export interface ResetUiState {
   showHelp: boolean;
   saveStatus: SaveStatus;
   saveNotice: string;
+  aiPrompt: string;
+  aiResponse: string;
+  aiWarnings: string[];
+  aiError: string;
 }
 
 /**
@@ -110,5 +114,9 @@ export function createResetUiState(save: SaveGame): ResetUiState {
     showHelp: shouldShowHelp(save),
     saveStatus: 'idle',
     saveNotice: '',
+    aiPrompt: '',
+    aiResponse: '',
+    aiWarnings: [],
+    aiError: '',
   };
 }
