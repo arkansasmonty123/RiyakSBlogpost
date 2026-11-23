@@ -1,0 +1,95 @@
+# Dependencies
+node_modules
+node_modules/
+.pnp/
+.pnp.*
+
+# Builds / output
+.next/
+out/
+dist/
+build/
+coverage/
+.turbo/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Database / local runtime
+*.db
+*.sqlite
+*.sqlite3
+postgres-data/
+.data/
+
+# AI/model assets (large - keep out of repo by default)
+models/
+*.gguf
+*.bin
+*.safetensors
+*.onnx
+
+# Media caches / generated
+.cache/
+tmp/
+
+# Art pipeline (Phase 5, D-002/D-012/D-018): keep binaries out by default.
+# Manifests, notes and empty .gitkeep placeholders stay trackable. Final raster/audio assets
+# require a reviewed, approved manifest entry and an explicit `git add -f` by the art owner.
+# SVG (text) is allowed for lightweight in-repo placeholder art; rights still need sign-off.
+public/assets/art/**
+!public/assets/art/
+!public/assets/art/**/
+!public/assets/art/.gitkeep
+!public/assets/art/**/.gitkeep
+!public/assets/art/**/*.svg
+docs/art-pipeline/intake/**
+!docs/art-pipeline/intake/
+!docs/art-pipeline/intake/**/
+!docs/art-pipeline/intake/**/.gitkeep
+!docs/art-pipeline/intake/**/*.md
+!docs/art-pipeline/intake/**/*.json
+
+# Heavy source/authoring files (never needed in the repo; also kept out by the rules above).
+*.psd
+*.ai
+*.xcf
+*.kra
+*.blend
+*.fbx
+*.obj
+*.wav
+*.mp3
+*.ogg
+*.flac
+*.aac
+*.mp4
+*.mov
+
+# Playwright MCP artifacts
+.playwright-mcp/
+
+# Playwright test runner artifacts
+test-results/
+
+# Local DB / infra data (ADR-001)
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

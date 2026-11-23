@@ -1,0 +1,48 @@
+{
+  "name": "the-bar",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --pretty false && tsc -p server/tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify": "npm run lint && npm run format:check && npm run typecheck && npm test && npm run build",
+    "validate:sources": "vite-node scripts/validate-sources.ts",
+    "validate:legal-corpus": "vite-node scripts/validate-legal-corpus.ts",
+    "validate:art-manifest": "vite-node scripts/validate-art-manifest.ts",
+    "db:server": "vite-node server/index.ts",
+    "size:home": "du -sh /home/divyanshukumarsinha241"
+  },
+  "dependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.5",
+    "@playwright/test": "^1.65.1",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.1.0",
+    "@vitejs/plugin-react": "^4.4.1",
+    "autoprefixer": "^10.4.21",
+    "eslint": "^9.39.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-react-refresh": "^0.4.26",
+    "globals": "^15.15.0",
+    "postcss": "^8.5.3",
+    "prettier": "^3.10.1",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.73.0",
+    "vite": "^6.3.5",
+    "vitest": "^3.1.4"
+  }
+}

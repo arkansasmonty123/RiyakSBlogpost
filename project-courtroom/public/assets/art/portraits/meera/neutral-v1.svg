@@ -1,0 +1,10 @@
+<!-- Original in-repo placeholder created for THE BAR prototype; no third-party asset; CC0/project-owned by default for this repo -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+  <circle cx="256" cy="200" r="90" fill="#c99a72" />
+  <path d="M150 210 Q140 88 256 88 Q372 88 362 210 Q344 168 256 160 Q168 168 150 210 Z" fill="#231d1a" />
+  <path d="M150 210 Q132 300 156 340 L186 300 Q160 250 168 200 Z" fill="#231d1a" />
+  <path d="M362 210 Q380 300 356 340 L326 300 Q352 250 344 200 Z" fill="#231d1a" />
+  <path d="M92 512 Q104 340 256 320 Q408 340 420 512 Z" fill="#456267" />
+  <path d="M212 320 L256 364 L300 320 L286 308 L226 308 Z" fill="#ddd5c3" />
+  <path d="M256 364 L246 512 L266 512 Z" fill="#c8a75a" opacity="0.5" />
+</svg>

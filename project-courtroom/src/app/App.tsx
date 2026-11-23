@@ -1,0 +1,3631 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { SceneArt } from '@/app/SceneArt';
+import { createResetUiState, emptySourceForm, EXPLICIT_SAVE_NOTICE, RESET_CONFIRMATION } from '@/app/sessionUi';
+import type { SaveStatus, SourceFormState } from '@/app/sessionUi';
+import { config, isAiSeniorReviewEnabled, isLocalAiPanelEnabled } from '@/config/env';
+import { DEFAULT_GAME_SLOT, type GameRepository, type SaveOptions } from '@/storage/gameRepository';
+import { getGameRepository } from '@/storage/getGameRepository';
+import { isSaveConflict, type PersistResult } from '@/storage/save';
+import { recordAudit } from '@/domain/audit';
+import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/completion';
+import { addKnowledgeConnectionEntry, addNotebookEntry, capNotebook, KNOWLEDGE_DOMAINS } from '@/domain/notebook';
+import { markHelpSeen } from '@/domain/onboarding';
+import {
+  canCiteAsAuthoritative,
+  intakeSource,
+  MAX_SOURCE_FIELDS,
+  SOURCE_JURISDICTIONS,
+  SOURCE_TYPES,
+} from '@/domain/legalSources';
+import {
+  describeHotspotAction,
+  getLocationForViewpoint,
+  getViewpoint,
+  LOCATIONS,
+  viewpointsForLocation,
+} from '@/domain/scenes';
+import { assertNoCanonicalTruthLeak, toPlayerCaseView } from '@/domain/caseAccess';
+import { buildCaseJournal, groupJournalByDay, JOURNAL_KINDS } from '@/domain/journal';
+import type { JournalKind } from '@/domain/journal';
+import type { KnowledgeDomain } from '@/domain/types';
+import { buildCaseSummary } from '@/domain/caseSummary';
+import { pluralize } from '@/domain/evidenceSynthesis';
+import {
+  advanceClock,
+  assignmentLockReason,
+  currentObjective,
+  isAssignmentUnlocked,
+  makeId,
+  MAX_DAY,
+  reviewAssignment,
+} from '@/domain/progression';
+import { applyDialogueChoice, availableDialogueScenes } from '@/domain/dialogue';
+import { addEvidenceNote, discoverEvidenceItem, reviewEvidence, setEvidenceAssessment } from '@/domain/evidence';
+import {
+  challengeEvidenceAdmissibility,
+  CHALLENGE_GROUNDS,
+  GROUND_FEEDBACK,
+  MIN_FINAL_BRIEF_CHARS,
+  recordCustodyObservation,
+  submitFinalBrief,
+  submitSeniorReview,
+} from '@/domain/casework';
+import { loadDraftVersion, MAX_DRAFT_CHARS, saveDraftVersion, setCurrentDraft } from '@/domain/draft';
+import { submitDraftForFeedback } from '@/domain/draftSubmission';
+import { MAX_AI_PROMPT_CHARS } from '@/domain/ai/guards';
+import { createAiGateway } from '@/domain/ai/gateway';
+import { retrieveApprovedInternalSummaries } from '@/domain/ai/retrieval';
+import type { RetrievedSource } from '@/domain/ai/retrieval';
+import { citableSourceIds, submitSeniorReviewWithAi } from '@/domain/ai/seniorReview';
+import { askLocalLlm, LOCAL_AI_PROVIDER_LABEL } from '@/services/localLlm';
+import type { LocalLlmResult } from '@/services/localLlm';
+import { createLlamaServerProvider } from '@/services/ai/llamaServerProvider';
+import {
+  addTheoryClaim,
+  getTheorySupport,
+  groupTheoryClaims,
+  setClaimEvidenceLinks,
+  THEORY_STATUSES,
+} from '@/domain/theory';
+import type {
+  Admissibility,
+  Assignment,
+  ChallengeGround,
+  NotebookEntry,
+  Reliability,
+  SaveGame,
+  SourceJurisdiction,
+  SourceType,
+  TheoryStatus,
+} from '@/domain/types';
+
+const PANELS = [
+  'case',
+  'assignments',
+  'evidence',
+  'casework',
+  'theory',
+  'research',
+  'draft',
+  'notebook',
+  'journal',
+  'dialogue',
+  'ai',
+] as const;
+
+/** Plain-language names so guidance reads like an action, not an internal panel id. */
+const PANEL_LABELS: Record<Panel, string> = {
+  case: 'case file',
+  assignments: 'assignments',
+  evidence: 'evidence board',
+  casework: 'casework',
+  theory: 'case theory',
+  research: 'research',
+  draft: 'draft editor',
+  notebook: 'notebook',
+  journal: 'timeline',
+  dialogue: 'conversations',
+  ai: 'local AI lab',
+  completion: 'chapter summary',
+};
+
+/** Static greetings shown when a character hotspot opens the dialogue panel. No canonical truth. */
+const DIALOGUE_GREETINGS: Record<string, string> = {
+  receptionist:
+    'Deepa: "I keep the diary and the visitor log. I can tell you who signed in and when — not what was said in private."',
+  opposing: 'Adv. Vikram Rathore: "I argue from the material that has been disclosed. Let us keep it that way."',
+  junior: 'Priya Nair: "I work from the record and the disclosed material. Ask me what I actually know."',
+  medical: 'Dr. Kavita Iyer: "I can explain what the clinic record shows. I cannot tell you who caused the injury."',
+  rival:
+    'Adv. Nisha Deshmukh: "I argue from the disclosed record too. I will not treat a hunch as a fact — and I expect the same from you."',
+  supervisor:
+    'Iqbal Sheikh: "I can explain what the duty roster records and what I personally saw. I cannot say who moved first."',
+};
+
+type WorkPanel = (typeof PANELS)[number];
+/** `completion` is reached only after the final brief closes the chapter. */
+type Panel = WorkPanel | 'completion';
+
+/**
+ * ADR-001: the localStorage adapter also exposes sync methods, so the default mode can boot
+ * without a loading frame. The sqlite-api adapter implements only the async GameRepository
+ * contract; the absence of `loadGameSync` is the capability check (no env reads in the UI).
+ */
+export type SyncGameRepository = GameRepository & {
+  loadGameSync(slotId?: string): SaveGame;
+  saveGameSync(slotId: string, state: SaveGame): PersistResult;
+  resetGameSync(slotId?: string): SaveGame;
+};
+
+export function isSyncGameRepository(repository: GameRepository): repository is SyncGameRepository {
+  return typeof (repository as Partial<SyncGameRepository>).loadGameSync === 'function';
+}
+
+export interface SessionBoot {
+  repository: GameRepository;
+  sync: SyncGameRepository | null;
+}
+
+/** Resolve the configured adapter once per mounted session. */
+export function createSessionBoot(repository: GameRepository): SessionBoot {
+  return { repository, sync: isSyncGameRepository(repository) ? repository : null };
+}
+
+/** Local boot hydrates synchronously; async adapters start from `null` and show a loading state. */
+export function loadInitialSave(boot: SessionBoot): SaveGame | null {
+  return boot.sync ? boot.sync.loadGameSync(DEFAULT_GAME_SLOT) : null;
+}
+
+/** First load for async adapters. 404/empty slots produce a fresh save; real load failures throw so the UI can block overwrites. */
+export async function loadBootSave(boot: SessionBoot): Promise<SaveGame> {
+  return boot.repository.loadGame(DEFAULT_GAME_SLOT);
+}
+
+/** Save through the configured adapter, using the sync path when the adapter offers one. */
+export function persistSaveThrough(
+  boot: SessionBoot,
+  next: SaveGame,
+  options?: SaveOptions,
+): PersistResult | Promise<PersistResult> {
+  return boot.sync
+    ? boot.sync.saveGameSync(DEFAULT_GAME_SLOT, next)
+    : boot.repository.saveGame(DEFAULT_GAME_SLOT, next, options);
+}
+
+/** Reset through the configured adapter, using the sync path when the adapter offers one. */
+export function resetSaveThrough(boot: SessionBoot): SaveGame | Promise<SaveGame> {
+  return boot.sync ? boot.sync.resetGameSync(DEFAULT_GAME_SLOT) : boot.repository.resetGame(DEFAULT_GAME_SLOT);
+}
+
+/**
+ * A conflict is only possible on the async (sqlite-api) path: the localStorage adapter has no
+ * concurrency model and never returns one, so its status/UX stays byte-for-byte unchanged.
+ */
+export function saveStatusFromResult(result: PersistResult, sync: boolean): { status: SaveStatus; conflict: boolean } {
+  const conflict = !sync && isSaveConflict(result);
+  return { status: conflict ? 'conflict' : result.ok ? 'saved' : 'error', conflict };
+}
+
+function SessionLoading() {
+  return (
+    <div
+      className="min-h-screen bg-bar-bg text-bar-text flex items-center justify-center"
+      role="status"
+      aria-live="polite"
+    >
+      <p className="text-sm text-bar-muted">Loading your case file…</p>
+    </div>
+  );
+}
+
+/**
+ * Commit a domain mutation of a save and hand its result straight back to the caller.
+ *
+ * The mutator runs exactly once and synchronously on a clone, so ID-generating mutators
+ * (e.g. addEvidenceNote) are never run twice and the result is available before the caller
+ * schedules any UI side-effects. The same mutated clone is the one handed to `commit`, so
+ * state and persistence always agree. Exported at module scope so this contract is testable
+ * without a DOM.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- pure helper exported for the regression test; App.tsx already exports other non-components.
+export function commitSaveMutation<T>(
+  current: SaveGame,
+  mutator: (working: SaveGame) => T,
+  commit: (next: SaveGame) => void,
+): T {
+  const working = structuredClone(current);
+  const result = mutator(working);
+  capNotebook(working.notebook);
+  commit(working);
+  return result;
+}
+
+/**
+ * Boots the configured repository. Local mode renders the full tree on the first pass (no
+ * flicker); sqlite-api mode shows a small loading state until the async load resolves.
+ */
+export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
+  const [boot] = useState(() => createSessionBoot(getGameRepository()));
+  const [loadedSave, setLoadedSave] = useState<SaveGame | null>(() => loadInitialSave(boot));
+  const [bootError, setBootError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (loadedSave || bootError) return;
+    let active = true;
+    void loadBootSave(boot)
+      .then((save) => {
+        if (active) setLoadedSave(save);
+      })
+      .catch((err) => {
+        if (active) setBootError(err instanceof Error ? err.message : 'LOAD_FAILED');
+      });
+    return () => {
+      active = false;
+    };
+  }, [boot, loadedSave, bootError]);
+
+  if (bootError) {
+    const isCorrupt = bootError.includes('422') || bootError.includes('CORRUPT');
+    return (
+      <div className="min-h-screen bg-bar-bg text-bar-text flex items-center justify-center px-4">
+        <div role="alert" className="max-w-lg w-full border border-red-400/30 bg-bar-panel rounded-lg p-4 space-y-3">
+          <h1 className="text-lg font-semibold text-red-200">Could not load your saved case file</h1>
+          <p className="text-sm text-bar-muted">
+            {isCorrupt
+              ? 'The saved slot appears damaged or unreadable. Your in-browser progress was not overwritten. You can retry, or start a fresh case file (this removes the damaged server slot for this slot).'
+              : 'The local save service did not respond. Your existing save was not overwritten. Check that the DB server is running, then retry.'}
+          </p>
+          <p className="text-xs text-bar-muted">Error: {bootError}</p>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              className="px-3 py-2 border border-bar-gold/40 rounded text-sm hover:bg-white/5"
+              onClick={() => setBootError(null)}
+            >
+              Retry load
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 border border-red-400/40 rounded text-sm text-red-200 hover:bg-red-500/10"
+              onClick={() => {
+                void (async () => {
+                  try {
+                    const fresh = await resetSaveThrough(boot);
+                    setLoadedSave(fresh);
+                    setBootError(null);
+                  } catch {
+                    setBootError('RESET_FAILED');
+                  }
+                })();
+              }}
+            >
+              Start fresh (remove damaged slot)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!loadedSave) return <SessionLoading />;
+  return <GameApp boot={boot} initialSave={loadedSave} initialPanel={initialPanel} />;
+}
+
+/** Polite, in-header feedback about local persistence; never exposes storage internals. */
+export function SaveStatusMessage({ status }: { status: SaveStatus }) {
+  // A conflict is announced by SaveConflictNotice with its own actions, so stay silent here.
+  if (status === 'idle' || status === 'conflict') return null;
+  const isError = status === 'error';
+  return (
+    <p
+      role="status"
+      aria-live="polite"
+      className={`inline-flex w-full sm:w-auto items-center rounded border px-2 py-1 text-xs ${
+        isError
+          ? 'border-yellow-400/30 bg-yellow-400/10 text-yellow-200'
+          : 'border-green-400/20 bg-green-400/5 text-green-200/90'
+      }`}
+    >
+      {isError ? 'Progress is in memory but could not be saved locally.' : 'Progress saved locally.'}
+    </p>
+  );
+}
+
+/**
+ * Non-destructive conflict prompt. Keeps the in-memory progress intact and offers an explicit,
+ * user-chosen resolution; nothing is overwritten automatically.
+ */
+export function SaveConflictNotice({
+  onReload,
+  onOverwrite,
+  busy = false,
+}: {
+  onReload: () => void;
+  onOverwrite: () => void;
+  busy?: boolean;
+}) {
+  return (
+    <div
+      role="alert"
+      aria-live="assertive"
+      aria-busy={busy}
+      className="w-full p-3 rounded border border-yellow-400/40 bg-yellow-400/10"
+    >
+      <p className="text-xs font-medium text-yellow-200">Your latest changes were not saved.</p>
+      <p className="mt-1 text-xs text-yellow-100/90">
+        Another copy of this case file was saved while you were working. Nothing has been overwritten — your changes are
+        still here in memory. Choose what to do next.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Resolve save conflict">
+        <button
+          type="button"
+          className="px-2 py-1 border border-bar-gold/40 rounded text-xs hover:bg-white/5 disabled:opacity-50"
+          onClick={onReload}
+          disabled={busy}
+        >
+          Reload from server
+        </button>
+        <button
+          type="button"
+          className="px-2 py-1 border border-yellow-400/40 rounded text-xs text-yellow-100 hover:bg-yellow-400/10 disabled:opacity-50"
+          onClick={onOverwrite}
+          disabled={busy}
+        >
+          Overwrite server save
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Polite in-editor feedback: reflects whether the textarea matches the persisted draft. */
+export function DraftStatusMessage({ dirty }: { dirty: boolean }) {
+  return (
+    <span role="status" aria-live="polite" className={`text-xs ${dirty ? 'text-yellow-200' : 'text-green-200'}`}>
+      {dirty ? 'Unsaved changes' : 'Saved'}
+    </span>
+  );
+}
+
+/** Polite confirmation for the explicit Save button, rendered in place without navigation. */
+export function SaveNoticeMessage({ notice }: { notice: string }) {
+  if (!notice) return null;
+  return (
+    <span
+      role="status"
+      aria-live="polite"
+      className="inline-flex w-full sm:w-auto items-center rounded border border-green-400/25 bg-green-400/10 px-2 py-1 text-xs text-green-200"
+    >
+      {notice}
+    </span>
+  );
+}
+
+/** Shows exactly which non-authoritative internal sources were used for an answer. */
+export function RetrievedSourcesNotice({ sources }: { sources: RetrievedSource[] }) {
+  if (sources.length === 0) return null;
+  return (
+    <div className="bg-bar-panel2 p-3 rounded border border-white/10 space-y-1">
+      <div className="text-xs text-bar-gold">Retrieved internal sources (non-authoritative)</div>
+      <ul className="list-disc pl-4 text-[11px] text-bar-muted space-y-1">
+        {sources.map((source) => (
+          <li key={source.id}>
+            <span className="text-bar-text">{source.id}</span> — {source.title}. Provenance: {source.provenance}
+          </li>
+        ))}
+      </ul>
+      <p className="text-[11px] text-amber-200">
+        These are internal educational summaries, not legal authority. Verify against primary sources.
+      </p>
+    </div>
+  );
+}
+
+function makeNotebookEntry(entry: Omit<NotebookEntry, 'id' | 'day'>, save: SaveGame): NotebookEntry {
+  return { id: makeId('n'), day: save.clock.day, ...entry };
+}
+
+/** A labelled block of the case-file board; counts make the record easy to scan. */
+function FileSection({ title, items, empty }: { title: string; items: string[]; empty: string }) {
+  return (
+    <section className="bg-bar-panel2 p-3 rounded border border-white/5">
+      <div className="flex items-baseline justify-between gap-2">
+        <h3 className="text-xs uppercase tracking-wide text-bar-gold">{title}</h3>
+        <span className="text-[11px] text-bar-muted" aria-hidden="true">
+          {items.length}
+        </span>
+      </div>
+      {items.length === 0 ? (
+        <p className="text-xs text-bar-muted mt-2">{empty}</p>
+      ) : (
+        <ul className="list-disc ml-5 mt-2 space-y-1 text-xs text-bar-text/90">
+          {items.map((item, i) => (
+            <li key={i}>{item}</li>
+          ))}
+        </ul>
+      )}
+    </section>
+  );
+}
+
+/** The game itself. All transient state derives from `initialSave`, so an async load mounts it fresh. */
+function GameApp({
+  boot,
+  initialSave,
+  initialPanel = 'case',
+}: {
+  boot: SessionBoot;
+  initialSave: SaveGame;
+  initialPanel?: Panel;
+}) {
+  const [save, setSave] = useState<SaveGame>(initialSave);
+  // Experimental local-AI lab (Phase 6 foundations). Env-aware, never a hosted provider.
+  const localAiEnabled = isLocalAiPanelEnabled();
+  // Track C first milestone: opt-in AI-assisted senior review. Off unless both flags are set;
+  // no model is called until the player also explicitly requests it on a submit event.
+  const aiSeniorReviewEnabled = isAiSeniorReviewEnabled() && localAiEnabled;
+  // Single source of truth for initial UI values; reset reuses the same blueprint.
+  const freshUi = createResetUiState(save);
+  const [panel, setPanel] = useState<Panel>(initialPanel);
+  const [draft, setDraft] = useState<string>(freshUi.draft);
+  const [dialogue, setDialogue] = useState<string>(freshUi.dialogue);
+  const [noteTarget, setNoteTarget] = useState<string | null>(freshUi.noteTarget);
+  const [noteRelation, setNoteRelation] = useState<'contradiction' | 'corroboration'>(freshUi.noteRelation);
+  const [noteText, setNoteText] = useState(freshUi.noteText);
+  const [caseTarget, setCaseTarget] = useState(freshUi.caseTarget);
+  const [custodyText, setCustodyText] = useState(freshUi.custodyText);
+  const [challengeGround, setChallengeGround] = useState<ChallengeGround>(freshUi.challengeGround);
+  const [challengeText, setChallengeText] = useState(freshUi.challengeText);
+  const [reviewSummary, setReviewSummary] = useState(freshUi.reviewSummary);
+  const [finalSummary, setFinalSummary] = useState(freshUi.finalSummary);
+  const [showSourceIntake, setShowSourceIntake] = useState(freshUi.showSourceIntake);
+  const [sourceForm, setSourceForm] = useState<SourceFormState>(freshUi.sourceForm);
+  const [intakeError, setIntakeError] = useState(freshUi.intakeError);
+  const [intakeNotice, setIntakeNotice] = useState(freshUi.intakeNotice);
+  const [theoryText, setTheoryText] = useState(freshUi.theoryText);
+  const [theoryStatus, setTheoryStatus] = useState<TheoryStatus>(freshUi.theoryStatus);
+  const [theoryEvidenceIds, setTheoryEvidenceIds] = useState<string[]>(freshUi.theoryEvidenceIds);
+  const [notebookFilter, setNotebookFilter] = useState<'all' | NotebookEntry['kind']>(freshUi.notebookFilter);
+  const [journalFilter, setJournalFilter] = useState<'all' | JournalKind>(freshUi.journalFilter);
+  const [focusEvidenceId, setFocusEvidenceId] = useState<string | null>(null);
+  const [kcTarget, setKcTarget] = useState<string | null>(null);
+  const [kcDomain, setKcDomain] = useState<KnowledgeDomain>('forensic');
+  const [kcConcept, setKcConcept] = useState('');
+  const [kcDescription, setKcDescription] = useState('');
+  const [editingClaimId, setEditingClaimId] = useState<string | null>(freshUi.editingClaimId);
+  const [editingLinks, setEditingLinks] = useState<string[]>(freshUi.editingLinks);
+  const [showHelp, setShowHelp] = useState(freshUi.showHelp);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>(freshUi.saveStatus);
+  const [saveNotice, setSaveNotice] = useState(freshUi.saveNotice);
+  // Async-only conflict UX. Local mode never sets these because it has no concurrency model.
+  const [saveConflict, setSaveConflict] = useState(false);
+  const [conflictBusy, setConflictBusy] = useState(false);
+  const [aiPrompt, setAiPrompt] = useState(freshUi.aiPrompt);
+  const [aiResponse, setAiResponse] = useState(freshUi.aiResponse);
+  const [aiWarnings, setAiWarnings] = useState<string[]>(freshUi.aiWarnings);
+  const [aiError, setAiError] = useState(freshUi.aiError);
+  const [aiIncludeInternalSummaries, setAiIncludeInternalSummaries] = useState(freshUi.aiIncludeInternalSummaries);
+  const [aiSources, setAiSources] = useState<RetrievedSource[]>(freshUi.aiSources);
+  const [aiLoading, setAiLoading] = useState(false);
+  // Track C senior-review assist: transient, opt-in, and never authoritative.
+  const [aiAssistSeniorReview, setAiAssistSeniorReview] = useState(freshUi.aiAssistSeniorReview);
+  const [aiReviewBusy, setAiReviewBusy] = useState(false);
+  const [aiReviewNotice, setAiReviewNotice] = useState(freshUi.aiReviewNotice);
+  const [aiReviewSources, setAiReviewSources] = useState<RetrievedSource[]>(freshUi.aiReviewSources);
+  // Discard a late local-AI response if the user reset (or asked again) while it was in flight.
+  const aiRequestId = useRef(0);
+  const aiSeniorReviewAbort = useRef<AbortController | null>(null);
+  const noteTextRef = useRef<HTMLTextAreaElement>(null);
+  // Async adapters can settle out of order: serialize writes and ignore stale save status.
+  // The localStorage path stays synchronous and bypasses this queue entirely.
+  const saveQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const saveGeneration = useRef(0);
+
+  // Move keyboard focus to the workspace heading after a panel change, but not on first
+  // load. Comparing to the last rendered panel (instead of a "first render" flag) keeps
+  // this correct under StrictMode's double-invoked mount effects. A tabIndex={-1} heading
+  // is a focus target, not a trap: the skip link, tab order and focus-visible stay intact.
+  const workspaceHeadingRef = useRef<HTMLHeadingElement>(null);
+  const renderedPanel = useRef<Panel>(panel);
+  useEffect(() => {
+    if (panel === renderedPanel.current) return;
+    renderedPanel.current = panel;
+    workspaceHeadingRef.current?.focus();
+  }, [panel]);
+
+  // When the player clicks "In evidence board" from the journal, scroll to and briefly
+  // highlight the referenced card so they don't lose context in longer evidence lists.
+  useEffect(() => {
+    if (!focusEvidenceId || panel !== 'evidence') return;
+    const el = document.getElementById(`evidence-${focusEvidenceId}`);
+    if (el) {
+      const prefersReducedMotion =
+        typeof window !== 'undefined' &&
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      el.scrollIntoView({ behavior: prefersReducedMotion ? 'auto' : 'smooth', block: 'center' });
+    }
+    const t = window.setTimeout(() => setFocusEvidenceId(null), 2500);
+    return () => window.clearTimeout(t);
+  }, [focusEvidenceId, panel]);
+
+  useEffect(() => {
+    if (noteTarget) noteTextRef.current?.focus();
+  }, [noteTarget]);
+
+  const viewpoint = getViewpoint(save.selectedViewpoint);
+  const location = getLocationForViewpoint(save.selectedViewpoint);
+  const locationViewpoints = viewpointsForLocation(location.id);
+  // The UI only ever reads the sanitized player view, never the canonical case file.
+  const playerCase = useMemo(() => toPlayerCaseView(save.caseFile), [save.caseFile]);
+  const objective = useMemo(() => currentObjective(save), [save]);
+  const dialogueScenes = useMemo(() => availableDialogueScenes(save), [save]);
+  const discoveredCount = playerCase.evidence.filter((e) => e.discovered).length;
+  const reviewedEvidence = playerCase.evidence.filter((e) => e.reviewed);
+  // Safe default target for the notebook's "add note" shortcut: a discovered, reviewed item.
+  const firstReviewedEvidence = reviewedEvidence.find((e) => e.discovered) ?? null;
+  const groupedTheory = useMemo(() => groupTheoryClaims(save), [save]);
+  const evidenceTitleById = useMemo(
+    () => new Map(playerCase.evidence.map((e) => [e.id, e.title])),
+    [playerCase.evidence],
+  );
+  const notebookKinds = useMemo(() => [...new Set(save.notebook.map((n) => n.kind))], [save.notebook]);
+  const journal = useMemo(() => buildCaseJournal(save), [save]);
+  /** Evidence ids already written into the journal, used to link the two boards. */
+  const journalEvidenceIds = useMemo(
+    () => new Set(journal.filter((e) => e.evidenceId).map((e) => e.evidenceId as string)),
+    [journal],
+  );
+  const chapterPhase = save.clock.day <= 5 ? 'Foundations · Days 1–5' : 'First case · Days 6–10';
+  const caseSummary = useMemo(() => buildCaseSummary(save), [save]);
+  const objectiveIndex = objective
+    ? save.assignments.findIndex((a) => a.id === objective.assignmentId) + 1
+    : save.assignments.length;
+  const journalCounts = useMemo(() => {
+    const counts: Record<JournalKind, number> = { event: 0, evidence: 0, note: 0, casework: 0, theory: 0 };
+    for (const entry of journal) counts[entry.kind] += 1;
+    return counts;
+  }, [journal]);
+  const theorySupport = useMemo(() => getTheorySupport(save), [save]);
+  const supportByClaimId = useMemo(() => new Map(theorySupport.map((s) => [s.claimId, s])), [theorySupport]);
+  const unsupportedClaimCount = theorySupport.filter((s) => !s.hasReviewedEvidence).length;
+  const chapterComplete = isChapterComplete(save);
+  const finalBriefChars = finalSummary.trim().length;
+  const draftDirty = draft !== save.draft.current;
+
+  useEffect(() => {
+    if (!draftDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [draftDirty]);
+  const finalBriefTooShort = finalBriefChars < MIN_FINAL_BRIEF_CHARS;
+  const completion = useMemo(() => buildChapterCompletionSummary(save), [save]);
+  const caseTargetId = caseTarget || reviewedEvidence[0]?.id || '';
+  const a7 = save.assignments.find((a) => a.id === 'a7');
+  const a8 = save.assignments.find((a) => a.id === 'a8');
+  const reviewedAssignmentCount = save.assignments.filter((a) => a.status === 'reviewed').length;
+  const chapterProgress = Math.round((reviewedAssignmentCount / save.assignments.length) * 100);
+  const nextStep = useMemo(() => {
+    if (chapterComplete) {
+      return {
+        panel: 'completion' as Panel,
+        text: 'Chapter complete. Open the chapter summary to review what you achieved.',
+      };
+    }
+    if (!objective) {
+      return { panel: 'case' as Panel, text: 'Review your case file and notebook for what remains.' };
+    }
+    if (objective.lockReason === 'day') {
+      return {
+        panel: 'assignments' as Panel,
+        text: `Unlocks on Day ${objective.unlockDay}. Advance time when ready.`,
+      };
+    }
+    if (objective.lockReason === 'prerequisite') {
+      return {
+        panel: 'assignments' as Panel,
+        text: 'Complete and submit/review the prior assignment first.',
+      };
+    }
+    if (objective.assignmentId === 'a7') {
+      return {
+        panel: 'casework' as Panel,
+        text: 'Open Casework to submit your brief for senior review, then revise if requested.',
+      };
+    }
+    if (objective.assignmentId === 'a8') {
+      return {
+        panel: 'casework' as Panel,
+        text: 'Open Casework to submit the final brief. Keep it evidence-grounded and verified.',
+      };
+    }
+    const isComplete = (progress: string) => {
+      const [done, total] = progress.split('/').map(Number);
+      return total === 0 || done >= total;
+    };
+    const evidenceNeeded = !isComplete(objective.evidenceProgress);
+    const sourcesNeeded = !isComplete(objective.sourceProgress);
+    const notesNeeded = !isComplete(objective.noteProgress);
+    const flagsNeeded = !isComplete(objective.flagProgress);
+    if (evidenceNeeded)
+      return {
+        panel: 'evidence' as Panel,
+        text: 'Inspect and review the required evidence items before submitting this assignment.',
+      };
+    if (sourcesNeeded)
+      return {
+        panel: 'research' as Panel,
+        text: 'Add the required verified source note to your notebook from the Research panel.',
+      };
+    if (notesNeeded)
+      return {
+        panel: 'evidence' as Panel,
+        text: 'Record the required contradiction/corroboration note tied to reviewed evidence.',
+      };
+    if (flagsNeeded)
+      return {
+        panel: objective.assignmentId === 'a4' ? ('dialogue' as Panel) : ('casework' as Panel),
+        text: 'Complete the required casework milestone, then return to Assignments.',
+      };
+    return {
+      panel: 'assignments' as Panel,
+      text: 'Requirements met. Open Assignments and submit for senior evaluation.',
+    };
+  }, [objective, chapterComplete]);
+  // Dev-time guard: fail loudly if any future UI change starts projecting canonical truth.
+  if (import.meta.env.DEV) {
+    assertNoCanonicalTruthLeak(playerCase);
+    assertNoCanonicalTruthLeak(completion);
+    assertNoCanonicalTruthLeak(journal);
+    assertNoCanonicalTruthLeak(theorySupport);
+    assertNoCanonicalTruthLeak(caseSummary);
+  }
+
+  function applyPersistResult(result: PersistResult) {
+    const { status, conflict } = saveStatusFromResult(result, !!boot.sync);
+    setSaveStatus(status);
+    setSaveConflict(conflict);
+    if (conflict) setSaveNotice('');
+  }
+
+  function persist(next: SaveGame, options?: SaveOptions) {
+    if (boot.sync) {
+      applyPersistResult(persistSaveThrough(boot, next, options) as PersistResult);
+      return;
+    }
+    const generation = ++saveGeneration.current;
+    const write = () => persistSaveThrough(boot, next, options) as Promise<PersistResult>;
+    saveQueue.current = saveQueue.current
+      .then(write, write)
+      .then((result) => {
+        if (generation === saveGeneration.current) applyPersistResult(result);
+      })
+      .catch(() => {
+        if (generation === saveGeneration.current) applyPersistResult({ ok: false, reason: 'SAVE_FAILED' });
+      });
+  }
+
+  function update(mutator: (s: SaveGame) => SaveGame) {
+    setSave((prev) => {
+      const next = mutator(structuredClone(prev));
+      // Defensive backstop: every append also uses addNotebookEntry, but this keeps any
+      // future direct mutation from growing an in-memory save past the cap before persisting.
+      capNotebook(next.notebook);
+      // Keep the functional update so several mutations in one handler still compose.
+      // A failed write is reported politely instead of throwing; progress stays in memory.
+      persist(next);
+      return next;
+    });
+  }
+
+  /**
+   * Commit a mutation that a handler needs the result of (notes, custody, challenges, review
+   * outcomes, clock, draft versions…). React queues functional updaters until render, so a
+   * result assigned inside the `update()` updater is still undefined on the very next line and
+   * every dependent UI side-effect is silently skipped. This runs the mutator now, on a clone
+   * of the current save, commits that exact clone once, and returns the result synchronously.
+   * Only use this for single-mutation handlers; `update()` still composes multi-step ones.
+   */
+  function mutateWithResult<T>(mutator: (working: SaveGame) => T): T {
+    return commitSaveMutation(save, mutator, (working) => {
+      persist(working);
+      setSave(working);
+    });
+  }
+
+  function addNotebook(entry: Omit<NotebookEntry, 'id' | 'day'>) {
+    update((s) => {
+      addNotebookEntry(s, makeNotebookEntry(entry, s));
+      return s;
+    });
+  }
+
+  /**
+   * Replace all in-memory game and transient UI state from a freshly obtained save. Shared by
+   * session reset and by the conflict "reload from server" action so neither leaves stale ids,
+   * filters, editor text or a stale conflict notice behind.
+   */
+  function applyFreshSaveState(freshSave: SaveGame) {
+    const fresh = createResetUiState(freshSave);
+    setSave(freshSave);
+    setPanel(fresh.panel);
+    setDraft(fresh.draft);
+    setDialogue(fresh.dialogue);
+    setNoteTarget(fresh.noteTarget);
+    setNoteRelation(fresh.noteRelation);
+    setNoteText(fresh.noteText);
+    setKcTarget(null);
+    setKcDomain('forensic');
+    setKcConcept('');
+    setKcDescription('');
+    setCaseTarget(fresh.caseTarget);
+    setCustodyText(fresh.custodyText);
+    setChallengeGround(fresh.challengeGround);
+    setChallengeText(fresh.challengeText);
+    setReviewSummary(fresh.reviewSummary);
+    setFinalSummary(fresh.finalSummary);
+    setShowSourceIntake(fresh.showSourceIntake);
+    setSourceForm(fresh.sourceForm);
+    setIntakeError(fresh.intakeError);
+    setIntakeNotice(fresh.intakeNotice);
+    setTheoryText(fresh.theoryText);
+    setTheoryStatus(fresh.theoryStatus);
+    setTheoryEvidenceIds(fresh.theoryEvidenceIds);
+    setNotebookFilter(fresh.notebookFilter);
+    setJournalFilter(fresh.journalFilter);
+    setEditingClaimId(fresh.editingClaimId);
+    setEditingLinks(fresh.editingLinks);
+    setShowHelp(fresh.showHelp);
+    setSaveStatus(fresh.saveStatus);
+    setSaveNotice(fresh.saveNotice);
+    setSaveConflict(false);
+    aiRequestId.current += 1;
+    aiSeniorReviewAbort.current?.abort();
+    aiSeniorReviewAbort.current = null;
+    setAiPrompt(fresh.aiPrompt);
+    setAiResponse(fresh.aiResponse);
+    setAiWarnings(fresh.aiWarnings);
+    setAiError(fresh.aiError);
+    setAiIncludeInternalSummaries(fresh.aiIncludeInternalSummaries);
+    setAiSources(fresh.aiSources);
+    setAiLoading(false);
+    setAiAssistSeniorReview(fresh.aiAssistSeniorReview);
+    setAiReviewBusy(false);
+    setAiReviewNotice(fresh.aiReviewNotice);
+    setAiReviewSources(fresh.aiReviewSources);
+  }
+
+  /**
+   * Complete session reset. One path for both entry points: a fresh save plus every
+   * transient UI value from the same blueprint, so no stale id or filter survives.
+   */
+  async function resetSession() {
+    // A reset invalidates any in-flight async save so its result cannot relight the status.
+    saveGeneration.current += 1;
+    const reset = resetSaveThrough(boot);
+    const freshSave = boot.sync ? (reset as SaveGame) : await (reset as Promise<SaveGame>);
+    applyFreshSaveState(freshSave);
+  }
+
+  /** Conflict action: discard in-memory edits and adopt the server's copy through the repository. */
+  async function reloadFromServer() {
+    if (conflictBusy) return;
+    setConflictBusy(true);
+    // Invalidate any queued save so a late result cannot re-raise the conflict.
+    saveGeneration.current += 1;
+    try {
+      const loaded = await boot.repository.loadGame(DEFAULT_GAME_SLOT);
+      applyFreshSaveState(loaded);
+    } finally {
+      setConflictBusy(false);
+    }
+  }
+
+  /** Conflict action: keep in-memory edits and force one unconditional write (no expectedSavedAt). */
+  function overwriteServerSave() {
+    if (conflictBusy) return;
+    setConflictBusy(true);
+    saveGeneration.current += 1;
+    const write = () => persistSaveThrough(boot, save, { force: true }) as Promise<PersistResult>;
+    saveQueue.current = saveQueue.current
+      .then(write, write)
+      .then((result) => applyPersistResult(result))
+      .catch(() => applyPersistResult({ ok: false, reason: 'SAVE_FAILED' }))
+      .finally(() => setConflictBusy(false));
+  }
+
+  /** Shared, explicit confirmation for every "start over" action. */
+  function requestReset() {
+    if (confirm(RESET_CONFIRMATION)) void resetSession();
+  }
+
+  /** Explicit Save stays on the current panel and confirms beside the button, without navigating. */
+  function doSave() {
+    update((s) => {
+      recordAudit(s, 'save', 'Saved progress locally');
+      // Fold in the visible editor text so an explicit Save never leaves unsaved draft edits.
+      setCurrentDraft(s, draft);
+      return s;
+    });
+    setSaveNotice(EXPLICIT_SAVE_NOTICE);
+  }
+
+  /** Persist editor text on blur only — never on every keystroke. */
+  function persistDraftOnBlur() {
+    if (draft === save.draft.current) return;
+    update((s) => {
+      setCurrentDraft(s, draft);
+      return s;
+    });
+  }
+
+  async function askLocalAi() {
+    const prompt = aiPrompt.trim();
+    if (!prompt) {
+      setAiError('Enter a prompt.');
+      return;
+    }
+    const requestId = ++aiRequestId.current;
+    // Retrieval runs only on the explicitly enabled toggle and reads only the in-app legal
+    // corpus (never the canonical case-truth record). Its blocks are labelled non-authoritative.
+    const sources = aiIncludeInternalSummaries ? retrieveApprovedInternalSummaries(save.legalSources, prompt) : [];
+    const contextBlocks = sources.map((source) => source.context);
+    setAiLoading(true);
+    setAiError('');
+    setAiResponse('');
+    setAiWarnings([]);
+    setAiSources(sources);
+    const result: LocalLlmResult = await askLocalLlm(prompt, { contextBlocks });
+    if (requestId !== aiRequestId.current) return;
+    setAiLoading(false);
+    if (!result.ok) {
+      setAiError(result.error ?? 'Local LLM request failed.');
+      return;
+    }
+    setAiResponse(result.text);
+    setAiWarnings(result.warnings);
+  }
+
+  /** Dismiss first-day guidance and remember the choice across saves. */
+  function dismissHelp() {
+    setShowHelp(false);
+    update(markHelpSeen);
+  }
+
+  function setSourceField<K extends keyof SourceFormState>(key: K, value: SourceFormState[K]) {
+    setSourceForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function doAddSource() {
+    setIntakeError('');
+    setIntakeNotice('');
+    const result = intakeSource(sourceForm, makeId('ls'));
+    if (!result.ok || !result.source) {
+      setIntakeError(result.reason ?? 'Unable to add source.');
+      return;
+    }
+    const added = result.source;
+    update((s) => {
+      s.legalSources.unshift(added);
+      recordAudit(s, 'source-intake', `Source intake saved: ${added.title} (${added.verificationStatus})`);
+      return s;
+    });
+    setSourceForm(emptySourceForm());
+    setShowSourceIntake(false);
+    setIntakeNotice(`Saved "${added.title}" as ${added.verificationStatus}. ${result.warnings.join(' ')}`);
+    setDialogue(`System: Source intake saved as ${added.verificationStatus}. ${result.warnings.join(' ')}`);
+  }
+
+  function discoverEvidence(id: string) {
+    const item = save.caseFile.evidence.find((e) => e.id === id);
+    if (!item || item.discovered) return;
+    update((s) => {
+      const ev = discoverEvidenceItem(s, id);
+      if (!ev) return s;
+      s.caseFile.playerKnowledge.push(`Discovered: ${ev.title}`);
+      s.memories.unshift({
+        id: makeId('m'),
+        day: s.clock.day,
+        summary: `Discovered evidence: ${ev.title}`,
+        participants: ['player'],
+      });
+      addNotebookEntry(
+        s,
+        makeNotebookEntry(
+          {
+            kind: 'fact',
+            title: `Evidence: ${ev.title}`,
+            content: ev.description,
+            source: ev.provenance,
+            verified: false,
+            evidenceId: ev.id,
+          },
+          s,
+        ),
+      );
+      return s;
+    });
+    setDialogue(`System: Discovered ${item.title}. Inspect it to mark it reviewed and record your own assessment.`);
+  }
+
+  function doReviewEvidence(id: string) {
+    update((s) => {
+      if (!reviewEvidence(s, id)) return s;
+      const ev = s.caseFile.evidence.find((e) => e.id === id);
+      if (ev)
+        addNotebookEntry(
+          s,
+          makeNotebookEntry(
+            {
+              kind: 'fact',
+              title: `Reviewed: ${ev.title}`,
+              content:
+                'Reviewed the item and recorded a provisional admissibility/reliability assessment. Authenticity has not been determined.',
+              source: ev.provenance,
+              verified: false,
+              evidenceId: ev.id,
+            },
+            s,
+          ),
+        );
+      return s;
+    });
+  }
+
+  function doSetAssessment(id: string, patch: Parameters<typeof setEvidenceAssessment>[2]) {
+    update((s) => {
+      setEvidenceAssessment(s, id, patch);
+      return s;
+    });
+  }
+
+  function doSaveNote() {
+    if (!noteTarget || !noteText.trim()) return;
+    const target = noteTarget;
+    // addEvidenceNote generates its own id: run it once on the clone that gets committed.
+    const entry = mutateWithResult((s) => addEvidenceNote(s, target, noteRelation, noteText));
+    if (entry) {
+      setNoteTarget(null);
+      setNoteText('');
+      setDialogue('System: Note recorded in your notebook, tied to the reviewed evidence item.');
+      setPanel('notebook');
+    }
+  }
+
+  function doSaveKnowledgeConnection() {
+    if (!kcTarget || !kcConcept.trim() || !kcDescription.trim()) return;
+    const ev = save.caseFile.evidence.find((e) => e.id === kcTarget);
+    if (!ev || !ev.discovered || !ev.reviewed) return;
+    const id = makeId('kn');
+    mutateWithResult((s) => {
+      addKnowledgeConnectionEntry(
+        s,
+        {
+          evidenceId: kcTarget,
+          legalTopic: ev.title,
+          domain: kcDomain,
+          relatedConcept: kcConcept,
+          description: kcDescription,
+        },
+        id,
+      );
+    });
+    setKcTarget(null);
+    setKcConcept('');
+    setKcDescription('');
+    setDialogue('System: Interdisciplinary connection saved to your notebook. You can refer to it in later review.');
+    setPanel('notebook');
+  }
+
+  function doRecordCustody() {
+    const result = mutateWithResult((s) => recordCustodyObservation(s, caseTargetId, custodyText));
+    if (result.ok) {
+      setCustodyText('');
+      setDialogue('System: Chain-of-custody observation logged in your notebook. Authenticity is still undetermined.');
+    } else {
+      setDialogue(`System: ${result.reason ?? 'Unable to log custody.'}`);
+    }
+  }
+
+  function doChallenge() {
+    const result = mutateWithResult((s) =>
+      challengeEvidenceAdmissibility(s, caseTargetId, challengeGround, challengeText),
+    );
+    if (result.ok) {
+      setChallengeText('');
+      setDialogue(`${result.feedback}\n\nRemembered: Challenge recorded on ${challengeGround} grounds.`);
+    } else {
+      setDialogue(`System: ${result.reason ?? 'Unable to record challenge.'}`);
+    }
+  }
+
+  function toggleTheoryEvidence(id: string) {
+    setTheoryEvidenceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  /** Carry a reviewed item straight from the Evidence panel into a new theory claim. */
+  function addEvidenceToTheory(id: string) {
+    setTheoryEvidenceIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    setPanel('theory');
+  }
+
+  function openLinkEditor(claimId: string) {
+    const claim = save.caseTheory.claims.find((c) => c.id === claimId);
+    if (!claim) return;
+    const available = new Set(reviewedEvidence.map((e) => e.id));
+    setEditingLinks(claim.evidenceIds.filter((id) => available.has(id)));
+    setEditingClaimId(claimId);
+  }
+
+  function toggleEditingLink(id: string) {
+    setEditingLinks((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  }
+
+  function doSaveClaimLinks(claimId: string) {
+    const result = mutateWithResult((s) => setClaimEvidenceLinks(s, claimId, editingLinks));
+    if (result.ok) {
+      setEditingClaimId(null);
+      setDialogue(
+        'System: Evidence links updated. This records what you relied on, not a finding on authenticity or responsibility.',
+      );
+    } else {
+      setDialogue(`System: ${result.reason ?? 'Unable to update evidence links.'}`);
+    }
+  }
+
+  function doAddTheory() {
+    const result = mutateWithResult((s) => addTheoryClaim(s, theoryText, theoryStatus, theoryEvidenceIds));
+    if (result.ok) {
+      setTheoryText('');
+      setTheoryEvidenceIds([]);
+      setDialogue(
+        'System: Case-theory claim added to your file and notebook. It is your working theory, not a finding on authenticity or responsibility.',
+      );
+    } else {
+      setDialogue(`System: ${result.reason ?? 'Unable to record theory claim.'}`);
+    }
+  }
+
+  function doSeniorReview() {
+    const result = mutateWithResult((s) => submitSeniorReview(s, 'a7', reviewSummary));
+    if (!result.ok) {
+      setDialogue(`System: ${result.reason ?? 'Unable to submit for review.'}`);
+      return;
+    }
+    setDialogue(`Adv. Meera Kulkarni: "${result.feedback}"`);
+    if (result.status === 'accepted') setPanel('notebook');
+  }
+
+  /**
+   * Explicit, opt-in AI-assisted senior review. One model call per click, cancellable, and
+   * always committed through the same deterministic writer: an accepted proposal may enrich
+   * dialogue and a provenance-labelled save record, but cannot change the review outcome.
+   */
+  async function doAiSeniorReview() {
+    if (aiReviewBusy) return;
+    const requestId = ++aiRequestId.current;
+    aiSeniorReviewAbort.current?.abort();
+    const controller = new AbortController();
+    aiSeniorReviewAbort.current = controller;
+    setAiReviewBusy(true);
+    setAiReviewNotice('');
+    setAiReviewSources([]);
+    // Work on a clone: the async orchestration mutates it, then one update commits it.
+    const working = structuredClone(save);
+    const gateway = createAiGateway({
+      provider: createLlamaServerProvider(),
+      enabled: true,
+      verifiedSourceIds: citableSourceIds(save),
+    });
+    try {
+      const outcome = await submitSeniorReviewWithAi(working, 'a7', reviewSummary, {
+        gateway,
+        signal: controller.signal,
+      });
+      if (requestId !== aiRequestId.current) return;
+      update(() => working);
+      setAiReviewSources(outcome.retrievedSources);
+      setAiReviewNotice(outcome.notice);
+      setDialogue(`Adv. Meera Kulkarni: "${outcome.dialogue}"`);
+      if (outcome.deterministic.status === 'accepted') setPanel('notebook');
+    } catch {
+      // The gateway never throws, but any transport surprise must still yield the plain path.
+      if (requestId !== aiRequestId.current) return;
+      doSeniorReview();
+      setAiReviewNotice('AI-assisted review failed; deterministic senior feedback was used.');
+    } finally {
+      if (requestId === aiRequestId.current) {
+        setAiReviewBusy(false);
+        aiSeniorReviewAbort.current = null;
+      }
+    }
+  }
+
+  function doFinalBrief() {
+    const result = mutateWithResult((s) => submitFinalBrief(s, finalSummary));
+    if (!result.ok) {
+      setDialogue(`System: ${result.reason ?? 'Unable to submit final brief.'}`);
+      return;
+    }
+    setDialogue(`Adv. Meera Kulkarni: "${result.consequence}"`);
+    setPanel('completion');
+  }
+
+  function doAdvanceTime() {
+    const time = mutateWithResult((s) => {
+      advanceClock(s);
+      return { day: s.clock.day, slot: s.clock.slot };
+    });
+    setDialogue(`System: Time advanced to Day ${time.day} (${time.slot}). Check your current objective.`);
+  }
+
+  function onHotspot(action: string) {
+    const [kind, value] = action.split(':');
+    if (kind === 'view') update((s) => ({ ...s, selectedViewpoint: value }));
+    if (kind === 'panel') setPanel(value as Panel);
+    if (kind === 'time') doAdvanceTime();
+    if (kind === 'dialogue' && value === 'senior') {
+      setPanel('dialogue');
+      setDialogue(
+        save.flags.caseAccepted
+          ? 'Adv. Meera Kulkarni: "Good. Now test every claim against evidence and verified law. Do not guess citations."'
+          : 'Adv. Meera Kulkarni: "A fictional altercation case has arrived. Interview carefully, collect evidence, and draft a brief. I will review it."',
+      );
+      update((s) => {
+        s.flags.caseAccepted = true;
+        return s;
+      });
+    }
+    if (kind === 'dialogue' && Object.prototype.hasOwnProperty.call(DIALOGUE_GREETINGS, value)) {
+      setPanel('dialogue');
+      setDialogue(DIALOGUE_GREETINGS[value]);
+    }
+  }
+
+  function doDialogueChoice(sceneId: string, choiceId: string) {
+    const working = structuredClone(save);
+    const result = applyDialogueChoice(working, sceneId, choiceId);
+    if (!result.ok) {
+      setDialogue(`System: ${result.reason ?? 'Unavailable.'}`);
+      return;
+    }
+    const standing = result.reputationEffects?.length
+      ? `\n\nStanding change: ${result.reputationEffects.map((e) => `${e.dimension} ${e.amount > 0 ? '+' : ''}${e.amount}`).join(', ')}.`
+      : '';
+    addNotebookEntry(
+      working,
+      makeNotebookEntry(
+        {
+          kind: 'note',
+          title: `Interaction: ${result.characterName ?? 'Colleague'}`,
+          content: `${result.reply}\n\nRemembered: ${result.memory}${standing}`,
+          verified: false,
+        },
+        working,
+      ),
+    );
+    update(() => working);
+    setDialogue(`${result.reply}\n\nRemembered: ${result.memory}${standing}`);
+  }
+
+  function submitAssignment(id: string) {
+    const result = mutateWithResult((s) => {
+      const review = reviewAssignment(s, id);
+      if (review.ok) {
+        addNotebookEntry(
+          s,
+          makeNotebookEntry(
+            {
+              kind: 'feedback',
+              title: `Assignment reviewed: ${s.assignments.find((a) => a.id === id)?.title ?? id}`,
+              content: review.feedback,
+              verified: true,
+            },
+            s,
+          ),
+        );
+      }
+      return review;
+    });
+    if (!result.ok) {
+      setDialogue(`System: ${result.reason}`);
+      setPanel('dialogue');
+    } else {
+      setDialogue('Adv. Meera Kulkarni: "Good. Keep the work grounded in reviewed evidence and verified sources."');
+      setPanel('notebook');
+    }
+  }
+
+  function submitDraft() {
+    const result = mutateWithResult((s) => submitDraftForFeedback(s, draft));
+    if (!result.ok) {
+      setDialogue(
+        'Adv. Meera Kulkarni: "Stop. I see an unverified or fabricated citation. Verify the source first, or remove it."',
+      );
+      setPanel('notebook');
+      return;
+    }
+    setDialogue(`Adv. Meera Kulkarni: "${result.message}"`);
+    setPanel('notebook');
+  }
+
+  function doSaveDraftVersion() {
+    const version = mutateWithResult((s) => saveDraftVersion(s, draft));
+    if (version) setDialogue(`System: Draft version saved (Day ${version.day}, ${version.slot}).`);
+  }
+
+  function doLoadDraftVersion(versionId: string) {
+    const text = mutateWithResult((s) => loadDraftVersion(s, versionId));
+    if (text !== undefined && text !== null) {
+      setDraft(text);
+      setDialogue('System: Prior draft version loaded into the editor.');
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-bar-bg text-bar-text">
+      <a href="#main-content" className="skip-link">
+        Skip to main content
+      </a>
+      <header className="border-b border-bar-gold/20 px-4 py-4 bg-gradient-to-b from-bar-panel/90 via-bar-panel/40 to-transparent">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.24em] text-bar-muted">The First Brief · Office Prototype</p>
+            <h1 className="text-3xl sm:text-4xl font-semibold text-bar-gold tracking-[0.04em] leading-none mt-1">
+              {config.appName}
+            </h1>
+            <p className="text-sm text-bar-muted mt-2 max-w-xl">
+              Educational simulation — not legal advice. No fabricated citations.
+            </p>
+          </div>
+          <div className="text-sm text-bar-muted flex gap-2 flex-wrap items-center" aria-label="Session status">
+            <span className="px-2 py-1 rounded border border-bar-gold/20 bg-bar-panel2/70 text-bar-text">
+              Day {save.clock.day} / {MAX_DAY}
+            </span>
+            <span className="px-2 py-1 rounded border border-white/10 bg-bar-panel2/70">{chapterPhase}</span>
+            <span className="px-2 py-1 rounded border border-white/10 bg-bar-panel2/70 capitalize">
+              {save.clock.slot}
+            </span>
+            <span className="px-2 py-1 rounded border border-white/10 bg-bar-panel2/70 capitalize">
+              {save.player.careerStage.replace('_', ' ')}
+            </span>
+            <button
+              type="button"
+              className="px-2 py-1 border border-bar-gold/30 rounded hover:bg-white/5"
+              onClick={doAdvanceTime}
+            >
+              Advance time
+            </button>
+            <button
+              type="button"
+              className="px-2 py-1 border border-bar-gold/30 rounded hover:bg-white/5"
+              aria-expanded={showHelp}
+              aria-controls={showHelp ? 'how-to-play' : undefined}
+              onClick={() => setShowHelp((v) => !v)}
+            >
+              How to play
+            </button>
+            {chapterComplete && (
+              <button
+                type="button"
+                className="px-2 py-1 border border-green-400/40 rounded text-green-200 hover:bg-green-400/10"
+                onClick={() => setPanel('completion')}
+                aria-current={panel === 'completion' ? 'true' : undefined}
+              >
+                Chapter summary
+              </button>
+            )}
+            <button
+              type="button"
+              className="px-2 py-1 border border-bar-gold/30 rounded hover:bg-white/5"
+              onClick={doSave}
+            >
+              Save
+            </button>
+            <SaveNoticeMessage notice={saveNotice} />
+            <button
+              type="button"
+              className="px-2 py-1 border border-red-400/30 rounded text-red-200 hover:bg-red-400/10"
+              onClick={requestReset}
+            >
+              Reset
+            </button>
+            <SaveStatusMessage status={saveStatus} />
+          </div>
+          {saveConflict && !boot.sync && (
+            <SaveConflictNotice
+              onReload={() => void reloadFromServer()}
+              onOverwrite={overwriteServerSave}
+              busy={conflictBusy}
+            />
+          )}
+        </div>
+      </header>
+
+      {showHelp && (
+        <section id="how-to-play" role="region" aria-labelledby="help-heading" className="px-4 pt-4">
+          <div className="bg-bar-panel2/60 border border-bar-gold/30 rounded-lg p-4 shadow-sm">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.18em] text-bar-muted">First-day guidance</p>
+                <h2 id="help-heading" className="text-base text-bar-gold">
+                  How to play
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="px-2 py-1 border border-white/10 rounded text-xs text-bar-muted self-start hover:bg-white/5"
+                onClick={dismissHelp}
+              >
+                Got it — dismiss
+              </button>
+            </div>
+            <div className="mt-3 grid gap-4 md:grid-cols-2">
+              <div>
+                <h3 className="text-xs uppercase tracking-wide text-bar-muted">Core loop</h3>
+                <ol className="list-decimal ml-5 mt-1 space-y-1 text-xs sm:text-sm text-bar-muted">
+                  <li>Read the case file. Separate known facts from claims and unknowns.</li>
+                  <li>Discover and review evidence, then record your own provisional assessment.</li>
+                  <li>Add only verified sources to your notebook; unverified material is never authoritative.</li>
+                  <li>Complete each assignment, then advance time from the window or header to unlock the next day.</li>
+                  <li>Submit the brief for senior review, revise if asked, then submit the final brief on Day 10.</li>
+                </ol>
+              </div>
+              <div>
+                <h3 className="text-xs uppercase tracking-wide text-bar-muted">Guardrails</h3>
+                <ul className="list-disc ml-5 mt-1 space-y-1 text-xs sm:text-sm text-bar-muted">
+                  <li>Never fabricate a statute, judgment, citation or procedural rule.</li>
+                  <li>
+                    Only verified sources may be cited as law; Source Intake creates drafts, never verified authority.
+                  </li>
+                  <li>
+                    The true sequence of events, responsibility and authenticity are never revealed — record what you
+                    can support, not guesses.
+                  </li>
+                  <li>Your notebook, memories and standing change with careful work; the case closes on Day 10.</li>
+                </ul>
+              </div>
+            </div>
+            <p className="text-[11px] text-bar-muted mt-3">
+              You can reopen this guide any time with “How to play” in the header.
+            </p>
+          </div>
+        </section>
+      )}
+
+      <div className="px-4 pt-4">
+        <div
+          className="bg-bar-panel border border-bar-gold/20 rounded-lg p-4 shadow-sm"
+          role="status"
+          aria-live="polite"
+        >
+          {save.clock.day === MAX_DAY && !chapterComplete && (
+            <div
+              role="note"
+              className="mb-3 px-3 py-2 rounded border border-bar-gold/40 bg-bar-gold/10 text-xs sm:text-sm text-bar-gold"
+            >
+              Final day — time no longer advances. Complete the senior review and submit the final brief.
+            </div>
+          )}
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1 min-w-0">
+              <div className="text-xs uppercase tracking-wide text-bar-muted">Current objective</div>
+              {objective ? (
+                <>
+                  <div className="text-sm sm:text-base text-bar-gold font-medium">
+                    {objective.title}{' '}
+                    <span className="text-bar-muted font-normal">
+                      — Day {objective.unlockDay} · {objective.status}
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm text-bar-muted">{objective.description}</p>
+                  <div className="flex flex-wrap gap-2 text-xs mt-1">
+                    <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-panel2">
+                      Evidence {objective.evidenceProgress}
+                    </span>
+                    <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-panel2">
+                      Sources {objective.sourceProgress}
+                    </span>
+                    {objective.noteProgress !== '0/0' && (
+                      <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-panel2">
+                        Notes {objective.noteProgress}
+                      </span>
+                    )}
+                    {objective.flagProgress !== '0/0' && (
+                      <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-panel2">
+                        Casework {objective.flagProgress}
+                      </span>
+                    )}
+                  </div>
+                  {objective.lockReason === 'day' && (
+                    <p className="text-xs text-yellow-200 mt-1">
+                      Unlocks on Day {objective.unlockDay}. Advance time when ready.
+                    </p>
+                  )}
+                  {objective.lockReason === 'prerequisite' && (
+                    <p className="text-xs text-yellow-200 mt-1">
+                      Complete and submit/review the prior assignment first.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="text-sm text-bar-muted">
+                  {save.flags.chapterOneComplete
+                    ? 'Chapter one complete — final brief submitted.'
+                    : 'All assignments reviewed.'}
+                </div>
+              )}
+            </div>
+            <div className="lg:w-80 shrink-0 bg-bar-panel2/70 border border-bar-gold/20 rounded-md p-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs uppercase tracking-wide text-bar-muted">Next step</div>
+                <span className="text-[11px] text-bar-muted">
+                  {chapterComplete ? 'Complete' : `Milestone ${objectiveIndex}/${save.assignments.length}`}
+                </span>
+              </div>
+              <p className="text-sm mt-1">{nextStep.text}</p>
+              <button
+                type="button"
+                className="mt-2 px-2 py-1 text-xs border border-bar-gold/40 rounded text-bar-gold hover:bg-bar-gold/10"
+                onClick={() => setPanel(nextStep.panel)}
+              >
+                Open {PANEL_LABELS[nextStep.panel]} <span aria-hidden="true">→</span>
+              </button>
+            </div>
+          </div>
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-xs text-bar-muted mb-1">
+              <span>Chapter progress: Day 1–{MAX_DAY}</span>
+              <span>
+                {reviewedAssignmentCount}/{save.assignments.length} assignments reviewed
+              </span>
+            </div>
+            <div className="h-2 rounded bg-white/10 overflow-hidden" aria-hidden="true">
+              <div className="h-full bg-bar-gold/80" style={{ width: `${chapterProgress}%` }} />
+            </div>
+            <div className="sr-only">Chapter progress {chapterProgress} percent.</div>
+            <ol
+              className="mt-3 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-2"
+              aria-label="Day 1 to 10 assignment progress"
+            >
+              {save.assignments.map((a) => {
+                const active = objective?.assignmentId === a.id;
+                const statusClass =
+                  a.status === 'reviewed'
+                    ? 'border-green-400/40 text-green-200 bg-green-400/5'
+                    : a.status === 'active' || a.status === 'submitted' || a.status === 'pending'
+                      ? 'border-bar-gold/40 text-bar-gold bg-bar-gold/5'
+                      : 'border-white/10 text-bar-muted bg-bar-panel2/40';
+                return (
+                  <li
+                    key={a.id}
+                    aria-current={active ? 'step' : undefined}
+                    className={`rounded border p-2 text-[11px] leading-tight ${statusClass} ${active ? 'ring-1 ring-bar-gold/60' : ''}`}
+                  >
+                    <div className="font-medium flex items-center justify-between gap-1">
+                      <span>Day {a.day}</span>
+                      {active && <span className="text-[9px] uppercase tracking-wide text-bar-gold">Current</span>}
+                    </div>
+                    <div className="mt-0.5 line-clamp-2">{a.title}</div>
+                    <div className="mt-1 uppercase tracking-wide opacity-80">{a.status}</div>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <main id="main-content" className="grid lg:grid-cols-[1.35fr_1fr] gap-4 p-4 min-w-0 scroll-mt-4">
+        <section
+          className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4 min-w-0"
+          aria-labelledby="chamber-heading"
+        >
+          <div className="flex flex-col gap-2 mb-3">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.18em] text-bar-muted">Static scene · viewpoint</p>
+                <h2 id="chamber-heading" className="text-lg text-bar-gold scroll-mt-24">
+                  {location.label} — {viewpoint.label}
+                </h2>
+              </div>
+              <div className="flex gap-2 text-xs flex-wrap" role="group" aria-label="Locations">
+                {Object.values(LOCATIONS).map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => onHotspot(`view:${l.viewpointIds[0]}`)}
+                    aria-pressed={location.id === l.id}
+                    className={`px-2 py-1 rounded border transition-colors ${location.id === l.id ? 'border-bar-gold text-bar-gold bg-bar-gold/10' : 'border-white/10 text-bar-muted hover:bg-white/5'}`}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2 text-xs flex-wrap" role="group" aria-label="Viewpoints">
+              {locationViewpoints.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  onClick={() => onHotspot(`view:${v.id}`)}
+                  aria-pressed={save.selectedViewpoint === v.id}
+                  className={`px-2 py-1 rounded border transition-colors ${save.selectedViewpoint === v.id ? 'border-bar-gold text-bar-gold bg-bar-gold/10' : 'border-white/10 text-bar-muted hover:bg-white/5'}`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="scene-frame">
+            <div className="scene-art-wrap">
+              <SceneArt viewpointId={save.selectedViewpoint} />
+              <div className="scene-vignette" aria-hidden="true" />
+              <span className="scene-tag" aria-hidden="true">
+                {viewpoint.label}
+              </span>
+            </div>
+            <div className="p-3 sm:p-4 bg-bar-panel/95">
+              <p className="text-xs text-bar-muted">{location.description}</p>
+              <p className="text-sm text-bar-muted mt-1">{viewpoint.description}</p>
+              {viewpoint.characters?.length ? (
+                <p className="mt-2 text-xs text-bar-gold/90">
+                  In scene: {viewpoint.characters.map((c) => `${c.label} (${c.expression})`).join(', ')}
+                </p>
+              ) : null}
+              <div className="scene-rule my-3" aria-hidden="true" />
+              <p className="text-[11px] uppercase tracking-wide text-bar-muted mb-2">
+                Interact here{' '}
+                <span className="normal-case tracking-normal">
+                  — the illustration is decorative; every action is a labelled control below.
+                </span>
+              </p>
+              <div className="grid sm:grid-cols-2 gap-2" role="group" aria-label={`${viewpoint.label} hotspots`}>
+                {viewpoint.hotspots.map((h) => (
+                  <button
+                    key={h.id}
+                    type="button"
+                    data-hotspot-kind={h.kind}
+                    data-character-id={h.characterId}
+                    onClick={() => onHotspot(h.action)}
+                    className="scene-hotspot text-left p-3 rounded border border-bar-gold/20 bg-bar-panel2/40"
+                  >
+                    <div className="text-bar-gold text-sm font-medium">{h.label}</div>
+                    <div className="text-xs text-bar-muted mt-0.5">{describeHotspotAction(h.action)}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="mt-4 grid sm:grid-cols-3 gap-2 text-xs">
+            <div className="bg-bar-panel2 p-2 rounded border border-white/5">
+              <span className="text-bar-muted">Competence</span>{' '}
+              <span className="text-bar-text font-medium">{save.player.reputation.competence}</span>
+            </div>
+            <div className="bg-bar-panel2 p-2 rounded border border-white/5">
+              <span className="text-bar-muted">Integrity</span>{' '}
+              <span className="text-bar-text font-medium">{save.player.reputation.integrity}</span>
+            </div>
+            <div className="bg-bar-panel2 p-2 rounded border border-white/5">
+              <span className="text-bar-muted">Reliability</span>{' '}
+              <span className="text-bar-text font-medium">{save.player.reputation.reliability}</span>
+            </div>
+          </div>
+        </section>
+
+        <section
+          className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4 min-w-0"
+          aria-labelledby="workspace-heading"
+        >
+          <div className="flex flex-col gap-2 mb-3">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <h2
+                id="workspace-heading"
+                ref={workspaceHeadingRef}
+                tabIndex={-1}
+                className="text-lg text-bar-gold scroll-mt-24"
+              >
+                Workspace
+              </h2>
+              <span className="text-xs text-bar-muted">
+                Panel: <span className="text-bar-text capitalize">{panel}</span>
+              </span>
+            </div>
+            <p className="text-xs text-bar-muted">
+              Use panels to review the case, evidence, sources, draft, and casework. The recommended next panel is
+              highlighted.
+            </p>
+          </div>
+          <nav aria-label="Work panels" className="flex gap-2 flex-wrap mb-5 text-sm">
+            {PANELS.filter((p) => localAiEnabled || p !== 'ai').map((p) => {
+              const recommended = nextStep.panel === p && panel !== p;
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPanel(p)}
+                  aria-current={panel === p ? 'true' : undefined}
+                  className={`px-3 py-2 rounded-md border capitalize transition-colors ${panel === p ? 'border-bar-gold/60 text-bar-gold bg-bar-gold/10 shadow-[inset_0_1px_0_rgba(200,167,90,0.15)]' : 'border-white/10 text-bar-muted hover:bg-white/5 hover:text-bar-text'} ${recommended ? 'ring-1 ring-bar-gold/30' : ''}`}
+                >
+                  {p}
+                  {recommended ? <span className="ml-1 text-bar-gold/80">•</span> : null}
+                </button>
+              );
+            })}
+          </nav>
+
+          {panel === 'completion' && (
+            <div className="space-y-4 text-sm">
+              {!chapterComplete ? (
+                <div className="bg-bar-panel2 p-4 rounded border border-yellow-400/30">
+                  <p className="text-sm">
+                    The chapter is not complete yet. Submit the final brief on Day 10 to unlock this summary.
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                    onClick={() => setPanel('case')}
+                  >
+                    Back to case file
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="bg-bar-panel2 p-4 rounded border border-green-400/30">
+                    <p className="text-[11px] uppercase tracking-wide text-green-200/80">
+                      First chapter complete · Day {completion.day} / {completion.finalDay}
+                    </p>
+                    <h3 className="text-lg text-bar-gold mt-1">{completion.title}</h3>
+                    <p className="text-sm mt-2">{completion.outcome}</p>
+                    <p className="text-xs text-bar-muted mt-2">
+                      Case {completion.caseStatus}. {completion.closingNote}
+                    </p>
+                  </div>
+
+                  <section
+                    aria-labelledby="completion-achievements-heading"
+                    className="bg-bar-panel2 p-3 rounded border border-white/5"
+                  >
+                    <h3 id="completion-achievements-heading" className="text-xs uppercase tracking-wide text-bar-gold">
+                      What you achieved
+                    </h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mt-2 text-xs">
+                      <div className="bg-bar-bg/40 p-2 rounded">
+                        Competence <span className="text-bar-text font-medium">{completion.reputation.competence}</span>
+                      </div>
+                      <div className="bg-bar-bg/40 p-2 rounded">
+                        Integrity <span className="text-bar-text font-medium">{completion.reputation.integrity}</span>
+                      </div>
+                      <div className="bg-bar-bg/40 p-2 rounded">
+                        Reliability{' '}
+                        <span className="text-bar-text font-medium">{completion.reputation.reliability}</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-bar-muted mt-2">
+                      Career stage: <span className="capitalize">{completion.careerStage.replace('_', ' ')}</span> ·
+                      Assignments reviewed: {completion.assignmentsCompletedCount}/{completion.assignmentsTotal}
+                    </p>
+                    <ul className="list-disc ml-5 mt-1 text-xs text-bar-muted">
+                      {completion.assignmentsCompleted.map((a) => (
+                        <li key={a.id}>{a.title}</li>
+                      ))}
+                    </ul>
+                  </section>
+
+                  <section
+                    aria-labelledby="completion-synthesis-heading"
+                    className="bg-bar-panel2 p-3 rounded border border-white/5"
+                  >
+                    <h3 id="completion-synthesis-heading" className="text-xs uppercase tracking-wide text-bar-gold">
+                      Evidence synthesis &amp; open questions
+                    </h3>
+                    <p className="text-xs text-bar-muted mt-2">{completion.synthesis.overview}</p>
+                    {completion.synthesis.links.length > 0 && (
+                      <ul className="list-disc ml-5 mt-2 space-y-1 text-xs text-bar-text/90">
+                        {completion.synthesis.links.map((link) => (
+                          <li key={link.id}>
+                            <span className="capitalize text-bar-gold">{link.relation}</span> · Day {link.day} ·{' '}
+                            {link.evidenceTitle}: {link.note}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {completion.synthesis.totalClaims > 0 && (
+                      <div className="mt-3">
+                        <h4 className="text-xs uppercase tracking-wide text-bar-gold">How your theory was grounded</h4>
+                        <ul className="list-disc ml-5 mt-2 space-y-1 text-xs text-bar-muted">
+                          {completion.synthesis.theoryGrounding.map((claim) => (
+                            <li key={claim.claimId}>
+                              {claim.claimText} —{' '}
+                              {claim.hasReviewedEvidence
+                                ? `linked to ${claim.reviewedEvidenceTitles.join(', ')}`
+                                : 'not yet linked to reviewed evidence'}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <p className="text-xs text-bar-muted mt-3">{completion.synthesis.ambiguityNote}</p>
+                  </section>
+
+                  <section
+                    aria-labelledby="completion-legal-mind-heading"
+                    className="bg-bar-panel2 p-3 rounded border border-white/5"
+                  >
+                    <h3 id="completion-legal-mind-heading" className="text-xs uppercase tracking-wide text-bar-gold">
+                      Legal Mind Profile (lite)
+                    </h3>
+                    <p className="text-xs text-bar-muted mt-1">{completion.legalMindProfile.intro}</p>
+                    <ul className="mt-3 space-y-3">
+                      {completion.legalMindProfile.dimensions.map((d) => (
+                        <li key={d.id} className="bg-bar-bg/40 p-2 rounded border border-white/5">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-sm text-bar-text font-medium">{d.label}</span>
+                            <span className="text-[11px] uppercase tracking-wide text-bar-gold">{d.levelLabel}</span>
+                          </div>
+                          <p className="text-xs text-bar-muted mt-1">{d.rationale}</p>
+                          {d.evidence.length > 0 && (
+                            <ul className="list-disc ml-5 mt-1 text-xs text-bar-muted">
+                              {d.evidence.map((e, i) => (
+                                <li key={i}>{e}</li>
+                              ))}
+                            </ul>
+                          )}
+                          <p className="text-xs text-bar-muted mt-1">
+                            <span className="text-bar-gold/80">Next step: </span>
+                            {d.nextStep}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="text-[11px] text-bar-muted mt-3">{completion.legalMindProfile.closing}</p>
+                  </section>
+
+                  <section
+                    aria-labelledby="completion-relationships-heading"
+                    className="bg-bar-panel2 p-3 rounded border border-white/5"
+                  >
+                    <h3 id="completion-relationships-heading" className="text-xs uppercase tracking-wide text-bar-gold">
+                      Relationship highlights
+                    </h3>
+                    <ul className="grid gap-1 mt-2 text-xs text-bar-muted sm:grid-cols-2">
+                      {completion.relationships.map((r) => (
+                        <li key={r.characterId}>
+                          {r.name} ({r.role}): trust {r.trust} · respect {r.respect} · loyalty {r.loyalty}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
+
+                  <section
+                    aria-labelledby="completion-evidence-heading"
+                    className="bg-bar-panel2 p-3 rounded border border-white/5"
+                  >
+                    <h3 id="completion-evidence-heading" className="text-xs uppercase tracking-wide text-bar-gold">
+                      Key evidence discovered ({completion.evidenceDiscovered.length})
+                    </h3>
+                    {completion.evidenceDiscovered.length === 0 ? (
+                      <p className="text-xs text-bar-muted mt-1">No evidence was discovered.</p>
+                    ) : (
+                      <ul className="list-disc ml-5 mt-1 text-xs text-bar-muted">
+                        {completion.evidenceDiscovered.map((e) => (
+                          <li key={e.id}>
+                            {e.title} · {e.type}
+                            {e.reviewed ? ' · reviewed' : ''}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </section>
+
+                  <section
+                    aria-labelledby="completion-memory-heading"
+                    className="bg-bar-panel2 p-3 rounded border border-white/5"
+                  >
+                    <h3 id="completion-memory-heading" className="text-xs uppercase tracking-wide text-bar-gold">
+                      Memory highlights
+                    </h3>
+                    <ul className="list-disc ml-5 mt-1 text-xs text-bar-muted">
+                      {completion.memoryHighlights.map((m, i) => (
+                        <li key={i}>{m}</li>
+                      ))}
+                    </ul>
+                  </section>
+
+                  <section
+                    aria-labelledby="completion-questions-heading"
+                    className="bg-bar-panel2 p-3 rounded border border-white/5"
+                  >
+                    <h3 id="completion-questions-heading" className="text-xs uppercase tracking-wide text-bar-gold">
+                      Unresolved ambiguities
+                    </h3>
+                    <p className="text-xs text-bar-muted mt-1">
+                      The file records open questions; the case is closed on your work, not on certainty.
+                    </p>
+                    <ul className="list-disc ml-5 mt-1 text-xs text-bar-muted">
+                      {completion.openQuestions.map((q, i) => (
+                        <li key={i}>{q}</li>
+                      ))}
+                    </ul>
+                  </section>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="px-3 py-1 border border-bar-gold/40 rounded text-xs text-bar-muted hover:bg-white/5"
+                      onClick={() => setPanel('notebook')}
+                    >
+                      Review the full notebook →
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-1 rounded text-xs bg-bar-gold text-bar-bg font-medium hover:bg-bar-gold/90"
+                      onClick={requestReset}
+                    >
+                      Start a new game
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
+          {panel === 'dialogue' && (
+            <div className="space-y-3 text-sm">
+              <div role="status" aria-live="polite" className="whitespace-pre-wrap bg-bar-panel2 p-3 rounded">
+                {dialogue}
+              </div>
+              <div className="bg-bar-panel2 p-3 rounded">
+                <div className="text-xs text-bar-gold mb-2">Relationships (player → character)</div>
+                <div className="grid gap-1 text-xs text-bar-muted">
+                  {save.relationships.map((r) => {
+                    const name = save.characters.find((c) => c.id === r.toId)?.name ?? r.toId;
+                    return (
+                      <div key={r.toId}>
+                        {name}: trust {r.trust} · respect {r.respect} · loyalty {r.loyalty} · rivalry {r.rivalry} ·
+                        resentment {r.resentment}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              {dialogueScenes.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs text-bar-gold">
+                    Available conversations &amp; events (Day {save.clock.day})
+                  </div>
+                  {dialogueScenes.map((scene) => (
+                    <div key={scene.id} className="bg-bar-panel2 p-3 rounded border border-white/5">
+                      {scene.kind === 'event' && (
+                        <span className="inline-block mb-1 px-2 py-0.5 rounded border border-bar-gold/40 bg-bar-gold/10 text-[11px] uppercase tracking-wide text-bar-gold">
+                          World event
+                        </span>
+                      )}
+                      <div className="text-sm">{scene.prompt}</div>
+                      <div className="grid gap-2 mt-2">
+                        {scene.choices.map((choice) => (
+                          <button
+                            type="button"
+                            key={choice.id}
+                            onClick={() => doDialogueChoice(scene.id, choice.id)}
+                            className="text-left px-2 py-2 rounded border border-bar-gold/20 text-xs hover:bg-white/5"
+                          >
+                            {choice.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {dialogueScenes.length === 0 && (
+                <p className="text-xs text-bar-muted">No new conversations today. Advance time to unlock more.</p>
+              )}
+            </div>
+          )}
+
+          {localAiEnabled && panel === 'ai' && (
+            <div className="space-y-3 text-sm">
+              <div className="bg-bar-panel2 p-3 rounded border border-bar-gold/25">
+                <p className="text-[11px] uppercase tracking-wide text-bar-muted">Experimental — non-authoritative</p>
+                <h3 className="text-base text-bar-gold mt-0.5">Local AI Lab</h3>
+                <p className="text-xs text-bar-muted mt-1">
+                  Runs a local model from <code className="text-bar-text">/tmp</code> through llama-server
+                  (127.0.0.1:8081). The model in <code className="text-bar-text">/tmp</code> may be unavailable or
+                  missing — if it is not running, you will see an error below. Output may be inaccurate or hallucinated,
+                  is <strong>not legal advice</strong>, and is never authoritative legal research. Only your prompt
+                  below is sent; hidden case truth is never provided to the model.
+                </p>
+              </div>
+              <p className="text-[11px] text-bar-muted flex flex-wrap gap-x-3" role="status" aria-live="polite">
+                <span>
+                  Provider: <span className="text-bar-text">{LOCAL_AI_PROVIDER_LABEL}</span> · via{' '}
+                  <code className="text-bar-text">/api/local-llm</code> (local only)
+                </span>
+                <span>Status: {aiError ? 'last request failed' : aiResponse ? 'last request completed' : 'idle'}</span>
+              </p>
+              <label className="block text-xs text-bar-muted" htmlFor="local-ai-prompt">
+                Prompt
+              </label>
+              <textarea
+                id="local-ai-prompt"
+                value={aiPrompt}
+                onChange={(e) => setAiPrompt(e.target.value)}
+                rows={5}
+                maxLength={MAX_AI_PROMPT_CHARS}
+                aria-describedby="local-ai-hint"
+                className="w-full bg-bar-bg border border-white/10 rounded p-2 text-xs"
+                placeholder="Ask for help drafting, summarizing your notes, or brainstorming questions... (no legal citations will be trusted)"
+              />
+              <p id="local-ai-hint" className="text-[11px] text-bar-muted">
+                Maximum {MAX_AI_PROMPT_CHARS} characters. Do not include hidden case information.
+              </p>
+              <label className="flex items-start gap-2 text-xs text-bar-muted">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={aiIncludeInternalSummaries}
+                  onChange={(e) => setAiIncludeInternalSummaries(e.target.checked)}
+                  aria-describedby="local-ai-sources-hint"
+                />
+                <span id="local-ai-sources-hint">Include approved internal legal summaries (non-authoritative)</span>
+              </label>
+              <div className="flex gap-2 items-center">
+                <button
+                  type="button"
+                  onClick={() => void askLocalAi()}
+                  disabled={aiLoading || !aiPrompt.trim()}
+                  className="px-3 py-1.5 rounded bg-bar-gold text-bar-bg text-xs font-medium disabled:opacity-50"
+                >
+                  {aiLoading ? 'Asking local model…' : 'Ask local model'}
+                </button>
+                <span className="text-[11px] text-bar-muted">Model: Qwen 2.5 1.5B Instruct (Q4_K_M, local)</span>
+              </div>
+              {aiLoading && (
+                <p role="status" aria-live="polite" className="text-xs text-bar-muted">
+                  Waiting for the local model…
+                </p>
+              )}
+              {aiError && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="text-xs text-red-300 bg-red-950/30 border border-red-400/30 rounded p-2"
+                >
+                  {aiError}
+                </div>
+              )}
+              {aiResponse && !aiLoading && (
+                <div
+                  role="region"
+                  aria-label="Local AI response"
+                  aria-busy={aiLoading}
+                  className="bg-bar-panel2 p-3 rounded border border-white/10 space-y-2"
+                >
+                  <div className="text-xs text-bar-gold">Response (unverified)</div>
+                  <div className="whitespace-pre-wrap text-xs">{aiResponse}</div>
+                  {aiWarnings.length > 0 && (
+                    <div className="text-[11px] text-amber-200">
+                      <div className="uppercase tracking-wide">Guard notices</div>
+                      <ul className="list-disc pl-4 space-y-1 mt-1">
+                        {aiWarnings.map((w, i) => (
+                          <li key={i}>{w}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+              <RetrievedSourcesNotice sources={aiSources} />
+            </div>
+          )}
+
+          {panel === 'case' && (
+            <div className="space-y-3 text-sm">
+              <section className="bg-bar-panel2 p-3 rounded border border-bar-gold/25">
+                <p className="text-[11px] uppercase tracking-wide text-bar-muted">Case file · working record</p>
+                <h3 className="text-base text-bar-gold mt-0.5">{playerCase.title}</h3>
+                <div className="flex flex-wrap gap-2 mt-2 text-[11px]">
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">
+                    Status: {playerCase.status}
+                  </span>
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">
+                    {playerCase.playerKnowledge.length} known notes
+                  </span>
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">
+                    {playerCase.allegations.length} allegations
+                  </span>
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">
+                    {playerCase.unresolvedAmbiguity.length} open questions
+                  </span>
+                </div>
+                <p className="text-xs text-bar-muted mt-2">
+                  This file holds only what you have legitimately learned. It is not a finding about what happened, who
+                  was responsible, or whether any item is authentic.
+                </p>
+              </section>
+
+              <section
+                className="bg-bar-panel2 p-3 rounded border border-white/5"
+                aria-labelledby="case-at-a-glance-heading"
+              >
+                <div className="flex items-baseline justify-between gap-2 flex-wrap">
+                  <h3 id="case-at-a-glance-heading" className="text-xs uppercase tracking-wide text-bar-gold">
+                    Case at a glance
+                  </h3>
+                  <span className="text-[11px] text-bar-muted">{caseSummary.phase}</span>
+                </div>
+                <p className="text-xs text-bar-muted mt-2">{caseSummary.framing}</p>
+                <p className="text-xs text-bar-muted mt-2">{caseSummary.coverageNote}</p>
+                <div className="flex flex-wrap gap-2 mt-2 text-[11px]">
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">
+                    Evidence {caseSummary.discoveredCount}/{caseSummary.evidenceTotal} discovered
+                  </span>
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">
+                    {caseSummary.reviewedCount} reviewed
+                  </span>
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">
+                    {caseSummary.evidenceNoteCount} evidence-linked notes
+                  </span>
+                  <span className="px-2 py-0.5 rounded border border-white/10 bg-bar-bg/40">
+                    {pluralize(
+                      caseSummary.corroborationLinks.filter((l) => l.relation === 'contradiction').length,
+                      'contradiction',
+                    )}{' '}
+                    ·{' '}
+                    {pluralize(
+                      caseSummary.corroborationLinks.filter((l) => l.relation === 'corroboration').length,
+                      'corroboration',
+                    )}
+                  </span>
+                </div>
+                {caseSummary.corroborationLinks.length > 0 && (
+                  <div className="mt-3">
+                    <h4 className="text-xs uppercase tracking-wide text-bar-gold">
+                      Corroboration &amp; contradiction notes
+                    </h4>
+                    <ul className="list-disc ml-5 mt-2 space-y-1 text-xs text-bar-text/90">
+                      {caseSummary.corroborationLinks.map((link) => (
+                        <li key={link.id}>
+                          <span className="capitalize text-bar-gold">{link.relation}</span> · Day {link.day} ·{' '}
+                          {link.evidenceTitle}: {link.note}
+                        </li>
+                      ))}
+                    </ul>
+                    <button
+                      type="button"
+                      className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                      onClick={() => {
+                        setJournalFilter('evidence');
+                        setPanel('journal');
+                      }}
+                    >
+                      See these notes in the timeline →
+                    </button>
+                  </div>
+                )}
+                {caseSummary.reviewPrompts.length > 0 && (
+                  <div className="mt-3">
+                    <h4 className="text-xs uppercase tracking-wide text-bar-gold">Review prompts for reviewed items</h4>
+                    <ul className="space-y-2 mt-2 text-xs text-bar-text/90">
+                      {caseSummary.reviewPrompts.map((prompt) => (
+                        <li key={prompt.id} className="bg-bar-bg/40 p-2 rounded border border-white/5">
+                          <div className="text-bar-gold">
+                            {prompt.focus} · {prompt.evidenceTitle}
+                          </div>
+                          <p className="text-bar-muted mt-1">{prompt.prompt}</p>
+                          <button
+                            type="button"
+                            className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                            onClick={() => {
+                              setNoteRelation('contradiction');
+                              setNoteTarget(prompt.evidenceId);
+                              setNoteText('');
+                              setPanel('evidence');
+                            }}
+                          >
+                            Record a note →
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </section>
+
+              <FileSection
+                title="Known / player knowledge"
+                items={playerCase.playerKnowledge}
+                empty="No notes recorded yet. Review evidence and speak with people to add to this record."
+              />
+              <FileSection
+                title="Allegations"
+                items={playerCase.allegations}
+                empty="No allegations have been recorded."
+              />
+              <FileSection
+                title="Unresolved ambiguity"
+                items={playerCase.unresolvedAmbiguity}
+                empty="No open questions recorded."
+              />
+
+              <section className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <h3 className="text-xs uppercase tracking-wide text-bar-gold">Admissible material</h3>
+                <p className="text-xs text-bar-muted mt-2">
+                  {playerCase.admissibleMaterial.length
+                    ? playerCase.admissibleMaterial.join(' · ')
+                    : 'Not yet determined.'}
+                </p>
+                <button
+                  type="button"
+                  className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                  onClick={() => {
+                    setJournalFilter('all');
+                    setPanel('journal');
+                  }}
+                >
+                  See how the record developed in the timeline →
+                </button>
+              </section>
+
+              <p role="note" className="text-xs text-bar-muted border-l-2 border-bar-gold/30 pl-2">
+                Keep known facts, claims and open questions separate. Careful work adds to this file; nothing here is
+                resolved for you.
+              </p>
+            </div>
+          )}
+
+          {panel === 'assignments' && (
+            <div className="space-y-3 text-sm">
+              <p className="text-xs text-bar-muted">
+                Track Day 1–10 assignments. Complete requirements, then submit for deterministic senior evaluation.
+              </p>
+              {save.assignments.map((a: Assignment) => {
+                const unlocked = isAssignmentUnlocked(a, save);
+                const lockReason = assignmentLockReason(a, save);
+                const isCurrent = objective?.assignmentId === a.id;
+                const statusClass =
+                  a.status === 'reviewed'
+                    ? 'text-green-200 border-green-400/30 bg-green-400/5'
+                    : a.status === 'active' || a.status === 'submitted' || a.status === 'pending'
+                      ? 'text-bar-gold border-bar-gold/30 bg-bar-gold/5'
+                      : 'text-bar-muted border-white/10 bg-white/5';
+                return (
+                  <article
+                    key={a.id}
+                    className={`bg-bar-panel2 p-3 rounded border ${isCurrent ? 'border-bar-gold/30' : 'border-white/5'}`}
+                  >
+                    <div className="flex justify-between gap-2 flex-wrap items-start">
+                      <div>
+                        <div className="text-bar-gold font-medium">{a.title}</div>
+                        <div className="text-xs text-bar-muted">
+                          Day {a.day}
+                          {a.unlockAfter ? ` · after ${a.unlockAfter.toUpperCase()}` : ''}
+                        </div>
+                      </div>
+                      <span className={`text-xs px-2 py-0.5 rounded border capitalize ${statusClass}`}>{a.status}</span>
+                    </div>
+                    <p className="text-sm mt-2">{a.description}</p>
+                    <div className="text-xs text-bar-muted mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                      <span>Evidence: {a.requiredEvidenceIds.join(', ') || 'none'}</span>
+                      <span>Sources: {a.requiredSourceIds.join(', ') || 'none'}</span>
+                      {a.requiredNotebookKinds?.length ? (
+                        <span>Notes: {a.requiredNotebookKinds.join(', ')}</span>
+                      ) : null}
+                      {a.requiredFlags?.length ? <span>Milestones: {a.requiredFlags.join(', ')}</span> : null}
+                    </div>
+                    {!unlocked && (
+                      <p className="text-xs text-yellow-200 mt-2">
+                        {lockReason === 'day'
+                          ? `Unlocks on Day ${a.day}. Advance time when ready.`
+                          : 'Complete and submit/review the prior assignment first.'}
+                      </p>
+                    )}
+                    {a.feedback && (
+                      <div className="text-xs mt-2 text-bar-text border-l-2 border-bar-gold/30 pl-2">
+                        Feedback: {a.feedback}
+                      </div>
+                    )}
+                    <div className="mt-3 flex gap-2 flex-wrap">
+                      {!unlocked && (
+                        <button
+                          type="button"
+                          disabled
+                          className="px-2 py-1 border border-white/10 rounded text-xs text-bar-muted opacity-60 cursor-not-allowed"
+                          title={
+                            lockReason === 'day'
+                              ? `Unlocks on Day ${a.day}. Advance time when ready.`
+                              : 'Complete and submit/review the prior assignment first.'
+                          }
+                        >
+                          {lockReason === 'day' ? `Locked · Day ${a.day}` : 'Locked · prior work required'}
+                        </button>
+                      )}
+                      {(a.status === 'active' || a.status === 'submitted' || a.status === 'pending') &&
+                        unlocked &&
+                        a.id === 'a7' && (
+                          <button
+                            type="button"
+                            className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                            onClick={() => {
+                              if (!reviewSummary.trim() && draft.trim()) setReviewSummary(draft);
+                              setPanel('casework');
+                            }}
+                          >
+                            Senior review &amp; revision →
+                          </button>
+                        )}
+                      {(a.status === 'active' || a.status === 'pending') && unlocked && a.id === 'a8' && (
+                        <button
+                          type="button"
+                          className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                          onClick={() => {
+                            if (!finalSummary.trim() && draft.trim()) setFinalSummary(draft);
+                            setPanel('casework');
+                          }}
+                        >
+                          Final brief submission →
+                        </button>
+                      )}
+                      {(a.status === 'active' || a.status === 'pending') && unlocked && a.id === 'a2' && (
+                        <button
+                          type="button"
+                          className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                          onClick={() => setPanel('draft')}
+                        >
+                          Open draft &amp; submit →
+                        </button>
+                      )}
+                      {(a.status === 'active' || a.status === 'pending') &&
+                        unlocked &&
+                        !['a2', 'a7', 'a8'].includes(a.id) && (
+                          <button
+                            type="button"
+                            className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                            onClick={() => submitAssignment(a.id)}
+                          >
+                            Submit / Evaluate
+                          </button>
+                        )}
+                      {isCurrent && <span className="text-xs text-bar-muted self-center">Current objective</span>}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          {panel === 'evidence' && (
+            <div className="space-y-2 text-sm">
+              <div className="bg-bar-panel2 p-3 rounded border border-bar-gold/20">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-xs text-bar-gold">Evidence board</div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-bar-muted">
+                      {discoveredCount}/{playerCase.evidence.length} discovered · {reviewedEvidence.length} reviewed
+                    </span>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                      onClick={() => {
+                        setJournalFilter('evidence');
+                        setPanel('journal');
+                      }}
+                    >
+                      Open timeline →
+                    </button>
+                  </div>
+                </div>
+                <p className="text-xs text-bar-muted mt-2">
+                  Inspect an item to discover it, then mark it reviewed before recording your own assessment. The
+                  baseline labels below are non-authoritative practice values, not findings; authenticity is never
+                  determined in this panel.
+                </p>
+                <p className="text-xs text-bar-muted mt-1">
+                  Admissibility: unknown · admissible · questionable · inadmissible. Reliability: unknown · high ·
+                  medium · low.
+                </p>
+                <p className="text-xs text-bar-muted mt-1">
+                  Reviewed items also appear in your timeline. Use “View in journal” on an item to see when you recorded
+                  it.
+                </p>
+              </div>
+              {playerCase.evidence.map((ev) => (
+                <div
+                  key={ev.id}
+                  id={`evidence-${ev.id}`}
+                  className={`bg-bar-panel2 p-2 rounded border ${focusEvidenceId === ev.id ? 'border-bar-gold/60 ring-1 ring-bar-gold/30' : 'border-white/5'}`}
+                >
+                  <div className="flex justify-between gap-2">
+                    <span className="text-bar-gold">{ev.title}</span>
+                    <span className="text-xs text-bar-muted">{ev.type}</span>
+                  </div>
+                  <div className="text-xs text-bar-muted">{ev.provenance}</div>
+                  {ev.discovered ? (
+                    <div className="mt-1">
+                      <div>{ev.description}</div>
+                      <div className="text-xs text-bar-muted">
+                        Baseline after discovery — Admissibility: {ev.admissibility} • Reliability: {ev.reliability}
+                      </div>
+                      {!ev.reviewed ? (
+                        <button
+                          type="button"
+                          className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                          onClick={() => doReviewEvidence(ev.id)}
+                        >
+                          Mark reviewed
+                        </button>
+                      ) : ev.assessment ? (
+                        <div className="mt-2 grid gap-2">
+                          <div className="text-xs text-bar-gold">
+                            Your provisional assessment (not a finding on authenticity)
+                          </div>
+                          <label className="text-xs flex flex-col gap-1">
+                            Admissibility view
+                            <select
+                              className="bg-bar-bg border border-white/10 rounded p-1"
+                              value={ev.assessment.admissibility}
+                              onChange={(e) =>
+                                doSetAssessment(ev.id, { admissibility: e.target.value as Admissibility })
+                              }
+                            >
+                              {['unknown', 'admissible', 'questionable', 'inadmissible'].map((v) => (
+                                <option key={v} value={v}>
+                                  {v}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="text-xs flex flex-col gap-1">
+                            Reliability view
+                            <select
+                              className="bg-bar-bg border border-white/10 rounded p-1"
+                              value={ev.assessment.reliability}
+                              onChange={(e) => doSetAssessment(ev.id, { reliability: e.target.value as Reliability })}
+                            >
+                              {['unknown', 'high', 'medium', 'low'].map((v) => (
+                                <option key={v} value={v}>
+                                  {v}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="text-xs flex flex-col gap-1">
+                            Rationale
+                            <textarea
+                              className="bg-bar-bg border border-white/10 rounded p-2 min-h-16"
+                              value={ev.assessment.rationale}
+                              maxLength={1000}
+                              onChange={(e) => doSetAssessment(ev.id, { rationale: e.target.value })}
+                            />
+                          </label>
+                          <div className="flex gap-2 flex-wrap">
+                            <button
+                              type="button"
+                              className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                              onClick={() => {
+                                setNoteTarget(ev.id);
+                                setNoteRelation('contradiction');
+                                setNoteText('');
+                              }}
+                            >
+                              Note contradiction
+                            </button>
+                            <button
+                              type="button"
+                              className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                              onClick={() => {
+                                setNoteTarget(ev.id);
+                                setNoteRelation('corroboration');
+                                setNoteText('');
+                              }}
+                            >
+                              Note corroboration
+                            </button>
+                            <button
+                              type="button"
+                              className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                              onClick={() => {
+                                setKcTarget(ev.id);
+                                setKcDomain('forensic');
+                                setKcConcept('');
+                                setKcDescription('');
+                              }}
+                            >
+                              Connect to discipline
+                            </button>
+                            <button
+                              type="button"
+                              className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                              onClick={() => addEvidenceToTheory(ev.id)}
+                            >
+                              Use in theory →
+                            </button>
+                            {journalEvidenceIds.has(ev.id) && (
+                              <button
+                                type="button"
+                                className="px-2 py-1 border border-white/10 rounded text-xs text-bar-muted hover:bg-white/5"
+                                onClick={() => {
+                                  setJournalFilter('evidence');
+                                  setPanel('journal');
+                                }}
+                              >
+                                View in journal →
+                              </button>
+                            )}
+                          </div>
+                          {!save.notebook.some((n) => n.kind === 'knowledge-connection' && n.evidenceId === ev.id) && (
+                            <p className="text-xs text-bar-muted mt-2">
+                              Optional: connect this reviewed item to another discipline in your notebook.
+                            </p>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                      onClick={() => discoverEvidence(ev.id)}
+                    >
+                      Inspect / Discover
+                    </button>
+                  )}
+                </div>
+              ))}
+              {noteTarget && (
+                <div className="bg-bar-panel2 p-3 rounded border border-bar-gold/30">
+                  <div className="text-xs text-bar-gold mb-2">
+                    New {noteRelation} note for {playerCase.evidence.find((e) => e.id === noteTarget)?.title}
+                  </div>
+                  <label className="text-xs flex flex-col gap-1">
+                    Note
+                    <textarea
+                      ref={noteTextRef}
+                      className="bg-bar-bg border border-white/10 rounded p-2 min-h-20"
+                      value={noteText}
+                      maxLength={1000}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      placeholder="What conflicts with or supports what, and why?"
+                    />
+                  </label>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                      onClick={doSaveNote}
+                    >
+                      Save note
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-white/10 rounded text-xs text-bar-muted"
+                      onClick={() => {
+                        setNoteTarget(null);
+                        setNoteText('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              {kcTarget && (
+                <div className="bg-bar-panel2 p-3 rounded border border-bar-gold/30">
+                  <div className="text-xs text-bar-gold mb-2">
+                    Interdisciplinary connection for{' '}
+                    {playerCase.evidence.find((e) => e.id === kcTarget)?.title ?? 'evidence'}
+                  </div>
+                  <p className="text-xs text-bar-muted mb-2">
+                    Player-authored link only. This does not verify facts or create legal authority.
+                  </p>
+                  <label className="text-xs flex flex-col gap-1">
+                    Domain
+                    <select
+                      className="bg-bar-bg border border-white/10 rounded p-2"
+                      value={kcDomain}
+                      onChange={(e) => setKcDomain(e.target.value as KnowledgeDomain)}
+                    >
+                      {KNOWLEDGE_DOMAINS.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs flex flex-col gap-1 mt-2">
+                    Related concept
+                    <input
+                      className="bg-bar-bg border border-white/10 rounded p-2"
+                      value={kcConcept}
+                      maxLength={120}
+                      onChange={(e) => setKcConcept(e.target.value)}
+                      placeholder="e.g. chain of custody metadata, trauma memory, forensic timing"
+                    />
+                  </label>
+                  <label className="text-xs flex flex-col gap-1 mt-2">
+                    Explain the connection in your own words
+                    <textarea
+                      className="bg-bar-bg border border-white/10 rounded p-2 min-h-20"
+                      value={kcDescription}
+                      maxLength={500}
+                      onChange={(e) => setKcDescription(e.target.value)}
+                      placeholder="How might this discipline help you interpret or question this evidence?"
+                    />
+                  </label>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                      disabled={!kcConcept.trim() || !kcDescription.trim()}
+                      onClick={doSaveKnowledgeConnection}
+                    >
+                      Save connection
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-white/10 rounded text-xs text-bar-muted"
+                      onClick={() => {
+                        setKcTarget(null);
+                        setKcConcept('');
+                        setKcDescription('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              <div className="text-xs text-bar-muted">
+                Discovered: {discoveredCount}/{playerCase.evidence.length}
+              </div>
+            </div>
+          )}
+
+          {panel === 'casework' && (
+            <div className="space-y-3 text-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-bar-muted">
+                  Everything here is your own recorded observation and reasoning. Authenticity, hidden motives and
+                  canonical outcomes are never determined in this panel.
+                </p>
+                {reviewedEvidence.length > 0 && (
+                  <span className="text-[11px] px-2 py-0.5 rounded border border-bar-gold/30 text-bar-gold/90 whitespace-nowrap">
+                    {pluralize(reviewedEvidence.length, 'item')} reviewed — actions available
+                  </span>
+                )}
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-2">Working order (each step unlocks the next)</div>
+                <ol className="list-decimal ml-5 text-xs text-bar-muted space-y-1">
+                  <li>Review evidence in the Evidence panel.</li>
+                  <li>Log a chain-of-custody observation for a reviewed item.</li>
+                  <li>Challenge how a reviewed item may be relied upon, stating a ground and rationale.</li>
+                  <li>Organise your theory in the Case Theory panel.</li>
+                  <li>Complete senior review, then submit the final brief.</li>
+                </ol>
+                <p className="text-xs text-bar-muted mt-2">
+                  A custody note records how an item was handled; a challenge tests how it may be relied upon. Neither
+                  establishes authenticity.
+                </p>
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-2">Chain of custody — log an observation</div>
+                {reviewedEvidence.length === 0 ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-bar-muted">Review an evidence item in the Evidence panel first.</p>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                      onClick={() => setPanel('evidence')}
+                    >
+                      Go to Evidence →
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid gap-2">
+                    <label className="text-xs flex flex-col gap-1">
+                      Reviewed item
+                      <select
+                        className="bg-bar-bg border border-white/10 rounded p-1"
+                        value={caseTargetId}
+                        onChange={(e) => setCaseTarget(e.target.value)}
+                      >
+                        {reviewedEvidence.map((e) => (
+                          <option key={e.id} value={e.id}>
+                            {e.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs flex flex-col gap-1">
+                      What did you observe about who handled it, and what is documented?
+                      <textarea
+                        aria-describedby="custody-observation-hint"
+                        className="bg-bar-bg border border-white/10 rounded p-2 min-h-16"
+                        maxLength={1000}
+                        value={custodyText}
+                        onChange={(e) => setCustodyText(e.target.value)}
+                        placeholder="e.g. The export has no sealing record; note the gap rather than guessing."
+                      />
+                    </label>
+                    <p id="custody-observation-hint" className="text-[11px] text-bar-muted">
+                      Enter an observation to enable logging. Maximum 1000 characters.
+                    </p>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={doRecordCustody}
+                      disabled={!custodyText.trim()}
+                      aria-describedby="custody-observation-hint"
+                    >
+                      Log custody observation
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-2">
+                  Admissibility — question how an item may be relied upon
+                </div>
+                <p role="note" className="text-xs text-bar-muted mb-2">
+                  {GROUND_FEEDBACK[challengeGround]} Authenticity remains undetermined.
+                </p>
+                {reviewedEvidence.length === 0 ? (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-bar-muted">Review an evidence item in the Evidence panel first.</p>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                      onClick={() => setPanel('evidence')}
+                    >
+                      Go to Evidence →
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid gap-2">
+                    <label className="text-xs flex flex-col gap-1">
+                      Reviewed item
+                      <select
+                        className="bg-bar-bg border border-white/10 rounded p-1"
+                        value={caseTargetId}
+                        onChange={(e) => setCaseTarget(e.target.value)}
+                      >
+                        {reviewedEvidence.map((e) => (
+                          <option key={e.id} value={e.id}>
+                            {e.title}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs flex flex-col gap-1">
+                      Ground
+                      <select
+                        className="bg-bar-bg border border-white/10 rounded p-1"
+                        value={challengeGround}
+                        onChange={(e) => setChallengeGround(e.target.value as ChallengeGround)}
+                      >
+                        {CHALLENGE_GROUNDS.map((g) => (
+                          <option key={g} value={g}>
+                            {g}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs flex flex-col gap-1">
+                      Rationale
+                      <textarea
+                        aria-describedby="challenge-rationale-hint"
+                        className="bg-bar-bg border border-white/10 rounded p-2 min-h-16"
+                        maxLength={1000}
+                        value={challengeText}
+                        onChange={(e) => setChallengeText(e.target.value)}
+                        placeholder="State why this ground matters, tied to what you reviewed."
+                      />
+                    </label>
+                    <p id="challenge-rationale-hint" className="text-[11px] text-bar-muted">
+                      Enter a rationale to enable the challenge. Maximum 1000 characters.
+                    </p>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={doChallenge}
+                      disabled={!challengeText.trim()}
+                      aria-describedby="challenge-rationale-hint"
+                    >
+                      Record challenge
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-2">Recorded casework</div>
+                {save.custodyLog.length === 0 && save.challenges.length === 0 ? (
+                  <p className="text-xs text-bar-muted">No custody observations or challenges recorded yet.</p>
+                ) : (
+                  <div className="grid gap-2">
+                    {save.custodyLog.map((c) => (
+                      <div key={c.id} className="text-xs">
+                        <span className="text-bar-gold">
+                          Custody (Day {c.day}, {c.evidenceId}):
+                        </span>{' '}
+                        {c.observation}
+                      </div>
+                    ))}
+                    {save.challenges.map((c) => (
+                      <div key={c.id} className="text-xs">
+                        <span className="text-bar-gold">
+                          Challenge (Day {c.day}, {c.ground}, {c.evidenceId}):
+                        </span>{' '}
+                        {c.rationale}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-2">Senior review & revision (Day 9)</div>
+                <p className="text-[11px] text-bar-muted mb-2">
+                  {a7
+                    ? `Assignment: ${a7.title}. ${a7.description}`
+                    : 'Research assignment: senior review of your case brief.'}
+                </p>
+                {a7?.status === 'reviewed' ? (
+                  <p className="text-xs">{a7.feedback}</p>
+                ) : a7 && isAssignmentUnlocked(a7, save) ? (
+                  <div className="grid gap-2">
+                    <textarea
+                      aria-label="Work summary for senior review"
+                      className="bg-bar-bg border border-white/10 rounded p-2 min-h-20 text-sm"
+                      value={reviewSummary}
+                      onChange={(e) => setReviewSummary(e.target.value)}
+                      placeholder="Summarise the issue, evidence reviewed, sources used and your conclusion (at least 40 characters)."
+                    />
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <button
+                        type="button"
+                        className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit"
+                        onClick={doSeniorReview}
+                      >
+                        {save.reviewRounds.some((r) => r.assignmentId === 'a7' && r.status === 'needs_revision')
+                          ? 'Revise & resubmit'
+                          : 'Submit to senior'}
+                      </button>
+                      {aiSeniorReviewEnabled && (
+                        <>
+                          <label className="flex items-start gap-2 text-[11px] text-bar-muted">
+                            <input
+                              type="checkbox"
+                              className="mt-0.5"
+                              checked={aiAssistSeniorReview}
+                              onChange={(e) => setAiAssistSeniorReview(e.target.checked)}
+                              aria-describedby="ai-senior-review-hint"
+                            />
+                            <span id="ai-senior-review-hint">
+                              Request AI-assisted feedback (experimental, non-authoritative)
+                            </span>
+                          </label>
+                          {aiAssistSeniorReview && (
+                            <button
+                              type="button"
+                              className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit disabled:opacity-50 disabled:cursor-not-allowed"
+                              onClick={() => void doAiSeniorReview()}
+                              disabled={aiReviewBusy || !reviewSummary.trim()}
+                              aria-describedby="ai-senior-review-hint"
+                            >
+                              {aiReviewBusy ? 'Reviewing with local model…' : 'Submit with AI-assisted feedback'}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    <p role="status" aria-live="polite" className="text-[11px] text-amber-200">
+                      {aiReviewNotice}
+                    </p>
+                    {aiReviewBusy && (
+                      <p role="status" aria-live="polite" className="text-[11px] text-bar-muted">
+                        Retrieving approved internal summaries and waiting for the local model…
+                      </p>
+                    )}
+                    <RetrievedSourcesNotice sources={aiReviewSources} />
+                  </div>
+                ) : (
+                  <p className="text-xs text-bar-muted">Unlocks on Day 9 after prior work is reviewed.</p>
+                )}
+                {save.reviewRounds
+                  .filter((r) => r.assignmentId === 'a7')
+                  .map((r) => (
+                    <div key={r.id} className="text-xs mt-2 border-t border-white/5 pt-2">
+                      <span className="text-bar-gold">
+                        Round {r.round} — {r.status}:
+                      </span>{' '}
+                      {r.feedback}
+                    </div>
+                  ))}
+                {save.aiReviews
+                  .filter((record) => record.assignmentId === 'a7')
+                  .map((record) => (
+                    <div key={record.id} className="text-[11px] mt-2 border-t border-white/5 pt-2 text-bar-muted">
+                      <span className="text-bar-gold">
+                        AI-assisted evaluation (round {record.round}, {record.gatewayStatus}
+                        {record.aiAssisted ? ', unverified' : ''}):
+                      </span>{' '}
+                      {record.summary || 'No proposal text was accepted.'}
+                      {record.citedSources.length > 0 && <> Cited ids: {record.citedSources.join(', ')}.</>}{' '}
+                      Deterministic outcome: {record.deterministicStatus}.
+                    </div>
+                  ))}
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-2">Final brief submission (Day 10)</div>
+                {a8?.status === 'reviewed' ? (
+                  <p className="text-xs">{a8.feedback}</p>
+                ) : a8 && isAssignmentUnlocked(a8, save) ? (
+                  <div className="grid gap-2">
+                    <textarea
+                      aria-label="Final brief summary"
+                      aria-describedby="final-brief-hint"
+                      className="bg-bar-bg border border-white/10 rounded p-2 min-h-20 text-sm"
+                      value={finalSummary}
+                      onChange={(e) => setFinalSummary(e.target.value)}
+                      placeholder={`State your issue, evidence and conclusion without claiming unverified truth (at least ${MIN_FINAL_BRIEF_CHARS} characters).`}
+                    />
+                    <p
+                      id="final-brief-hint"
+                      className={`text-xs ${finalBriefTooShort ? 'text-yellow-200' : 'text-green-200'}`}
+                    >
+                      {finalBriefTooShort
+                        ? `${finalBriefChars}/${MIN_FINAL_BRIEF_CHARS} characters — write at least ${MIN_FINAL_BRIEF_CHARS} before submitting. State the issue, evidence and conclusion without claiming unverified truth.`
+                        : `${finalBriefChars} characters — long enough to submit. Keep it evidence-grounded.`}
+                    </p>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit"
+                      onClick={doFinalBrief}
+                      aria-describedby="final-brief-hint"
+                    >
+                      Submit final brief
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-xs text-bar-muted">Unlocks on Day 10 after the senior accepts your revision.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {panel === 'theory' && (
+            <div className="space-y-3 text-sm">
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-1">Case theory — organise your working file</div>
+                <p className="text-xs text-bar-muted">
+                  Record what you know, what is merely claimed, and what remains disputed. Every claim is your own
+                  working note; link only evidence you have discovered and reviewed. This panel never determines
+                  authenticity or responsibility.
+                </p>
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-1">Evidence link summary</div>
+                <p className="text-xs text-bar-muted">
+                  {save.caseTheory.claims.length === 0
+                    ? 'No claims recorded yet.'
+                    : `${theorySupport.filter((s) => s.hasReviewedEvidence).length} of ${save.caseTheory.claims.length} claims are linked to reviewed evidence.`}
+                </p>
+                {unsupportedClaimCount > 0 && (
+                  <p className="text-xs text-yellow-200 mt-1">
+                    {unsupportedClaimCount} claim(s) have no reviewed evidence linked. Edit a claim below to link the
+                    items you relied on.
+                  </p>
+                )}
+                <p role="note" className="text-xs text-bar-muted mt-2">
+                  A link only records which reviewed items you relied on. It is not a finding that the claim is true or
+                  that any item is authentic.
+                </p>
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-bar-gold/30 grid gap-2">
+                <label className="text-xs flex flex-col gap-1">
+                  Your claim
+                  <textarea
+                    aria-label="Case theory claim"
+                    aria-describedby="theory-claim-hint"
+                    className="bg-bar-bg border border-white/10 rounded p-2 min-h-20"
+                    maxLength={1000}
+                    value={theoryText}
+                    onChange={(e) => setTheoryText(e.target.value)}
+                    placeholder="e.g. The medical report notes a minor injury, but its timing is not established."
+                  />
+                </label>
+                <label className="text-xs flex flex-col gap-1">
+                  Status
+                  <select
+                    className="bg-bar-bg border border-white/10 rounded p-1"
+                    value={theoryStatus}
+                    onChange={(e) => setTheoryStatus(e.target.value as TheoryStatus)}
+                  >
+                    {THEORY_STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <fieldset className="text-xs">
+                  <legend className="text-bar-gold mb-1">Link reviewed evidence</legend>
+                  {reviewedEvidence.length === 0 ? (
+                    <p className="text-bar-muted">Review an evidence item in the Evidence panel first.</p>
+                  ) : (
+                    <div className="grid gap-1">
+                      {reviewedEvidence.map((e) => (
+                        <label key={e.id} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={theoryEvidenceIds.includes(e.id)}
+                            onChange={() => toggleTheoryEvidence(e.id)}
+                          />
+                          {e.title}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </fieldset>
+                <p id="theory-claim-hint" className="text-[11px] text-bar-muted">
+                  Enter a claim to enable adding it. Maximum 1000 characters.
+                </p>
+                <button
+                  type="button"
+                  className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={doAddTheory}
+                  disabled={!theoryText.trim()}
+                  aria-describedby="theory-claim-hint"
+                >
+                  Add claim
+                </button>
+              </div>
+
+              {THEORY_STATUSES.map((status) => (
+                <section
+                  key={status}
+                  aria-label={`${status} claims`}
+                  className="bg-bar-panel2 p-3 rounded border border-white/5"
+                >
+                  <div className="text-bar-gold text-xs mb-2 uppercase tracking-wide">
+                    {status} ({groupedTheory[status].length})
+                  </div>
+                  {groupedTheory[status].length === 0 ? (
+                    <p className="text-xs text-bar-muted">No {status} claims yet.</p>
+                  ) : (
+                    <ul className="grid gap-2">
+                      {groupedTheory[status].map((c) => {
+                        const support = supportByClaimId.get(c.id);
+                        const linkedIds = support?.reviewedEvidenceIds ?? [];
+                        const linkedNotes = completion.synthesis.links.filter((link) =>
+                          linkedIds.includes(link.evidenceId),
+                        );
+                        return (
+                          <li key={c.id} className="text-xs border-l-2 border-bar-gold/30 pl-2">
+                            <div>{c.text}</div>
+                            <div className="text-bar-muted mt-1">
+                              Day {c.day}
+                              {linkedIds.length
+                                ? ` · Linked: ${linkedIds.map((id) => evidenceTitleById.get(id) ?? id).join(', ')}`
+                                : ''}
+                            </div>
+                            <div
+                              className={`mt-1 ${support?.hasReviewedEvidence ? 'text-green-200' : 'text-yellow-200'}`}
+                            >
+                              {support?.hasReviewedEvidence
+                                ? `Supported by reviewed evidence: ${linkedIds.length} item(s).`
+                                : 'Unsupported — no reviewed evidence linked.'}
+                            </div>
+                            {linkedNotes.length > 0 && (
+                              <div className="text-bar-muted mt-1">
+                                Notes on linked items:{' '}
+                                {linkedNotes.map((link) => `${link.relation} · ${link.note.slice(0, 120)}`).join(' | ')}
+                              </div>
+                            )}
+                            {!!support?.unavailableEvidenceIds.length && (
+                              <div className="text-yellow-200 mt-1">
+                                Unavailable links (not reviewed):{' '}
+                                {support.unavailableEvidenceIds.map((id) => evidenceTitleById.get(id) ?? id).join(', ')}
+                              </div>
+                            )}
+                            <button
+                              type="button"
+                              className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                              aria-expanded={editingClaimId === c.id}
+                              onClick={() => (editingClaimId === c.id ? setEditingClaimId(null) : openLinkEditor(c.id))}
+                            >
+                              {editingClaimId === c.id ? 'Close evidence links' : 'Edit evidence links'}
+                            </button>
+                            {editingClaimId === c.id && (
+                              <fieldset className="mt-2 text-xs">
+                                <legend className="text-bar-gold mb-1">Link reviewed evidence to this claim</legend>
+                                {reviewedEvidence.length === 0 ? (
+                                  <p className="text-bar-muted">Review an evidence item in the Evidence panel first.</p>
+                                ) : (
+                                  <div className="grid gap-1">
+                                    {reviewedEvidence.map((e) => (
+                                      <label key={e.id} className="flex items-center gap-2">
+                                        <input
+                                          type="checkbox"
+                                          checked={editingLinks.includes(e.id)}
+                                          onChange={() => toggleEditingLink(e.id)}
+                                        />
+                                        {e.title}
+                                      </label>
+                                    ))}
+                                  </div>
+                                )}
+                                <div className="flex gap-2 mt-2">
+                                  <button
+                                    type="button"
+                                    className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                                    onClick={() => doSaveClaimLinks(c.id)}
+                                  >
+                                    Save links
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="px-2 py-1 border border-white/10 rounded text-xs text-bar-muted"
+                                    onClick={() => setEditingClaimId(null)}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              </fieldset>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </section>
+              ))}
+            </div>
+          )}
+
+          {panel === 'research' && (
+            <div className="space-y-3 text-sm">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <p className="text-xs text-bar-muted flex-1 min-w-48">
+                  Verified legal sources only. Unverified/placeholder entries cannot be cited as authoritative. Source
+                  Intake creates drafts only — the game never auto-verifies a citation.
+                </p>
+                <button
+                  type="button"
+                  className="px-2 py-1 border border-bar-gold/40 rounded text-xs"
+                  aria-expanded={showSourceIntake}
+                  aria-controls={showSourceIntake ? 'source-intake-form' : undefined}
+                  onClick={() => {
+                    setShowSourceIntake((v) => !v);
+                    setIntakeError('');
+                  }}
+                >
+                  {showSourceIntake ? 'Close intake' : 'Add Source / Source Intake'}
+                </button>
+              </div>
+
+              {showSourceIntake && (
+                <form
+                  id="source-intake-form"
+                  className="bg-bar-panel2 p-3 rounded border border-bar-gold/30 grid gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    doAddSource();
+                  }}
+                >
+                  <p className="text-xs text-yellow-200">
+                    New records enter as unverified or placeholder. Nothing here is a verified legal authority, and no
+                    citation is created for you.
+                  </p>
+                  <label className="text-xs flex flex-col gap-1">
+                    Source title (required)
+                    <input
+                      className="bg-bar-bg border border-white/10 rounded p-2"
+                      value={sourceForm.title}
+                      maxLength={MAX_SOURCE_FIELDS.title}
+                      onChange={(e) => setSourceField('title', e.target.value)}
+                    />
+                  </label>
+                  <label className="text-xs flex flex-col gap-1">
+                    Official source name (required)
+                    <input
+                      className="bg-bar-bg border border-white/10 rounded p-2"
+                      value={sourceForm.sourceName}
+                      maxLength={MAX_SOURCE_FIELDS.sourceName}
+                      onChange={(e) => setSourceField('sourceName', e.target.value)}
+                      placeholder="Name as published — leave uncertain parts unspecified"
+                    />
+                  </label>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <label className="text-xs flex flex-col gap-1">
+                      Citation / identifier (required)
+                      <input
+                        className="bg-bar-bg border border-white/10 rounded p-2"
+                        name="source-citation"
+                        autoComplete="off"
+                        spellCheck={false}
+                        value={sourceForm.citation}
+                        maxLength={MAX_SOURCE_FIELDS.citation}
+                        onChange={(e) => setSourceField('citation', e.target.value)}
+                        placeholder="Leave blank if unknown — never guess a provision"
+                      />
+                    </label>
+                    <label className="text-xs flex flex-col gap-1">
+                      Source type (required)
+                      <select
+                        className="bg-bar-bg border border-white/10 rounded p-2"
+                        value={sourceForm.sourceType}
+                        onChange={(e) => setSourceField('sourceType', e.target.value as SourceType)}
+                      >
+                        {SOURCE_TYPES.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <label className="text-xs flex flex-col gap-1">
+                      Jurisdiction (required)
+                      <select
+                        className="bg-bar-bg border border-white/10 rounded p-2"
+                        value={sourceForm.jurisdiction}
+                        onChange={(e) => setSourceField('jurisdiction', e.target.value as SourceJurisdiction)}
+                      >
+                        {SOURCE_JURISDICTIONS.map((j) => (
+                          <option key={j} value={j}>
+                            {j}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs flex flex-col gap-1">
+                      Effective date (optional, YYYY-MM-DD)
+                      <input
+                        className="bg-bar-bg border border-white/10 rounded p-2"
+                        name="source-effective-date"
+                        autoComplete="off"
+                        spellCheck={false}
+                        inputMode="numeric"
+                        value={sourceForm.effectiveDate}
+                        maxLength={10}
+                        onChange={(e) => setSourceField('effectiveDate', e.target.value)}
+                        placeholder="YYYY-MM-DD"
+                      />
+                    </label>
+                  </div>
+                  <label className="text-xs flex flex-col gap-1">
+                    Provenance note — where did this come from? (required)
+                    <textarea
+                      className="bg-bar-bg border border-white/10 rounded p-2 min-h-16"
+                      value={sourceForm.provenance}
+                      maxLength={MAX_SOURCE_FIELDS.provenance}
+                      onChange={(e) => setSourceField('provenance', e.target.value)}
+                      placeholder="e.g. Notebook reference from the library shelf; exact text not yet checked"
+                    />
+                  </label>
+                  <label className="text-xs flex flex-col gap-1">
+                    Official source URL (optional)
+                    <input
+                      type="url"
+                      className="bg-bar-bg border border-white/10 rounded p-2"
+                      name="source-url"
+                      autoComplete="off"
+                      spellCheck={false}
+                      inputMode="url"
+                      value={sourceForm.sourceUrl}
+                      maxLength={MAX_SOURCE_FIELDS.sourceUrl}
+                      onChange={(e) => setSourceField('sourceUrl', e.target.value)}
+                      placeholder="Link to the publisher, if known"
+                    />
+                  </label>
+                  <label className="text-xs flex flex-col gap-1">
+                    Excerpt / summary — NON-AUTHORITATIVE (optional)
+                    <textarea
+                      className="bg-bar-bg border border-white/10 rounded p-2 min-h-16"
+                      value={sourceForm.excerpt}
+                      maxLength={MAX_SOURCE_FIELDS.excerpt}
+                      onChange={(e) => setSourceField('excerpt', e.target.value)}
+                      placeholder="Your own note or summary; never treated as the text of the law"
+                    />
+                  </label>
+                  <label className="text-xs flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={sourceForm.requestPlaceholder}
+                      onChange={(e) => setSourceField('requestPlaceholder', e.target.checked)}
+                    />
+                    Mark explicitly as a placeholder (stand-in; never authoritative)
+                  </label>
+                  {intakeError && (
+                    <p role="alert" className="text-xs text-red-200 border border-red-400/30 rounded p-2">
+                      {intakeError}
+                    </p>
+                  )}
+                  {intakeNotice && (
+                    <p role="status" className="text-xs text-green-200 border border-green-400/30 rounded p-2">
+                      {intakeNotice}
+                    </p>
+                  )}
+                  <div className="flex gap-2 flex-wrap">
+                    <button type="submit" className="px-3 py-1 border border-bar-gold/40 rounded text-xs">
+                      Save draft source
+                    </button>
+                    <button
+                      type="button"
+                      className="px-3 py-1 border border-white/10 rounded text-xs text-bar-muted"
+                      onClick={() => {
+                        setShowSourceIntake(false);
+                        setIntakeError('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {save.legalSources.map((s) => {
+                const authoritative = canCiteAsAuthoritative(s);
+                const badgeClass = authoritative
+                  ? 'text-green-300 border-green-400/30'
+                  : s.verificationStatus === 'placeholder'
+                    ? 'text-red-200 border-red-400/40'
+                    : 'text-yellow-300 border-yellow-400/40';
+                const badgeText = authoritative
+                  ? 'VERIFIED'
+                  : s.verificationStatus === 'placeholder'
+                    ? 'PLACEHOLDER — NOT AUTHORITATIVE'
+                    : 'UNVERIFIED — NOT AUTHORITATIVE';
+                return (
+                  <article key={s.id} className="bg-bar-panel2 p-3 rounded border border-white/5 space-y-1 min-w-0">
+                    <div className="flex justify-between gap-2 flex-wrap items-start">
+                      <span className="text-bar-gold font-medium min-w-0 break-words [overflow-wrap:anywhere]">
+                        {s.title}
+                      </span>
+                      <span className={`text-xs px-2 py-0.5 rounded border shrink-0 ${badgeClass}`}>{badgeText}</span>
+                    </div>
+                    <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
+                      Source name: {s.sourceName}
+                    </div>
+                    <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
+                      Citation / identifier: {s.citation}
+                    </div>
+                    <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
+                      Type: {s.sourceType} · Jurisdiction: {s.jurisdiction}
+                      {s.intake === 'player-draft' ? ' · Player draft' : ''}
+                    </div>
+                    {s.effectiveDate && (
+                      <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
+                        Effective date: {s.effectiveDate}
+                      </div>
+                    )}
+                    {s.verificationDate && (
+                      <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
+                        Verified on {s.verificationDate}
+                        {s.verifiedBy ? ` by ${s.verifiedBy}` : ''}
+                      </div>
+                    )}
+                    <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
+                      Provenance (non-authoritative note): {s.provenance}
+                    </div>
+                    {s.sourceUrl && (
+                      <div className="text-xs text-bar-muted break-words [overflow-wrap:anywhere]">
+                        Official source URL: {s.sourceUrl}
+                      </div>
+                    )}
+                    {s.excerpt && (
+                      <div className="text-xs text-yellow-200 border-l-2 border-yellow-400/40 pl-2 break-words [overflow-wrap:anywhere]">
+                        NON-AUTHORITATIVE EXCERPT/SUMMARY — not the text of the law: {s.excerpt}
+                      </div>
+                    )}
+                    {!authoritative && (
+                      <p role="note" className="text-xs text-red-200">
+                        Warning: not verified. Do not cite this source as law.
+                      </p>
+                    )}
+                    {s.notes && <div className="text-xs break-words [overflow-wrap:anywhere]">{s.notes}</div>}
+                    <button
+                      type="button"
+                      className="mt-1 px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                      onClick={() =>
+                        addNotebook({
+                          kind: 'research',
+                          title: `${authoritative ? 'Source' : 'UNVERIFIED SOURCE — do not cite'}: ${s.title}`,
+                          content: `${authoritative ? '' : 'NOT AUTHORITATIVE — do not cite as law.\n'}${s.citation}\nProvenance: ${s.provenance}${s.excerpt ? `\nNON-AUTHORITATIVE EXCERPT: ${s.excerpt}` : ''}`,
+                          sourceId: s.id,
+                          source: s.citation,
+                          verified: authoritative,
+                        })
+                      }
+                    >
+                      Add to notebook{authoritative ? '' : ' (unverified reference)'}
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+
+          {panel === 'draft' && (
+            <div className="space-y-2">
+              <label htmlFor="draft-editor" className="text-xs text-bar-muted block">
+                Draft editor — structure your issue, facts, verified sources, analysis, and conclusion.
+              </label>
+              <textarea
+                id="draft-editor"
+                aria-label="Draft editor"
+                className="w-full min-h-52 bg-bar-panel2 border border-white/10 rounded p-2 text-sm"
+                value={draft}
+                maxLength={MAX_DRAFT_CHARS}
+                onChange={(e) => setDraft(e.target.value)}
+                onBlur={persistDraftOnBlur}
+              />
+              <div className="flex items-center justify-between gap-2 flex-wrap text-xs text-bar-muted">
+                <span>
+                  {draft.length}/{MAX_DRAFT_CHARS} characters
+                </span>
+                <DraftStatusMessage dirty={draft !== save.draft.current} />
+                <span>Use only verified sources; no fabricated citations.</span>
+              </div>
+              <p className="text-xs text-bar-muted">
+                A2 also requires reviewed evidence and the verified source note in your notebook.
+              </p>
+              <div className="flex gap-2 flex-wrap">
+                <button
+                  type="button"
+                  className="px-3 py-1 border border-bar-gold/30 rounded text-sm hover:bg-white/5"
+                  onClick={submitDraft}
+                >
+                  Submit draft for feedback
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1 border border-white/10 rounded text-sm text-bar-muted hover:bg-white/5"
+                  onClick={doSaveDraftVersion}
+                >
+                  Save version
+                </button>
+                <button
+                  type="button"
+                  className="px-3 py-1 border border-white/10 rounded text-sm text-bar-muted hover:bg-white/5"
+                  onClick={() =>
+                    addNotebook({ kind: 'note', title: 'Draft snapshot', content: draft, verified: false })
+                  }
+                >
+                  Save draft note
+                </button>
+              </div>
+              <div>
+                <div className="text-xs text-bar-gold mb-1">Version history (max 8, newest first)</div>
+                {save.draft.versions.length === 0 ? (
+                  <p className="text-xs text-bar-muted">
+                    No versions yet. Use “Save version” to snapshot the draft with its day and time slot.
+                  </p>
+                ) : (
+                  <ul className="space-y-1">
+                    {save.draft.versions.map((v) => (
+                      <li
+                        key={v.id}
+                        className="bg-bar-panel2 p-2 rounded border border-white/5 flex items-center justify-between gap-2"
+                      >
+                        <div className="text-xs text-bar-muted">
+                          Day {v.day} · {v.slot} · {new Date(v.savedAt).toLocaleString()}
+                        </div>
+                        <button
+                          type="button"
+                          className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                          onClick={() => doLoadDraftVersion(v.id)}
+                        >
+                          Load
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <p className="text-xs text-bar-muted">
+                Deterministic feedback only in P0. Any legal references must be verified; no fabricated citations.
+              </p>
+            </div>
+          )}
+
+          {panel === 'journal' && (
+            <div className="space-y-3 text-sm">
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-1">Case timeline / journal</div>
+                <p className="text-xs text-bar-muted">
+                  A chronological record of what you have legitimately learned and written. It contains only
+                  player-visible information: the true sequence of events, responsibility and authenticity are never
+                  recorded here.
+                </p>
+                <p className="text-xs text-bar-muted mt-1">
+                  Entries linked to an evidence item can be opened in the evidence board using “In evidence board”
+                  below.
+                </p>
+                <p className="text-xs text-bar-muted mt-1">
+                  {caseSummary.phase} · {caseSummary.discoveredCount}/{caseSummary.evidenceTotal} evidence items
+                  discovered · {caseSummary.reviewedCount} reviewed. The case summary and this timeline draw on the same
+                  player-visible record.
+                </p>
+              </div>
+
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5">
+                <div className="text-bar-gold text-xs mb-1">Current case-file knowledge (undated notes)</div>
+                {playerCase.playerKnowledge.length === 0 ? (
+                  <p className="text-xs text-bar-muted">No case-file notes recorded.</p>
+                ) : (
+                  <ul className="list-disc ml-5 text-xs text-bar-muted">
+                    {playerCase.playerKnowledge.map((k, i) => (
+                      <li key={i}>{k}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+
+              <div role="group" aria-label="Filter journal by kind" className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  aria-pressed={journalFilter === 'all'}
+                  onClick={() => setJournalFilter('all')}
+                  className={`px-2 py-1 rounded border text-xs ${journalFilter === 'all' ? 'border-bar-gold text-bar-gold' : 'border-white/10 text-bar-muted'}`}
+                >
+                  All ({journal.length})
+                </button>
+                {JOURNAL_KINDS.map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    aria-pressed={journalFilter === kind}
+                    onClick={() => setJournalFilter(kind)}
+                    className={`px-2 py-1 rounded border text-xs ${journalFilter === kind ? 'border-bar-gold text-bar-gold' : 'border-white/10 text-bar-muted'}`}
+                  >
+                    {kind} ({journalCounts[kind]})
+                  </button>
+                ))}
+              </div>
+
+              {(() => {
+                const visible = journalFilter === 'all' ? journal : journal.filter((e) => e.kind === journalFilter);
+                const days = groupJournalByDay(visible);
+                if (days.length === 0) {
+                  return (
+                    <p className="text-xs text-bar-muted bg-bar-panel2 p-3 rounded border border-white/5">
+                      No journal entries for this filter yet.
+                    </p>
+                  );
+                }
+                return (
+                  <ol aria-label="Case timeline" className="space-y-3">
+                    {days.map((group) => (
+                      <li key={group.day} className="bg-bar-panel2 p-3 rounded border border-white/5">
+                        <h3 className="text-bar-gold text-xs uppercase tracking-wide mb-2">Day {group.day}</h3>
+                        <ol className="grid gap-2">
+                          {group.entries.map((entry) => (
+                            <li key={entry.id} className="border-l-2 border-bar-gold/30 pl-2">
+                              <div className="flex justify-between gap-2 flex-wrap">
+                                <span className="text-bar-gold">{entry.title}</span>
+                                <span className="text-[11px] uppercase tracking-wide text-bar-muted">
+                                  {entry.kind}
+                                  {entry.relation ? ` · ${entry.relation}` : ''}
+                                </span>
+                              </div>
+                              <p className="text-xs mt-1 whitespace-pre-wrap">{entry.detail}</p>
+                              {entry.source && (
+                                <p className="text-xs text-bar-muted mt-1">Provenance: {entry.source}</p>
+                              )}
+                              {entry.evidenceId && (
+                                <button
+                                  type="button"
+                                  className="mt-1 px-2 py-1 border border-white/10 rounded text-xs text-bar-gold hover:bg-white/5"
+                                  onClick={() => {
+                                    setFocusEvidenceId(entry.evidenceId ?? null);
+                                    setPanel('evidence');
+                                  }}
+                                >
+                                  In evidence board: {evidenceTitleById.get(entry.evidenceId) ?? entry.evidenceId} →
+                                </button>
+                              )}
+                            </li>
+                          ))}
+                        </ol>
+                      </li>
+                    ))}
+                  </ol>
+                );
+              })()}
+            </div>
+          )}
+
+          {panel === 'notebook' && (
+            <div className="space-y-2 text-sm">
+              <div className="bg-bar-panel2 p-3 rounded border border-white/5 space-y-2">
+                <p className="text-xs text-bar-muted">
+                  Notes are tied to evidence you have reviewed. Add one from the Evidence board.
+                </p>
+                {firstReviewedEvidence ? (
+                  <button
+                    type="button"
+                    className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                    onClick={() => {
+                      setNoteTarget(firstReviewedEvidence.id);
+                      setNoteRelation('contradiction');
+                      setNoteText('');
+                      setPanel('evidence');
+                    }}
+                  >
+                    Add a note tied to reviewed evidence →
+                  </button>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-xs text-yellow-200">Review an evidence item first.</p>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs hover:bg-white/5"
+                      onClick={() => setPanel('evidence')}
+                    >
+                      Go to Evidence →
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div role="group" aria-label="Filter notebook by kind" className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  aria-pressed={notebookFilter === 'all'}
+                  onClick={() => setNotebookFilter('all')}
+                  className={`px-2 py-1 rounded border text-xs ${notebookFilter === 'all' ? 'border-bar-gold text-bar-gold' : 'border-white/10 text-bar-muted'}`}
+                >
+                  All ({save.notebook.length})
+                </button>
+                {notebookKinds.map((kind) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    aria-pressed={notebookFilter === kind}
+                    onClick={() => setNotebookFilter(kind)}
+                    className={`px-2 py-1 rounded border text-xs ${notebookFilter === kind ? 'border-bar-gold text-bar-gold' : 'border-white/10 text-bar-muted'}`}
+                  >
+                    {kind} ({save.notebook.filter((n) => n.kind === kind).length})
+                  </button>
+                ))}
+              </div>
+              <div
+                className="space-y-2 max-h-[60vh] overflow-auto"
+                tabIndex={0}
+                role="region"
+                aria-label="Notebook entries"
+              >
+                {(() => {
+                  const filtered = save.notebook.filter((n) => notebookFilter === 'all' || n.kind === notebookFilter);
+                  if (filtered.length === 0)
+                    return (
+                      <p className="text-xs text-bar-muted bg-bar-panel2 p-3 rounded border border-white/5">
+                        No notebook entries for this filter.
+                      </p>
+                    );
+                  return filtered.map((n) => (
+                    <div key={n.id} className="bg-bar-panel2 p-2 rounded border border-white/5">
+                      <div className="flex justify-between gap-2">
+                        <span className="text-bar-gold">{n.title}</span>
+                        <span className="text-xs text-bar-muted">
+                          Day {n.day} • {n.kind}
+                        </span>
+                      </div>
+                      <div className="whitespace-pre-wrap text-sm mt-1">{n.content}</div>
+                      {n.kind === 'knowledge-connection' && n.connection && (
+                        <div className="text-xs text-bar-muted mt-1">
+                          Domain: {n.connection.domain} · Topic: {n.connection.legalTopic} · Player-authored, not
+                          verified fact.
+                        </div>
+                      )}
+                      {n.source && (
+                        <div className="text-xs text-bar-muted mt-1">
+                          Source: {n.source} {n.verified ? '(verified)' : '(unverified)'}
+                        </div>
+                      )}
+                    </div>
+                  ));
+                })()}
+              </div>
+            </div>
+          )}
+        </section>
+      </main>
+    </div>
+  );
+}

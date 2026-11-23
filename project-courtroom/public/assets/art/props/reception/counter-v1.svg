@@ -1,0 +1,10 @@
+<!-- Original in-repo placeholder created for THE BAR prototype; no third-party asset; CC0/project-owned by default for this repo -->
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" aria-hidden="true" focusable="false">
+  <path d="M 40 300 L 472 300 L 496 356 L 16 356 Z" fill="#6b5138" stroke="#9c8147" stroke-width="2" />
+  <rect x="16" y="356" width="480" height="96" fill="#3d2e21" />
+  <rect x="40" y="300" width="432" height="3" fill="#c8a75a" opacity="0.5" />
+  <rect x="216" y="372" width="80" height="56" rx="2" fill="#2b2119" stroke="#9c8147" />
+  <rect x="240" y="392" width="32" height="4" fill="#c8a75a" />
+  <rect x="60" y="268" width="96" height="32" rx="2" fill="#ddd5c3" stroke="#7c735f" />
+  <rect x="72" y="280" width="50" height="3" fill="#9c8147" />
+</svg>

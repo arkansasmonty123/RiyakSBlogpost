@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Avoid duplicate runs when a branch is updated repeatedly.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Read-only by default; CI only checks out code and runs local scripts.
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, typecheck, format, test, corpus gate and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Node 22 is an LTS release compatible with the Vite 6 / Vitest 3 toolchain.
+      # npm cache is keyed automatically from package-lock.json.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npm run format:check
+
+      - name: Test
+        run: npm test
+
+      # Deterministic and offline: validates the shipped seed with the same gate used for
+      # real corpus records. No legal text is fetched, ingested or verified.
+      - name: Validate shipped source corpus (seed)
+        run: npm run validate:sources -- --seed
+
+      # The shape template must never be ingestible as a real corpus. Expect exit code 1.
+      - name: Ensure corpus template is never ingestible
+        run: |
+          set +e
+          npm run validate:legal-corpus -- --template
+          code=$?
+          set -e
+          if [ "$code" -ne 1 ]; then
+            echo "Expected the corpus template to be rejected (exit 1), got $code" >&2
+            exit 1
+          fi
+          echo "Template correctly rejected as a non-corpus."
+
+      # The Phase 5 art shape template must never be mistaken for an approved asset manifest.
+      # Expect exit code 1. No asset is downloaded, ingested or approved by this step.
+      - name: Ensure art manifest template is never approvable
+        run: |
+          set +e
+          npm run validate:art-manifest -- --template
+          code=$?
+          set -e
+          if [ "$code" -ne 1 ]; then
+            echo "Expected the art manifest template to be rejected (exit 1), got $code" >&2
+            exit 1
+          fi
+          echo "Art template correctly rejected as not approvable."
+
+      - name: Build
+        run: npm run build

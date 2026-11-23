@@ -1,0 +1,6 @@
+<!-- Original in-repo placeholder created for THE BAR prototype; no third-party asset; CC0/project-owned by default for this repo -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true" focusable="false">
+  <path d="M3 5h7l2 2h9v12H3z" fill="currentColor" opacity="0.25" />
+  <path d="M3 5h7l2 2h9v12H3z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round" />
+  <path d="M6 11h12M6 14h9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" />
+</svg>
