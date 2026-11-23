@@ -1,3 +1,4 @@
+/* global console, process */
 import { chromium } from 'playwright';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -23,13 +24,6 @@ async function shot(page, name) {
   log(`screenshot: ${file}`);
 }
 
-async function clickByText(page, text, opts = {}) {
-  const loc = page.getByRole(opts.role ?? 'button', { name: text, exact: opts.exact ?? false }).first();
-  await loc.waitFor({ timeout: opts.timeout ?? 10000 });
-  await loc.click();
-  log(`clicked: ${text}`);
-}
-
 async function maybeClick(page, text, opts = {}) {
   try {
     const loc = page.getByRole(opts.role ?? 'button', { name: text, exact: opts.exact ?? false }).first();
@@ -38,25 +32,29 @@ async function maybeClick(page, text, opts = {}) {
       log(`clicked(optional): ${text}`);
       return true;
     }
-  } catch {}
+  } catch {
+    // optional action
+  }
   return false;
-}
-
-async function fillByLabel(page, label, value) {
-  const loc = page.getByLabel(label, { exact: false }).first();
-  await loc.waitFor({ timeout: 10000 });
-  await loc.fill(value);
-  log(`filled: ${label}`);
 }
 
 async function main() {
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   await context.addInitScript(() => {
-    try { localStorage.clear(); sessionStorage.clear(); } catch {}
+    try {
+      // eslint-disable-next-line no-undef
+      localStorage.clear();
+      // eslint-disable-next-line no-undef
+      sessionStorage.clear();
+    } catch {
+      // ignore
+    }
   });
   const page = await context.newPage();
-  page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') consoleErrors.push(msg.text());
+  });
   page.on('pageerror', (err) => pageErrors.push(String(err)));
   page.on('requestfailed', (r) => failedRequests.push(`${r.failure()?.errorText} ${r.url()}`));
 
@@ -106,7 +104,10 @@ async function main() {
       ];
       let acted = false;
       for (const a of actions) {
-        if (await maybeClick(page, a, { timeout: 600 })) { acted = true; break; }
+        if (await maybeClick(page, a, { timeout: 600 })) {
+          acted = true;
+          break;
+        }
       }
 
       // Fill obvious textareas if visible and empty
@@ -116,7 +117,11 @@ async function main() {
         const ta = textareas.nth(i);
         const val = await ta.inputValue().catch(() => '');
         if (!val || val.length < 20) {
-          await ta.fill('I reviewed the available record, separated known facts from claims, noted disputed points, and relied only on reviewed evidence and verified sources. I do not assert fault as a proven fact.').catch(() => {});
+          await ta
+            .fill(
+              'I reviewed the available record, separated known facts from claims, noted disputed points, and relied only on reviewed evidence and verified sources. I do not assert fault as a proven fact.',
+            )
+            .catch(() => {});
           log('filled textarea');
           acted = true;
         }
@@ -124,9 +129,17 @@ async function main() {
 
       // Discover/review evidence buttons
       const discover = page.getByRole('button', { name: /Inspect \/ Discover/i }).first();
-      if (await discover.isVisible().catch(() => false)) { await discover.click().catch(() => {}); log('discovered evidence'); acted = true; }
+      if (await discover.isVisible().catch(() => false)) {
+        await discover.click().catch(() => {});
+        log('discovered evidence');
+        acted = true;
+      }
       const review = page.getByRole('button', { name: /^Mark reviewed$/i }).first();
-      if (await review.isVisible().catch(() => false)) { await review.click().catch(() => {}); log('reviewed evidence'); acted = true; }
+      if (await review.isVisible().catch(() => false)) {
+        await review.click().catch(() => {});
+        log('reviewed evidence');
+        acted = true;
+      }
 
       if (!acted) {
         // Try advancing panels/tabs
@@ -147,7 +160,6 @@ async function main() {
     await page.waitForTimeout(1500);
     await shot(page, 'after-reload');
     log('reload complete');
-
   } finally {
     await browser.close().catch(() => {});
   }
@@ -160,7 +172,21 @@ async function main() {
     notes,
   };
   await fs.writeFile(path.join(OUT, 'report.json'), JSON.stringify(report, null, 2));
-  console.log(JSON.stringify({ ok: pageErrors.length === 0, consoleErrors: consoleErrors.length, failedRequests: failedRequests.length, out: OUT }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        ok: pageErrors.length === 0,
+        consoleErrors: consoleErrors.length,
+        failedRequests: failedRequests.length,
+        out: OUT,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
-main().catch((e) => { console.error(e); process.exit(1); });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
