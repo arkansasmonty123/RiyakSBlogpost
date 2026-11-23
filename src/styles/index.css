@@ -103,6 +103,16 @@ textarea:focus-visible,
   background: linear-gradient(to right, rgba(200, 167, 90, 0.45), rgba(200, 167, 90, 0));
 }
 
+@media (pointer: coarse) {
+  button,
+  [role='button'],
+  input:not([type='checkbox']):not([type='radio']),
+  select,
+  textarea {
+    min-height: 44px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

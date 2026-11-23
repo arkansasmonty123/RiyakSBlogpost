@@ -223,22 +223,43 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   }, [boot, loadedSave, bootError]);
 
   if (bootError) {
+    const isCorrupt = bootError.includes('422') || bootError.includes('CORRUPT');
     return (
       <div className="min-h-screen bg-bar-bg text-bar-text flex items-center justify-center px-4">
         <div role="alert" className="max-w-lg w-full border border-red-400/30 bg-bar-panel rounded-lg p-4 space-y-3">
           <h1 className="text-lg font-semibold text-red-200">Could not load your saved case file</h1>
           <p className="text-sm text-bar-muted">
-            The local save service did not respond. Your existing save was not overwritten. Check that the DB server is
-            running, then retry.
+            {isCorrupt
+              ? 'The saved slot appears damaged or unreadable. Your in-browser progress was not overwritten. You can retry, or start a fresh case file (this removes the damaged server slot for this slot).'
+              : 'The local save service did not respond. Your existing save was not overwritten. Check that the DB server is running, then retry.'}
           </p>
           <p className="text-xs text-bar-muted">Error: {bootError}</p>
-          <button
-            type="button"
-            className="px-3 py-2 border border-bar-gold/40 rounded text-sm hover:bg-white/5"
-            onClick={() => setBootError(null)}
-          >
-            Retry load
-          </button>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              type="button"
+              className="px-3 py-2 border border-bar-gold/40 rounded text-sm hover:bg-white/5"
+              onClick={() => setBootError(null)}
+            >
+              Retry load
+            </button>
+            <button
+              type="button"
+              className="px-3 py-2 border border-red-400/40 rounded text-sm text-red-200 hover:bg-red-500/10"
+              onClick={() => {
+                void (async () => {
+                  try {
+                    const fresh = await resetSaveThrough(boot);
+                    setLoadedSave(fresh);
+                    setBootError(null);
+                  } catch {
+                    setBootError('RESET_FAILED');
+                  }
+                })();
+              }}
+            >
+              Start fresh (remove damaged slot)
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -507,6 +528,17 @@ function GameApp({
   const unsupportedClaimCount = theorySupport.filter((s) => !s.hasReviewedEvidence).length;
   const chapterComplete = isChapterComplete(save);
   const finalBriefChars = finalSummary.trim().length;
+  const draftDirty = draft !== save.draft.current;
+
+  useEffect(() => {
+    if (!draftDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [draftDirty]);
   const finalBriefTooShort = finalBriefChars < MIN_FINAL_BRIEF_CHARS;
   const completion = useMemo(() => buildChapterCompletionSummary(save), [save]);
   const caseTargetId = caseTarget || reviewedEvidence[0]?.id || '';
@@ -1805,6 +1837,7 @@ function GameApp({
                       <div className="grid gap-2 mt-2">
                         {scene.choices.map((choice) => (
                           <button
+                            type="button"
                             key={choice.id}
                             onClick={() => doDialogueChoice(scene.id, choice.id)}
                             className="text-left px-2 py-2 rounded border border-bar-gold/20 text-xs hover:bg-white/5"
@@ -2234,6 +2267,7 @@ function GameApp({
                       </div>
                       {!ev.reviewed ? (
                         <button
+                          type="button"
                           className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs"
                           onClick={() => doReviewEvidence(ev.id)}
                         >
@@ -2285,6 +2319,7 @@ function GameApp({
                           </label>
                           <div className="flex gap-2 flex-wrap">
                             <button
+                              type="button"
                               className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
                               onClick={() => {
                                 setNoteTarget(ev.id);
@@ -2295,6 +2330,7 @@ function GameApp({
                               Note contradiction
                             </button>
                             <button
+                              type="button"
                               className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
                               onClick={() => {
                                 setNoteTarget(ev.id);
@@ -2305,6 +2341,7 @@ function GameApp({
                               Note corroboration
                             </button>
                             <button
+                              type="button"
                               className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
                               onClick={() => addEvidenceToTheory(ev.id)}
                             >
@@ -2328,6 +2365,7 @@ function GameApp({
                     </div>
                   ) : (
                     <button
+                      type="button"
                       className="mt-2 px-2 py-1 border border-bar-gold/30 rounded text-xs"
                       onClick={() => discoverEvidence(ev.id)}
                     >
@@ -2353,10 +2391,15 @@ function GameApp({
                     />
                   </label>
                   <div className="flex gap-2 mt-2">
-                    <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs" onClick={doSaveNote}>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                      onClick={doSaveNote}
+                    >
                       Save note
                     </button>
                     <button
+                      type="button"
                       className="px-2 py-1 border border-white/10 rounded text-xs text-bar-muted"
                       onClick={() => {
                         setNoteTarget(null);
@@ -2555,6 +2598,7 @@ function GameApp({
                     />
                     <div className="flex flex-wrap gap-2 items-center">
                       <button
+                        type="button"
                         className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit"
                         onClick={doSeniorReview}
                       >
@@ -2916,6 +2960,9 @@ function GameApp({
                       Citation / identifier (required)
                       <input
                         className="bg-bar-bg border border-white/10 rounded p-2"
+                        name="source-citation"
+                        autoComplete="off"
+                        spellCheck={false}
                         value={sourceForm.citation}
                         maxLength={MAX_SOURCE_FIELDS.citation}
                         onChange={(e) => setSourceField('citation', e.target.value)}
@@ -2956,6 +3003,10 @@ function GameApp({
                       Effective date (optional, YYYY-MM-DD)
                       <input
                         className="bg-bar-bg border border-white/10 rounded p-2"
+                        name="source-effective-date"
+                        autoComplete="off"
+                        spellCheck={false}
+                        inputMode="numeric"
                         value={sourceForm.effectiveDate}
                         maxLength={10}
                         onChange={(e) => setSourceField('effectiveDate', e.target.value)}
@@ -2976,7 +3027,12 @@ function GameApp({
                   <label className="text-xs flex flex-col gap-1">
                     Official source URL (optional)
                     <input
+                      type="url"
                       className="bg-bar-bg border border-white/10 rounded p-2"
+                      name="source-url"
+                      autoComplete="off"
+                      spellCheck={false}
+                      inputMode="url"
                       value={sourceForm.sourceUrl}
                       maxLength={MAX_SOURCE_FIELDS.sourceUrl}
                       onChange={(e) => setSourceField('sourceUrl', e.target.value)}
@@ -3163,6 +3219,7 @@ function GameApp({
                           Day {v.day} · {v.slot} · {new Date(v.savedAt).toLocaleString()}
                         </div>
                         <button
+                          type="button"
                           className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
                           onClick={() => doLoadDraftVersion(v.id)}
                         >
