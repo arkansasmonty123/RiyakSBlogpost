@@ -1,3 +1,4 @@
+import { addNotebookEntry } from './notebook';
 import { makeId } from './progression';
 import type { NotebookEntry, SaveGame, TheoryClaim, TheoryStatus } from './types';
 
@@ -56,7 +57,7 @@ export function addTheoryClaim(
     content: content + (links.length ? `\nLinked evidence: ${links.join(', ')}` : ''),
     verified: false,
   };
-  save.notebook.unshift(notebookEntry);
+  addNotebookEntry(save, notebookEntry);
   save.memories.unshift({
     id: makeId('m'),
     day: save.clock.day,

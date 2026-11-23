@@ -1,5 +1,6 @@
-import { DIALOGUE_SCENES } from './seed';
+import { addNotebookEntry } from './notebook';
 import { makeId } from './progression';
+import { DIALOGUE_SCENES } from './seed';
 import type { DialogueScene, NotebookEntry, ReputationEffect, SaveGame } from './types';
 
 export function availableDialogueScenes(save: SaveGame): DialogueScene[] {
@@ -76,7 +77,7 @@ export function applyDialogueChoice(save: SaveGame, sceneId: string, choiceId: s
       content: fact,
       verified: false,
     };
-    save.notebook.unshift(entry);
+    addNotebookEntry(save, entry);
   }
   if (choice.setsFlag) save.flags[choice.setsFlag] = true;
 

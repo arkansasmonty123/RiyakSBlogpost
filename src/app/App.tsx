@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { SceneArt } from '@/app/SceneArt';
 import { createResetUiState, emptySourceForm, EXPLICIT_SAVE_NOTICE, RESET_CONFIRMATION } from '@/app/sessionUi';
 import type { SaveStatus, SourceFormState } from '@/app/sessionUi';
@@ -7,6 +7,7 @@ import { loadSave, persistSave, resetSave } from '@/storage/save';
 import type { PersistResult } from '@/storage/save';
 import { recordAudit } from '@/domain/audit';
 import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/completion';
+import { addNotebookEntry, capNotebook } from '@/domain/notebook';
 import { markHelpSeen } from '@/domain/onboarding';
 import {
   canCiteAsAuthoritative,
@@ -42,6 +43,7 @@ import {
   challengeEvidenceAdmissibility,
   CHALLENGE_GROUNDS,
   GROUND_FEEDBACK,
+  MIN_FINAL_BRIEF_CHARS,
   recordCustodyObservation,
   submitFinalBrief,
   submitSeniorReview,
@@ -204,6 +206,18 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(freshUi.saveStatus);
   const [saveNotice, setSaveNotice] = useState(freshUi.saveNotice);
 
+  // Move keyboard focus to the workspace heading after a panel change, but not on first
+  // load. Comparing to the last rendered panel (instead of a "first render" flag) keeps
+  // this correct under StrictMode's double-invoked mount effects. A tabIndex={-1} heading
+  // is a focus target, not a trap: the skip link, tab order and focus-visible stay intact.
+  const workspaceHeadingRef = useRef<HTMLHeadingElement>(null);
+  const renderedPanel = useRef<Panel>(panel);
+  useEffect(() => {
+    if (panel === renderedPanel.current) return;
+    renderedPanel.current = panel;
+    workspaceHeadingRef.current?.focus();
+  }, [panel]);
+
   const viewpoint = getViewpoint(save.selectedViewpoint);
   const location = getLocationForViewpoint(save.selectedViewpoint);
   const locationViewpoints = viewpointsForLocation(location.id);
@@ -239,6 +253,8 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   const supportByClaimId = useMemo(() => new Map(theorySupport.map((s) => [s.claimId, s])), [theorySupport]);
   const unsupportedClaimCount = theorySupport.filter((s) => !s.hasReviewedEvidence).length;
   const chapterComplete = isChapterComplete(save);
+  const finalBriefChars = finalSummary.trim().length;
+  const finalBriefTooShort = finalBriefChars < MIN_FINAL_BRIEF_CHARS;
   const completion = useMemo(() => buildChapterCompletionSummary(save), [save]);
   const caseTargetId = caseTarget || reviewedEvidence[0]?.id || '';
   const a7 = save.assignments.find((a) => a.id === 'a7');
@@ -324,6 +340,9 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   function update(mutator: (s: SaveGame) => SaveGame) {
     setSave((prev) => {
       const next = mutator(structuredClone(prev));
+      // Defensive backstop: every append also uses addNotebookEntry, but this keeps any
+      // future direct mutation from growing an in-memory save past the cap before persisting.
+      capNotebook(next.notebook);
       const result: PersistResult = persistSave(next);
       // Keep the functional update so several mutations in one handler still compose.
       // A failed write is reported politely instead of throwing; progress stays in memory.
@@ -334,7 +353,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
 
   function addNotebook(entry: Omit<NotebookEntry, 'id' | 'day'>) {
     update((s) => {
-      s.notebook.unshift(makeNotebookEntry(entry, s));
+      addNotebookEntry(s, makeNotebookEntry(entry, s));
       return s;
     });
   }
@@ -443,7 +462,8 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
         summary: `Discovered evidence: ${ev.title}`,
         participants: ['player'],
       });
-      s.notebook.unshift(
+      addNotebookEntry(
+        s,
         makeNotebookEntry(
           {
             kind: 'fact',
@@ -466,7 +486,8 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
       if (!reviewEvidence(s, id)) return s;
       const ev = s.caseFile.evidence.find((e) => e.id === id);
       if (ev)
-        s.notebook.unshift(
+        addNotebookEntry(
+          s,
           makeNotebookEntry(
             {
               kind: 'fact',
@@ -666,7 +687,8 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     const standing = result.reputationEffects?.length
       ? `\n\nStanding change: ${result.reputationEffects.map((e) => `${e.dimension} ${e.amount > 0 ? '+' : ''}${e.amount}`).join(', ')}.`
       : '';
-    working.notebook.unshift(
+    addNotebookEntry(
+      working,
       makeNotebookEntry(
         {
           kind: 'note',
@@ -686,7 +708,8 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
     update((s) => {
       outcome.result = reviewAssignment(s, id);
       if (outcome.result.ok) {
-        s.notebook.unshift(
+        addNotebookEntry(
+          s,
           makeNotebookEntry(
             {
               kind: 'feedback',
@@ -1085,7 +1108,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
         <section className="bg-bar-panel rounded-lg border border-bar-gold/10 p-4" aria-labelledby="workspace-heading">
           <div className="flex flex-col gap-2 mb-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <h2 id="workspace-heading" className="text-lg text-bar-gold">
+              <h2 id="workspace-heading" ref={workspaceHeadingRef} tabIndex={-1} className="text-lg text-bar-gold">
                 Workspace
               </h2>
               <span className="text-xs text-bar-muted">
@@ -1134,7 +1157,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                 <>
                   <div className="bg-bar-panel2 p-4 rounded border border-green-400/30">
                     <p className="text-[11px] uppercase tracking-wide text-green-200/80">
-                      End of chapter · Day {completion.day} / {completion.finalDay}
+                      First chapter complete · Day {completion.day} / {completion.finalDay}
                     </p>
                     <h3 className="text-lg text-bar-gold mt-1">{completion.title}</h3>
                     <p className="text-sm mt-2">{completion.outcome}</p>
@@ -1865,6 +1888,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                     <label className="text-xs flex flex-col gap-1">
                       What did you observe about who handled it, and what is documented?
                       <textarea
+                        aria-describedby="custody-observation-hint"
                         className="bg-bar-bg border border-white/10 rounded p-2 min-h-16"
                         maxLength={1000}
                         value={custodyText}
@@ -1872,9 +1896,15 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                         placeholder="e.g. The export has no sealing record; note the gap rather than guessing."
                       />
                     </label>
+                    <p id="custody-observation-hint" className="text-[11px] text-bar-muted">
+                      Enter an observation to enable logging. Maximum 1000 characters.
+                    </p>
                     <button
-                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit"
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit disabled:opacity-50 disabled:cursor-not-allowed"
                       onClick={doRecordCustody}
+                      disabled={!custodyText.trim()}
+                      aria-describedby="custody-observation-hint"
                     >
                       Log custody observation
                     </button>
@@ -1924,6 +1954,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                     <label className="text-xs flex flex-col gap-1">
                       Rationale
                       <textarea
+                        aria-describedby="challenge-rationale-hint"
                         className="bg-bar-bg border border-white/10 rounded p-2 min-h-16"
                         maxLength={1000}
                         value={challengeText}
@@ -1931,7 +1962,16 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                         placeholder="State why this ground matters, tied to what you reviewed."
                       />
                     </label>
-                    <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit" onClick={doChallenge}>
+                    <p id="challenge-rationale-hint" className="text-[11px] text-bar-muted">
+                      Enter a rationale to enable the challenge. Maximum 1000 characters.
+                    </p>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={doChallenge}
+                      disabled={!challengeText.trim()}
+                      aria-describedby="challenge-rationale-hint"
+                    >
                       Record challenge
                     </button>
                   </div>
@@ -2009,14 +2049,25 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                   <div className="grid gap-2">
                     <textarea
                       aria-label="Final brief summary"
+                      aria-describedby="final-brief-hint"
                       className="bg-bar-bg border border-white/10 rounded p-2 min-h-20 text-sm"
                       value={finalSummary}
                       onChange={(e) => setFinalSummary(e.target.value)}
-                      placeholder="State your issue, evidence and conclusion without claiming unverified truth (at least 40 characters)."
+                      placeholder={`State your issue, evidence and conclusion without claiming unverified truth (at least ${MIN_FINAL_BRIEF_CHARS} characters).`}
                     />
+                    <p
+                      id="final-brief-hint"
+                      className={`text-xs ${finalBriefTooShort ? 'text-yellow-200' : 'text-green-200'}`}
+                    >
+                      {finalBriefTooShort
+                        ? `${finalBriefChars}/${MIN_FINAL_BRIEF_CHARS} characters — write at least ${MIN_FINAL_BRIEF_CHARS} before submitting. State the issue, evidence and conclusion without claiming unverified truth.`
+                        : `${finalBriefChars} characters — long enough to submit. Keep it evidence-grounded.`}
+                    </p>
                     <button
+                      type="button"
                       className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit"
                       onClick={doFinalBrief}
+                      aria-describedby="final-brief-hint"
                     >
                       Submit final brief
                     </button>
@@ -2063,6 +2114,7 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                   Your claim
                   <textarea
                     aria-label="Case theory claim"
+                    aria-describedby="theory-claim-hint"
                     className="bg-bar-bg border border-white/10 rounded p-2 min-h-20"
                     maxLength={1000}
                     value={theoryText}
@@ -2103,7 +2155,16 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                     </div>
                   )}
                 </fieldset>
-                <button className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit" onClick={doAddTheory}>
+                <p id="theory-claim-hint" className="text-[11px] text-bar-muted">
+                  Enter a claim to enable adding it. Maximum 1000 characters.
+                </p>
+                <button
+                  type="button"
+                  className="px-2 py-1 border border-bar-gold/30 rounded text-xs w-fit disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={doAddTheory}
+                  disabled={!theoryText.trim()}
+                  aria-describedby="theory-claim-hint"
+                >
                   Add claim
                 </button>
               </div>

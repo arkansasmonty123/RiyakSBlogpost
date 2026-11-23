@@ -1,4 +1,5 @@
 import { recordAudit } from './audit';
+import { addNotebookEntry } from './notebook';
 import { makeId } from './progression';
 import type { Admissibility, EvidenceItem, NotebookEntry, Reliability, SaveGame } from './types';
 
@@ -70,6 +71,6 @@ export function addEvidenceNote(
     evidenceId: item.id,
     relation,
   };
-  save.notebook.unshift(entry);
+  addNotebookEntry(save, entry);
   return entry;
 }

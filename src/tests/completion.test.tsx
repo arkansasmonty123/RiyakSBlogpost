@@ -134,6 +134,8 @@ describe('chapter completion summary', () => {
     expect(summary.outcome).toBe(finished.assignments.find((a) => a.id === 'a8')?.feedback);
     expect(summary.outcome.length).toBeGreaterThan(0);
     expect(summary.closingNote).toContain('Case closed');
+    // The closing copy frames this as the end of the first chapter, not a career ending.
+    expect(summary.closingNote).toContain('First chapter complete');
     expect(summary.assignmentsTotal).toBe(8);
     expect(summary.assignmentsCompletedCount).toBe(8);
     expect(summary.assignmentsCompleted.map((a) => a.id)).toEqual(['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'a7', 'a8']);
@@ -143,6 +145,7 @@ describe('chapter completion summary', () => {
     expect(summary.memoryHighlights.length).toBeGreaterThan(0);
     expect(summary.reputation).toEqual(finished.player.reputation);
     expect(summary.reputation.competence).toBeGreaterThan(10);
+    expect(summary.careerStage).toBe('junior_advocate');
     expect(summary.careerStage).toBe(finished.player.careerStage);
   });
 

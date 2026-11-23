@@ -2,10 +2,13 @@ import { recordAudit } from './audit';
 import { buildEvidenceSynthesis, pluralize, reviewSynthesis } from './evidenceSynthesis';
 import type { ReviewSynthesis } from './evidenceSynthesis';
 import { buildLegalMindProfile, LEGAL_MIND_LEVEL_RANK } from './legalMindProfile';
+import { addNotebookEntry } from './notebook';
 import { isAssignmentUnlocked, makeId, refreshAssignmentUnlocks } from './progression';
 import type { AdmissibilityChallenge, ChallengeGround, CustodyObservation, ReviewRound, SaveGame } from './types';
 
 const MAX_TEXT = 1000;
+/** Shared by the final-brief guard and the inline UI hint so they cannot drift apart. */
+export const MIN_FINAL_BRIEF_CHARS = 40;
 
 function clamp(value: number): number {
   return Math.max(0, Math.min(100, value));
@@ -43,7 +46,7 @@ export function recordCustodyObservation(save: SaveGame, evidenceId: string, obs
     observation: text,
   };
   save.custodyLog.unshift(record);
-  save.notebook.unshift({
+  addNotebookEntry(save, {
     id: makeId('n'),
     day: save.clock.day,
     kind: 'note',
@@ -104,7 +107,7 @@ export function challengeEvidenceAdmissibility(
     rationale: text,
   };
   save.challenges.unshift(challenge);
-  save.notebook.unshift({
+  addNotebookEntry(save, {
     id: makeId('n'),
     day: save.clock.day,
     kind: 'note',
@@ -197,7 +200,7 @@ export function submitSeniorReview(save: SaveGame, assignmentId: string, workSum
     gaps.push('Complete the casework milestone for this assignment.');
   }
 
-  if (summary.length >= 40) {
+  if (summary.length >= MIN_FINAL_BRIEF_CHARS) {
     strengths.push('Work summary states the issue and the basis for conclusions.');
   } else {
     gaps.push('Expand the work summary (at least 40 characters) so the senior can follow your reasoning.');
@@ -259,7 +262,7 @@ export function submitSeniorReview(save: SaveGame, assignmentId: string, workSum
     if (senior && roundNo > 1) senior.respect = clamp(senior.respect + 1);
   }
 
-  save.notebook.unshift({
+  addNotebookEntry(save, {
     id: makeId('n'),
     day: save.clock.day,
     kind: 'feedback',
@@ -383,8 +386,11 @@ export function submitFinalBrief(save: SaveGame, workSummary: string): FinalBrie
   if (!isAssignmentUnlocked(assignment, save)) {
     return { ok: false, reason: `Locked: unlocks on Day ${assignment.day} after prior work is reviewed.` };
   }
-  if ((workSummary ?? '').trim().length < 40) {
-    return { ok: false, reason: 'Write a final brief summary of at least 40 characters before submitting.' };
+  if ((workSummary ?? '').trim().length < MIN_FINAL_BRIEF_CHARS) {
+    return {
+      ok: false,
+      reason: `Write a final brief summary of at least ${MIN_FINAL_BRIEF_CHARS} characters before submitting.`,
+    };
   }
   const needed = ['clientInterviewDone', 'custodyLogged', 'admissibilityChallenged', 'reviewAccepted'];
   if (needed.some((flag) => !save.flags[flag])) {
@@ -408,6 +414,9 @@ export function submitFinalBrief(save: SaveGame, workSummary: string): FinalBrie
   save.flags.finalBriefSubmitted = true;
   save.flags.chapterOneComplete = true;
   save.caseFile.status = 'closed';
+  // Deterministic chapter payoff: the first brief earns a promotion, not a career ending.
+  // submitFinalBrief is idempotent, so this runs exactly once per completed chapter.
+  save.player.careerStage = 'junior_advocate';
   save.player.reputation.competence = clamp(rep.competence + 2);
   save.player.reputation.reliability = clamp(rep.reliability + 1);
   const senior = seniorRelationship(save);
@@ -422,7 +431,7 @@ export function submitFinalBrief(save: SaveGame, workSummary: string): FinalBrie
     summary: `Final brief submitted on Day ${save.clock.day}. Consequence: ${tier}.`,
     participants: ['player', 'senior'],
   });
-  save.notebook.unshift({
+  addNotebookEntry(save, {
     id: makeId('n'),
     day: save.clock.day,
     kind: 'feedback',

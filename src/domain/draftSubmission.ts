@@ -1,6 +1,7 @@
 import { recordAudit } from './audit';
 import { setCurrentDraft } from './draft';
 import { checkDraftCitations } from './guards';
+import { addNotebookEntry } from './notebook';
 import { assignmentLockReason, makeId, reviewAssignment } from './progression';
 import type { Assignment, NotebookEntry, SaveGame } from './types';
 
@@ -73,7 +74,8 @@ export function submitDraftForFeedback(save: SaveGame, text: string): DraftSubmi
       '',
       'Rule: never fabricate or cite unverified legal provisions/judgments.',
     ].join('\n');
-    save.notebook.unshift(
+    addNotebookEntry(
+      save,
       notebookEntry(save, {
         kind: 'feedback',
         title: 'Draft blocked: citation guardrail',
@@ -130,7 +132,8 @@ export function submitDraftForFeedback(save: SaveGame, text: string): DraftSubmi
       if (review.ok) {
         a2Reviewed = true;
         message = 'Draft submitted — A2 reviewed.';
-        save.notebook.unshift(
+        addNotebookEntry(
+          save,
           notebookEntry(save, {
             kind: 'feedback',
             title: `Assignment reviewed: ${a2?.title ?? 'Case brief draft'}`,
@@ -162,7 +165,8 @@ export function submitDraftForFeedback(save: SaveGame, text: string): DraftSubmi
     'Reminder: canonical truth is not known; distinguish known/claimed/disputed/unknown.',
   ].join('\n');
 
-  save.notebook.unshift(
+  addNotebookEntry(
+    save,
     notebookEntry(save, {
       kind: 'feedback',
       title: 'Senior feedback (deterministic)',

@@ -108,7 +108,7 @@ export function buildChapterCompletionSummary(save: SaveGame): ChapterCompletion
     evidenceDiscovered,
     openQuestions: [...playerCase.unresolvedAmbiguity],
     closingNote:
-      'Case closed on the evidence and reasoning you recorded — not on certainty. Authenticity, hidden motives and responsibility were never determined; the open questions above remain unanswered.',
+      'Case closed on the evidence and reasoning you recorded — not on certainty. First chapter complete: your careful work earns a promotion to junior advocate and the next chapter lies ahead. Authenticity, hidden motives and responsibility were never determined; the open questions above remain unanswered.',
     legalMindProfile: buildLegalMindProfile(save),
     synthesis: buildEvidenceSynthesis(save),
   };

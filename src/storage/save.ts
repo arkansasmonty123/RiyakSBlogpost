@@ -1,6 +1,7 @@
 import { sanitizeAuditLog } from '@/domain/audit';
 import { MAX_DRAFT_CHARS, MAX_DRAFT_VERSIONS } from '@/domain/draft';
 import { validateSourceProvenance } from '@/domain/legalSources';
+import { trimNotebook } from '@/domain/notebook';
 import { isValidViewpoint } from '@/domain/scenes';
 import { createInitialSave } from '@/domain/seed';
 import type {
@@ -179,12 +180,18 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
 
     const base = createInitialSave();
     const parsedCase = parsed.caseFile as Partial<SaveGame['caseFile']> | undefined;
+    const player = { ...base.player, ...(parsed.player ?? {}) };
+    // Saves written before the chapter payoff predate the promotion; bring a completed
+    // chapter up to date so the completion summary matches the recorded chapter state.
+    if (player.careerStage === 'intern' && parsed.flags?.chapterOneComplete === true) {
+      player.careerStage = 'junior_advocate';
+    }
     return {
       ...base,
       ...parsed,
       version: 2,
       savedAt: typeof parsed.savedAt === 'string' ? parsed.savedAt : base.savedAt,
-      player: { ...base.player, ...(parsed.player ?? {}) },
+      player,
       clock: { ...base.clock, ...(parsed.clock ?? {}) },
       characters: mergeCharacters(base.characters, parsed.characters),
       relationships: mergeRelationships(base.relationships, parsed.relationships),
@@ -199,7 +206,8 @@ export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
       },
       legalSources: mergeLegalSources(base.legalSources, parsed.legalSources),
       assignments: mergeAssignments(base.assignments, parsed.assignments),
-      notebook: parsed.notebook?.length ? (parsed.notebook as SaveGame['notebook']) : base.notebook,
+      // Untrusted/legacy notebooks are trimmed to the newest entries on load as well.
+      notebook: parsed.notebook?.length ? trimNotebook(parsed.notebook as SaveGame['notebook']) : base.notebook,
       flags: { ...base.flags, ...(parsed.flags ?? {}) },
       // A stale or unknown viewpoint id must never leave the scene panel without a view.
       selectedViewpoint: isValidViewpoint(parsed.selectedViewpoint) ? parsed.selectedViewpoint : base.selectedViewpoint,
@@ -255,6 +263,8 @@ export function persistSave(save: SaveGame, storage: StorageLike = defaultStorag
         current: save.draft.current,
         versions: save.draft.versions.slice(0, MAX_DRAFT_VERSIONS),
       },
+      // Keep the newest notes only; an oversized in-memory save must not bloat storage.
+      notebook: trimNotebook(save.notebook),
       auditLog: sanitizeAuditLog(save.auditLog),
     };
     storage.setItem(SAVE_KEY, JSON.stringify(payload));

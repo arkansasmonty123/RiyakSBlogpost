@@ -135,12 +135,15 @@ describe('Day 1–10 chapter flow', () => {
 
     // Day 10 — final brief.
     advanceToDay(save, 10);
+    expect(save.player.careerStage).toBe('intern');
     const final = submitFinalBrief(save, GOOD_SUMMARY);
     expect(final.ok).toBe(true);
     expect(['strong', 'solid', 'shaky']).toContain(final.tier);
     expect(save.flags.chapterOneComplete).toBe(true);
     expect(save.flags.finalBriefSubmitted).toBe(true);
     expect(save.caseFile.status).toBe('closed');
+    // The first chapter pays off with a deterministic promotion, not a career ending.
+    expect(save.player.careerStage).toBe('junior_advocate');
     expect(currentObjective(save)).toBeNull();
   });
 });
