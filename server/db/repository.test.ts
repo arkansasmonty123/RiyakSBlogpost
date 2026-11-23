@@ -61,12 +61,12 @@ describe('sqlite save repository (ADR-001 infra start)', () => {
 
   it('rejects stale writes when expectedSavedAt does not match (concurrency guard)', () => {
     const db = makeDb();
-    upsertSaveSlot(db, 'slot-c', { version: 2, savedAt: '2026-11-23T00:00:00.000Z' });
+    const first = upsertSaveSlot(db, 'slot-c', { version: 2, savedAt: '2026-11-23T00:00:00.000Z' });
     expect(() =>
       upsertSaveSlot(db, 'slot-c', { version: 2, savedAt: '2026-11-23T00:00:01.000Z' }, { expectedSavedAt: 'stale' }),
     ).toThrow(SaveConflictError);
     const loaded = getSaveSlot(db, 'slot-c');
-    expect(loaded?.savedAt).toBe('2026-11-23T00:00:00.000Z');
+    expect(loaded?.savedAt).toBe(first.savedAt); // server-authoritative, unchanged on conflict
   });
 
   it('persists across restart/reopen and keeps canonicalTruth stripped', () => {

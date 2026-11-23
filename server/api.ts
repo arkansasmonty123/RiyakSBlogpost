@@ -2,6 +2,7 @@ import http from 'node:http';
 import { URL } from 'node:url';
 import { closeDb, getDb } from './db/database';
 import {
+  CorruptSaveError,
   deleteSaveSlot,
   getSaveSlot,
   listAuditEvents,
@@ -112,6 +113,7 @@ export async function handleRequest(req: http.IncomingMessage, res: http.ServerR
     return sendJson(res, 404, { ok: false, error: 'NOT_FOUND' });
   } catch (error) {
     if (error instanceof SaveConflictError) return sendJson(res, 409, { ok: false, error: 'SAVE_CONFLICT' });
+    if (error instanceof CorruptSaveError) return sendJson(res, 422, { ok: false, error: 'CORRUPT_SAVE' });
     const message = error instanceof Error ? error.message : String(error);
     if (message === 'FORBIDDEN_ORIGIN') return sendJson(res, 403, { ok: false, error: message });
     if (message === 'UNSUPPORTED_CONTENT_TYPE') return sendJson(res, 415, { ok: false, error: message });

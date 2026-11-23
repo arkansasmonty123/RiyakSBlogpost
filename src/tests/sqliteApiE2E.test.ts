@@ -188,6 +188,7 @@ describe('SqliteApiGameRepository end-to-end (real HTTP + temp SQLite)', () => {
     const migration: MigrationSource = {
       hasLocalSave: (slotId) => slotId === 'e2e-migrate',
       loadLocalSave: () => local,
+      clearLocalSave: () => {},
     };
     const repo = new SqliteApiGameRepository(baseUrl, fetch, migration);
 
@@ -212,6 +213,7 @@ describe('SqliteApiGameRepository end-to-end (real HTTP + temp SQLite)', () => {
       loadLocalSave: () => {
         throw new Error('loadLocalSave must not be called for an existing server slot');
       },
+      clearLocalSave: () => {},
     };
     const repo2 = new SqliteApiGameRepository(baseUrl, fetch, trackingMigration);
     expect((await repo2.loadGame('e2e-migrate')).player.name).toBe('Imported E2E Player');
@@ -299,5 +301,55 @@ describe('SqliteApiGameRepository end-to-end (real HTTP + temp SQLite)', () => {
     await putSave(slot, third);
     expect(await repo.saveGame(slot, forcedMine)).toMatchObject({ ok: false, conflict: true });
     expect((await requestJson(`/api/saves/${slot}`)).body.slot.payload.player.name).toBe('Third Writer');
+  });
+
+  it('does not resurrect a deleted slot from a stale local migration source', async () => {
+    const slot = 'e2e-reset-resurrection';
+    const local = createInitialSave();
+    local.player.name = 'Legacy Local';
+    let cleared = false;
+    const migration: MigrationSource = {
+      hasLocalSave: (id) => id === slot && !cleared,
+      loadLocalSave: () => local,
+      clearLocalSave: (id) => {
+        if (id === slot) cleared = true;
+      },
+    };
+
+    const repo1 = new SqliteApiGameRepository(baseUrl, fetch, migration);
+    expect((await repo1.loadGame(slot)).player.name).toBe('Legacy Local');
+    expect(cleared).toBe(true); // successful import clears migration source
+
+    // Simulate reset: server slot deleted.
+    expect((await requestJson(`/api/saves/${slot}`, { method: 'DELETE' })).status).toBe(200);
+
+    // A fresh repo instance (new tab/session) must not re-import the old local save.
+    cleared = true;
+    const repo2 = new SqliteApiGameRepository(baseUrl, fetch, migration);
+    const loaded = await repo2.loadGame(slot);
+    expect(loaded.player.name).toBe('Newcomer');
+    expect((await requestJson(`/api/saves/${slot}`)).status).toBe(404);
+  });
+
+  it('resetGame clears the local migration source to prevent resurrection', async () => {
+    const slot = 'e2e-reset-clears-migration';
+    const local = createInitialSave();
+    local.player.name = 'Legacy Local';
+    let cleared = false;
+    const migration: MigrationSource = {
+      hasLocalSave: (id) => id === slot && !cleared,
+      loadLocalSave: () => local,
+      clearLocalSave: (id) => {
+        if (id === slot) cleared = true;
+      },
+    };
+    const repo = new SqliteApiGameRepository(baseUrl, fetch, migration);
+    await repo.loadGame(slot); // imports
+    cleared = false; // simulate stale local still present
+    migration.hasLocalSave = (id) => id === slot && !cleared;
+    await repo.resetGame(slot);
+    expect(cleared).toBe(true);
+    const repo2 = new SqliteApiGameRepository(baseUrl, fetch, migration);
+    expect((await repo2.loadGame(slot)).player.name).toBe('Newcomer');
   });
 });

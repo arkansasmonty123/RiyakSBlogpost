@@ -73,6 +73,7 @@ describe('SqliteApiGameRepository', () => {
       {
         hasLocalSave: () => true,
         loadLocalSave: () => local,
+        clearLocalSave: () => {},
       },
     );
     const save = await repo.loadGame('default');
@@ -217,7 +218,7 @@ describe('SqliteApiGameRepository optimistic concurrency', () => {
         }
         return jsonResponse({ ok: false }, 404);
       },
-      { hasLocalSave: () => true, loadLocalSave: () => local },
+      { hasLocalSave: () => true, loadLocalSave: () => local, clearLocalSave: () => {} },
     );
     await repo.loadGame('default');
     expect(putBodies).toHaveLength(1);
@@ -275,6 +276,7 @@ describe('SqliteApiGameRepository slot ID hardening', () => {
         return false;
       },
       loadLocalSave: () => createInitialSave(),
+      clearLocalSave: () => {},
     });
     await repo.loadGame('bad/id');
     expect(queried).toEqual(['default']);

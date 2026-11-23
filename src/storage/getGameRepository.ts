@@ -15,6 +15,7 @@ export function getGameRepository(): GameRepository {
     cached = new SqliteApiGameRepository('', fetch, {
       hasLocalSave: (slotId) => localStorageGameRepository.hasPersistedSave(slotId),
       loadLocalSave: (slotId) => localStorageGameRepository.loadGameSync(slotId),
+      clearLocalSave: (slotId) => localStorageGameRepository.clearPersistedSave(slotId),
     });
   } else {
     cached = localStorageGameRepository;

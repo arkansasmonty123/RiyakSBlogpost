@@ -37,6 +37,20 @@ export class SaveConflictError extends Error {
   }
 }
 
+export class CorruptSaveError extends Error {
+  constructor(message = 'CORRUPT_SAVE') {
+    super(message);
+    this.name = 'CorruptSaveError';
+  }
+}
+
+function nextMonotonicIso(prev: string | undefined): string {
+  const now = Date.now();
+  const prevMs = prev ? Date.parse(prev) : NaN;
+  const ms = Number.isFinite(prevMs) ? Math.max(now, prevMs + 1) : now;
+  return new Date(ms).toISOString();
+}
+
 export function upsertSaveSlot(
   db: DatabaseSync,
   slotId: string,
@@ -44,18 +58,23 @@ export function upsertSaveSlot(
   options?: { expectedSavedAt?: string },
 ): SaveSlotRecord {
   const safePayload = stripCanonicalTruth(payload);
-  const obj = safePayload && typeof safePayload === 'object' ? (safePayload as Record<string, unknown>) : null;
-  const savedAt = typeof obj?.savedAt === 'string' ? obj.savedAt : new Date().toISOString();
+  const obj =
+    safePayload && typeof safePayload === 'object' && !Array.isArray(safePayload)
+      ? ({ ...(safePayload as Record<string, unknown>) } as Record<string, unknown>)
+      : null;
   const schemaVersion = typeof obj?.version === 'number' ? obj.version : 2;
 
   return withTransaction(db, () => {
-    if (options?.expectedSavedAt) {
-      const current = db.prepare('SELECT saved_at FROM save_slots WHERE slot_id = ?').get(slotId) as
-        { saved_at: string } | undefined;
-      if (current && current.saved_at !== options.expectedSavedAt) {
-        throw new SaveConflictError();
-      }
+    const current = db.prepare('SELECT saved_at FROM save_slots WHERE slot_id = ?').get(slotId) as
+      { saved_at: string } | undefined;
+    if (options?.expectedSavedAt && current && current.saved_at !== options.expectedSavedAt) {
+      throw new SaveConflictError();
     }
+
+    // Server-authoritative, monotonic CAS token. Client-supplied savedAt is not trusted as authority.
+    const savedAt = nextMonotonicIso(current?.saved_at);
+    if (obj) obj.savedAt = savedAt;
+    const payloadToStore = obj ?? safePayload;
 
     db.prepare(
       `
@@ -67,7 +86,7 @@ export function upsertSaveSlot(
         payload_json = excluded.payload_json,
         updated_at = datetime('now')
     `,
-    ).run(slotId, schemaVersion, savedAt, JSON.stringify(safePayload));
+    ).run(slotId, schemaVersion, savedAt, JSON.stringify(payloadToStore));
 
     db.prepare(`INSERT INTO audit_events (slot_id, event_type, day, detail_json) VALUES (?, ?, ?, ?)`).run(
       slotId,
@@ -96,11 +115,17 @@ export function getSaveSlot(db: DatabaseSync, slotId: string): SaveSlotRecord | 
       }
     | undefined;
   if (!row) return null;
+  let payload: unknown;
+  try {
+    payload = JSON.parse(row.payload_json);
+  } catch {
+    throw new CorruptSaveError(`CORRUPT_SAVE:${slotId}`);
+  }
   return {
     slotId: row.slot_id,
     schemaVersion: row.schema_version,
     savedAt: row.saved_at,
-    payload: JSON.parse(row.payload_json),
+    payload,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

@@ -11,6 +11,7 @@ export interface FetchLike {
 export interface MigrationSource {
   hasLocalSave(slotId: string): boolean;
   loadLocalSave(slotId: string): SaveGame;
+  clearLocalSave(slotId: string): void;
 }
 
 /** Server save-slot shape we care about for optimistic concurrency (never the payload contents). */
@@ -63,7 +64,11 @@ export class SqliteApiGameRepository implements GameRepository {
           const imported = this.migration.loadLocalSave(slot);
           // Best-effort import into server slot; do not fail load if import write fails.
           // The slot stamp is still unknown here, so the import never sends a stale guard.
-          await this.saveGame(slot, imported);
+          const result = await this.saveGame(slot, imported);
+          if (result.ok) {
+            // Prevent reset-resurrection: once server owns the slot, remove local migration source.
+            this.migration.clearLocalSave(slot);
+          }
           return imported;
         }
         return createInitialSave();
@@ -116,6 +121,8 @@ export class SqliteApiGameRepository implements GameRepository {
     }
     // The slot no longer exists (or we could not confirm it): forget any stale stamp.
     this.knownSavedAt.delete(slot);
+    // Prevent reset-resurrection from a stale local migration source.
+    this.migration?.clearLocalSave(slot);
     return createInitialSave();
   }
 }

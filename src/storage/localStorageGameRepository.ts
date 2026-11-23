@@ -55,6 +55,12 @@ export class LocalStorageGameRepository implements GameRepository {
     return false;
   }
 
+  clearPersistedSave(slotId: string = DEFAULT_GAME_SLOT): void {
+    const slot = normalizeSlotId(slotId);
+    this.storage.removeItem(slotRawKey(slot));
+    if (slot === DEFAULT_GAME_SLOT) this.storage.removeItem(LEGACY_KEY);
+  }
+
   loadGameSync(slotId: string = DEFAULT_GAME_SLOT): SaveGame {
     return loadSave(slotStorage(this.storage, normalizeSlotId(slotId)));
   }

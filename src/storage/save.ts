@@ -310,14 +310,25 @@ export function hydrateSave(parsed: unknown): SaveGame {
   }
 }
 
+function quarantineCorruptSave(storage: StorageLike, raw: string | null, reason: string): void {
+  if (!raw) return;
+  try {
+    storage.setItem(`${SAVE_KEY}:corrupt-backup`, JSON.stringify({ at: new Date().toISOString(), reason, raw }));
+  } catch {
+    // best-effort quarantine; never block recovery
+  }
+}
+
 /** Load v1 or v2 saves, merging new fields over sane defaults. Never trusts unknown versions. */
 export function loadSave(storage: StorageLike = defaultStorage()): SaveGame {
+  let raw: string | null = null;
   try {
-    const raw = storage.getItem(SAVE_KEY) ?? storage.getItem(LEGACY_KEY);
+    raw = storage.getItem(SAVE_KEY) ?? storage.getItem(LEGACY_KEY);
     if (!raw) return createInitialSave();
     const parsed = JSON.parse(raw) as unknown;
     return hydrateSave(parsed);
   } catch {
+    quarantineCorruptSave(storage, raw, 'load-or-parse-failed');
     return createInitialSave();
   }
 }

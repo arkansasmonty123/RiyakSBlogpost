@@ -91,13 +91,15 @@ describe('ADR-001 persistence over HTTP (server/api.ts)', () => {
     expect(put.body.slot).toMatchObject({
       slotId: 'slot-1',
       schemaVersion: 2,
-      savedAt: payload.savedAt,
     });
+    expect(typeof put.body.slot.savedAt).toBe('string');
     expect(put.body.slot.payload.player).toEqual({ name: 'Test Player' });
+    expect(put.body.slot.payload.savedAt).toBe(put.body.slot.savedAt); // server-authoritative
 
     const got = await requestJson('/api/saves/slot-1');
     expect(got.status).toBe(200);
-    expect(got.body.slot.payload).toEqual(payload);
+    expect(got.body.slot.savedAt).toBe(put.body.slot.savedAt);
+    expect(got.body.slot.payload).toEqual(put.body.slot.payload);
 
     const post = await requestJson('/api/saves/slot-2', {
       method: 'POST',
@@ -106,7 +108,8 @@ describe('ADR-001 persistence over HTTP (server/api.ts)', () => {
     });
     expect(post.status).toBe(200);
     expect(post.body.slot.slotId).toBe('slot-2');
-    expect((await requestJson('/api/saves/slot-2')).body.slot.savedAt).toBe('2026-11-23T00:00:01.000Z');
+    expect(typeof post.body.slot.savedAt).toBe('string');
+    expect((await requestJson('/api/saves/slot-2')).body.slot.savedAt).toBe(post.body.slot.savedAt);
   });
 
   it('strips caseFile.canonicalTruth from the stored payload and every API response', async () => {
@@ -187,7 +190,8 @@ describe('ADR-001 persistence over HTTP (server/api.ts)', () => {
 
   it('a stale expectedSavedAt returns 409 SAVE_CONFLICT and does not overwrite the slot', async () => {
     const original = { version: 2, savedAt: '2026-11-23T00:00:00.000Z', marker: 'original-write' };
-    await putSave('slot-conflict', original);
+    const first = await putSave('slot-conflict', original);
+    const serverSavedAt = first.body.slot.savedAt;
 
     const conflict = await putSave(
       'slot-conflict',
@@ -199,22 +203,24 @@ describe('ADR-001 persistence over HTTP (server/api.ts)', () => {
 
     const got = await requestJson('/api/saves/slot-conflict');
     expect(got.status).toBe(200);
-    expect(got.body.slot.savedAt).toBe(original.savedAt);
+    expect(got.body.slot.savedAt).toBe(serverSavedAt);
     expect(got.body.slot.payload.marker).toBe('original-write');
     expect(got.body.slot.payload.marker).not.toBe('stale-write');
     expect(JSON.stringify(got.body)).not.toContain('stale-write');
   });
 
   it('a matching expectedSavedAt permits the optimistic-concurrency update', async () => {
-    await putSave('slot-cas', { version: 2, savedAt: '2026-11-23T00:00:00.000Z', marker: 'first' });
+    const first = await putSave('slot-cas', { version: 2, savedAt: '2026-11-23T00:00:00.000Z', marker: 'first' });
+    const firstSavedAt = first.body.slot.savedAt;
 
     const update = await putSave(
       'slot-cas',
       { version: 2, savedAt: '2026-11-23T00:00:01.000Z', marker: 'second' },
-      '2026-11-23T00:00:00.000Z',
+      firstSavedAt,
     );
     expect(update.status).toBe(200);
-    expect(update.body.slot.savedAt).toBe('2026-11-23T00:00:01.000Z');
+    expect(typeof update.body.slot.savedAt).toBe('string');
+    expect(update.body.slot.savedAt).not.toBe(firstSavedAt);
     expect((await requestJson('/api/saves/slot-cas')).body.slot.payload.marker).toBe('second');
   });
 
@@ -226,6 +232,17 @@ describe('ADR-001 persistence over HTTP (server/api.ts)', () => {
     });
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ ok: false, error: 'INVALID_JSON' });
+  });
+
+  it('returns 422 CORRUPT_SAVE when stored payload JSON is unreadable', async () => {
+    const db = getDb();
+    db.prepare(
+      `INSERT INTO save_slots (slot_id, schema_version, saved_at, payload_json, updated_at)
+       VALUES (?, ?, ?, ?, datetime('now'))`,
+    ).run('slot-corrupt', 2, '2026-11-23T00:00:00.000Z', '{not-json');
+    const { status, body } = await requestJson('/api/saves/slot-corrupt');
+    expect(status).toBe(422);
+    expect(body).toEqual({ ok: false, error: 'CORRUPT_SAVE' });
   });
 
   it('an oversized payload returns 413 PAYLOAD_TOO_LARGE', async () => {
