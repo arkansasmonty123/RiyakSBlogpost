@@ -16,6 +16,8 @@
 - [`docs/DECISIONS.md`](./docs/DECISIONS.md) — open questions, decision log, and assumptions to avoid.
 - [`docs/LEGAL_SOURCE_VERIFICATION.md`](./docs/LEGAL_SOURCE_VERIFICATION.md) — D-005/D-011 content-owner checklist: required fields, acceptable official sources, validator usage, sign-off log, and the no-fabrication rule.
 - [`docs/legal-corpus/README.md`](./docs/legal-corpus/README.md) — corpus intake pipeline: folder layout, manifest format, verification workflow, and blocked status (no real corpus shipped).
+- [`docs/art-pipeline/README.md`](./docs/art-pipeline/README.md) — Phase 5 art asset pipeline: folder layout, naming/specs, formats, size budgets, provenance/licensing checklist, approval flow, and blocked status (D-002/D-012/D-018; no real assets shipped).
+- [`docs/ART_DIRECTION.md`](./docs/ART_DIRECTION.md) — provisional art direction, palette and character/environment rules (draft, pending owner decisions).
 
 ## Current repository state (2026-11-22)
 
@@ -29,7 +31,7 @@
 - Verified legal corpus/data: minimal fictional seed only (one internal educational summary is marked verified; statutory entries are explicit placeholders). No real legal corpus ingested; no statutory provision, judgment or citation has been fabricated or presented as verified.
 - Legal source verification workflow: **complete, but corpus-blocked.** `docs/LEGAL_SOURCE_VERIFICATION.md` defines the content-owner checklist and sign-off process; `src/domain/sourceValidation.ts` + `npm run validate:sources` deterministically gate records (required provenance, named reviewer/date, official URL and reviewed allowlist for specific citations). No real corpus exists yet; the allowlist is empty and D-005/D-011 remain blocked on a legal content owner.
 - Legal corpus manifest pipeline: **ready, but corpus-blocked.** `docs/legal-corpus/` documents the intake folder layout, manifest format and human handoff; `validateCorpusManifest` + `npm run validate:legal-corpus` validate manifest metadata and every record with clear reporting. The only shipped manifest is `manifest.template.json`, which is flagged `template: true` and rejected by the validator by design (`--template` exits 1). No official source has been ingested.
-- Visual assets: placeholder/composed UI (no final art assets)
+- Visual assets: placeholder/composed UI only (`src/app/SceneArt.tsx`; no final art assets). The Phase 5 art pipeline scaffold is ready (`docs/art-pipeline/`, `npm run validate:art-manifest`), but its only manifest is a rejected template and the intake folders contain only `.gitkeep` placeholders — real assets remain blocked on D-002/D-012/D-018 plus named owner approval.
 
 ## Quick start
 
@@ -49,11 +51,16 @@ npm run validate:sources -- docs/examples/legal-sources.example.json
 npm run validate:legal-corpus -- docs/legal-corpus/manifest.json
 # Prove the shipped template is NOT ingestible (expected exit code 1):
 npm run validate:legal-corpus -- --template
+
+# Validate the Phase 5 art manifest (not shipped while assets are blocked):
+npm run validate:art-manifest -- docs/art-pipeline/asset-manifest.json
+# Prove the shipped art template is NOT an approved manifest (expected exit code 1):
+npm run validate:art-manifest -- --template
 ```
 
 ## Continuous integration
 
-[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test`, the deterministic offline corpus gate (`npm run validate:sources -- --seed` and a check that the corpus template is rejected with exit 1), and `npm run build` on every push and pull request. It uses Node 22 (LTS), `npm ci` with the npm cache enabled, and read-only permissions; there is no deploy or publish step. The workflow becomes active once this repository is connected to a GitHub remote with Actions enabled (there is currently no remote configured).
+[`.github/workflows/ci.yml`](./.github/workflows/ci.yml) runs `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm test`, the deterministic offline corpus gate (`npm run validate:sources -- --seed` and a check that the corpus template is rejected with exit 1), a check that the Phase 5 art manifest template is rejected with exit 1, and `npm run build` on every push and pull request. It uses Node 22 (LTS), `npm ci` with the npm cache enabled, and read-only permissions; there is no deploy or publish step. The workflow becomes active once this repository is connected to a GitHub remote with Actions enabled (there is currently no remote configured).
 
 > Size note: keep >2 GB available in home/project environment (D-019). Current `/home` has sufficient free space; clean reinstallable artifacts only when needed.
 

@@ -2,15 +2,15 @@
 
 ## Summary
 
-| Field                    | Value                                                                                                                                                                                                                                                                                                                                                                       |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Project name**         | THE BAR                                                                                                                                                                                                                                                                                                                                                                     |
-| **Type**                 | Immersive, persistent legal-career simulator (educational simulation)                                                                                                                                                                                                                                                                                                       |
-| **Primary jurisdiction** | India (fictional firm/district/court environment initially)                                                                                                                                                                                                                                                                                                                 |
-| **Repository**           | `/home/divyanshukumarsinha241/project-courtroom`                                                                                                                                                                                                                                                                                                                            |
-| **Status**               | Phase 0 complete (2026-11-22). P0 prototype: "The First Brief — Office Prototype" (Vite + React + TS + Tailwind, localStorage), Day 1–10 playable slice, provenance/source-intake + deterministic corpus-validation workflow and corpus manifest pipeline with no auto-verification, CI workflow added. Real corpus still blocked on the legal content owner (D-005/D-011). |
-| **Primary reference**    | [`../THE_BAR_MASTER_CONTEXT.md`](../THE_BAR_MASTER_CONTEXT.md)                                                                                                                                                                                                                                                                                                              |
-| **Audit date**           | 2026-11-22                                                                                                                                                                                                                                                                                                                                                                  |
+| Field                    | Value                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Project name**         | THE BAR                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Type**                 | Immersive, persistent legal-career simulator (educational simulation)                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Primary jurisdiction** | India (fictional firm/district/court environment initially)                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Repository**           | `/home/divyanshukumarsinha241/project-courtroom`                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **Status**               | Phase 0 complete (2026-11-22). P0 prototype: "The First Brief — Office Prototype" (Vite + React + TS + Tailwind, localStorage), Day 1–10 playable slice, provenance/source-intake + deterministic corpus-validation workflow and corpus manifest pipeline with no auto-verification, CI workflow added. Real corpus still blocked on the legal content owner (D-005/D-011). Art asset pipeline scaffold ready (2026-11-23); real art assets blocked on D-002/D-012/D-018 + owner approval. |
+| **Primary reference**    | [`../THE_BAR_MASTER_CONTEXT.md`](../THE_BAR_MASTER_CONTEXT.md)                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| **Audit date**           | 2026-11-22                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 
 ## Product vision
 
@@ -55,6 +55,14 @@ All legal content must be verified, sourced, versioned, and dated. No fabricated
 - `markSourceVerified` now applies this same strict gate as a separate human/content-owner step; the game and AI stubs never verify or fabricate sources.
 - **Blocked follow-up:** assign the legal content owner (D-011), obtain official text and rights, and sign off real records before any verified real citation exists.
 
+## Implemented: art asset pipeline scaffold (D-002/D-012/D-018)
+
+- **Scaffold ready, assets blocked.** [`docs/art-pipeline/README.md`](./art-pipeline/README.md) documents folder layout, naming conventions, viewpoint/portrait/prop/UI-icon specs, SVG/WebP/PNG guidelines, soft size budgets (1 MiB/asset, 5 MiB total), the provenance/licensing checklist, the human review/approval flow, and Cloud Shell >2 GB constraints (D-019).
+- `docs/art-pipeline/asset-manifest.template.json` is a **template** (`template: true`) covering id, kind, file, license, source, author, origin, created/approved dates, sha256 checksum/size, status (draft/approved/rejected), notes and decision references. It is **rejected by the validator by design**.
+- `src/domain/artManifestValidation.ts` + `scripts/validate-art-manifest.ts` provide deterministic offline validation (`npm run validate:art-manifest`): manifest shape, required provenance for `approved` assets (license/source/author/origin/dates/reviewer/checksum/size), `UNSAFE_ASSET_PATH` rejection, and soft-budget warnings. Exit codes 0/1/2; no downloads, no heavy deps, no auto-approval. Tests in `src/tests/artManifestValidation.test.ts`.
+- `public/assets/art/.gitkeep` and `docs/art-pipeline/intake/{draft,approved}/.gitkeep` keep the folders present; `.gitignore` blocks binaries by default (approved assets require an approved manifest entry and explicit `git add -f`). SVG placeholders remain allowed.
+- **Blocked follow-up:** D-002 (style), D-012 (asset rights/originality) and D-018 (content/asset licence) are still `Unknown`; no art owner/reviewer is assigned. The shipped visuals remain in-repo CSS/SVG placeholders (`src/app/SceneArt.tsx`); **no external asset has been imported or approved**.
+
 ## Target first playable release (from master context)
 
 - One fictional Indian law firm
@@ -85,13 +93,15 @@ project-courtroom/
 │   ├── domain/                  # types, seed, guards, legalSources (provenance
 │   │                            # + intake), sourceValidation (corpus gate),
 │   │                            # access projection, progression, dialogue,
-│   │                            # evidence, draft
+│   │                            # evidence, draft; artManifestValidation (art gate)
 │   ├── storage/save.ts          # localStorage load/persist + v1→v2 migration
 │   └── tests/                   # vitest guardrail + smoke tests
 ├── scripts/
 │   ├── validate-sources.ts      # offline corpus validator CLI
 │   ├── validate-legal-corpus.ts # offline manifest validator CLI
+│   ├── validate-art-manifest.ts # offline art manifest validator CLI
 │   └── node-shims.d.ts          # minimal Node ambient types (no @types/node)
+├── public/assets/art/.gitkeep   # empty art folder; binaries ignored until approved
 ├── README.md
 ├── THE_BAR_MASTER_CONTEXT.md
 └── docs/
@@ -105,6 +115,10 @@ project-courtroom/
     │   ├── README.md            # intake pipeline docs + blocked status
     │   ├── manifest.template.json # TEMPLATE / NOT LEGAL AUTHORITY (rejected by CLI)
     │   └── intake/{unverified,reviewed}/.gitkeep
+    ├── art-pipeline/
+    │   ├── README.md            # Phase 5 pipeline docs + blocked status
+    │   ├── asset-manifest.template.json # TEMPLATE (rejected by CLI); no real assets
+    │   └── intake/{draft,approved}/.gitkeep
     ├── AUDIT.md
     ├── DECISIONS.md
     ├── IMPLEMENTATION_PLAN.md

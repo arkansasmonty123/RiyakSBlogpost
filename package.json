@@ -16,6 +16,7 @@
     "test:watch": "vitest",
     "validate:sources": "vite-node scripts/validate-sources.ts",
     "validate:legal-corpus": "vite-node scripts/validate-legal-corpus.ts",
+    "validate:art-manifest": "vite-node scripts/validate-art-manifest.ts",
     "size:home": "du -sh /home/divyanshukumarsinha241"
   },
   "dependencies": {

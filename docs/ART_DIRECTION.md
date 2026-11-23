@@ -4,6 +4,7 @@
 **Date:** 2026-11-22  
 **Owner (to assign):** Product / Design, with Legal for asset rights  
 **Related decisions:** D-002 (visual style — Unknown), D-012 (asset rights/licensing — Unknown), D-018 (content/asset licence — Unknown) in [`DECISIONS.md`](./DECISIONS.md).  
+**Pipeline:** The process/tooling scaffold is ready at [`art-pipeline/README.md`](./art-pipeline/README.md) (manifest template, deterministic offline validator, intake folders), but **no asset has been imported or approved**; the decisions above and a named owner/reviewer are still required.  
 **Scope:** Placeholder guidance for the P0 illustrated 2D scene prototype. Nothing here authorises production art or the introduction of third-party assets.
 
 ---
@@ -11,6 +12,7 @@
 ## 1. Current state (evidence-based)
 
 - The prototype uses **only in-repo CSS/SVG placeholder art** (`src/app/SceneArt.tsx`, `src/styles/index.css`). There are **no external image assets, no downloaded art pack and no final style guide**.
+- An **art asset pipeline scaffold** now exists (`docs/art-pipeline/`, `public/assets/art/.gitkeep`, `npm run validate:art-manifest`): folder layout, naming rules, asset specs, a rejected-by-design manifest template and an offline validator. It contains **no assets** and changes no rights/status; see [`art-pipeline/README.md`](./art-pipeline/README.md).
 - Scene data is declarative in `src/domain/scenes.ts`: **2 locations** (Senior Chamber, Office Reception) and **8 static viewpoints**, each with labelled hotspots. `SaveGame.selectedViewpoint` persists only a viewpoint id.
 - The illustrations are decorative. Every interactive object is rendered as a real, labelled HTML button in `App.tsx`; art must never be the only way to act.
 - Therefore this document is a **placeholder style guide and a checklist to be completed**, not a record of cleared rights.
@@ -62,7 +64,7 @@ Any final direction may revise these values, but contrast for text and controls 
 
 ## 5. Asset licensing & provenance checklist (to complete before any asset is added)
 
-For **every** image, portrait, texture, sound or font introduced, record an entry in an asset manifest (create `docs/ASSET_MANIFEST.md` when the first external asset is added) with:
+For **every** image, portrait, texture, sound or font introduced, record an entry in the art-asset manifest pipeline at [`docs/art-pipeline/`](./art-pipeline/README.md) (copy `asset-manifest.template.json` only after the decisions below are resolved; the template is rejected by `npm run validate:art-manifest -- --template`) with:
 
 - [ ] Asset id, filename, and where it is used (location/viewpoint/character).
 - [ ] Origin: **original in-repo**, **licensed third-party**, or **AI/generative output**. State which; do not leave blank.
@@ -78,12 +80,13 @@ For **every** image, portrait, texture, sound or font introduced, record an entr
 
 ## 6. Open decisions / follow-up
 
-| Item                                          | Status       | Owner            | Needed before                                |
-| --------------------------------------------- | ------------ | ---------------- | -------------------------------------------- |
-| Choose final visual style (D-002)             | Unknown      | Product / Design | Any final scene/character asset              |
-| Approve asset rights + licence policy (D-012) | Unknown      | Design / Legal   | Importing any third-party or generated asset |
-| Decide repo/content/asset licence (D-018)     | Unknown      | Product / Legal  | Public release                               |
-| Assign named art owner and reviewer           | Not assigned | Product          | Asset sign-off                               |
-| Create asset manifest and style sheets        | Not started  | Art owner        | First external asset                         |
+| Item                                                                   | Status                                     | Owner                           | Needed before                                |
+| ---------------------------------------------------------------------- | ------------------------------------------ | ------------------------------- | -------------------------------------------- |
+| Choose final visual style (D-002)                                      | Unknown                                    | Product / Design                | Any final scene/character asset              |
+| Approve asset rights + licence policy (D-012)                          | Unknown                                    | Design / Legal                  | Importing any third-party or generated asset |
+| Decide repo/content/asset licence (D-018)                              | Unknown                                    | Product / Legal                 | Public release                               |
+| Assign named art owner and reviewer                                    | Not assigned                               | Product                         | Asset sign-off                               |
+| Asset pipeline scaffold (manifest template, validator, intake folders) | ✅ Ready (2026-11-23)                      | Orchestrator / future art owner | First external asset                         |
+| Create real asset manifest and reference/style sheets                  | Pending D-002/D-012/D-018 + owner sign-off | Art owner                       | First external asset                         |
 
-**Verification note:** As of this draft, no external assets exist, so there are no licences to verify and no rights have been claimed. This document will be revised when D-002/D-012/D-018 are resolved; until then it is guidance only.
+**Verification note:** As of this update, no external assets exist, so there are no licences to verify and no rights have been claimed. The pipeline scaffold (`docs/art-pipeline/`, `npm run validate:art-manifest`) is implemented and tested, but its only manifest is a rejected template and its folders contain only `.gitkeep` placeholders. This document will be revised when D-002/D-012/D-018 are resolved; until then it is guidance only.

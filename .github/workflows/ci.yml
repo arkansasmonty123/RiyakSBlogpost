@@ -62,5 +62,19 @@ jobs:
           fi
           echo "Template correctly rejected as a non-corpus."
 
+      # The Phase 5 art shape template must never be mistaken for an approved asset manifest.
+      # Expect exit code 1. No asset is downloaded, ingested or approved by this step.
+      - name: Ensure art manifest template is never approvable
+        run: |
+          set +e
+          npm run validate:art-manifest -- --template
+          code=$?
+          set -e
+          if [ "$code" -ne 1 ]; then
+            echo "Expected the art manifest template to be rejected (exit 1), got $code" >&2
+            exit 1
+          fi
+          echo "Art template correctly rejected as not approvable."
+
       - name: Build
         run: npm run build

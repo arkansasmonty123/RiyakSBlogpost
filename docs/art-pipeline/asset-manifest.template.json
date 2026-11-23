@@ -1,0 +1,48 @@
+{
+  "_warning": "TEMPLATE ONLY - NOT AN APPROVED ASSET MANIFEST AND NOT A LICENSE CLAIM. The `template: true` flag makes this file non-ingestible: `npm run validate:art-manifest -- --template` MUST fail. All values below are fictional examples. Never fill fields from memory or AI output. Only a named art owner/reviewer may create a real manifest by following docs/art-pipeline/README.md after D-002/D-012/D-018 are resolved.",
+  "template": true,
+  "schemaVersion": 1,
+  "manifestId": "EXAMPLE-ART-MANIFEST-TEMPLATE-DO-NOT-USE",
+  "status": "blocked",
+  "owner": null,
+  "styleDecision": null,
+  "rightsDecision": null,
+  "licenseDecision": null,
+  "intakeFolder": "intake/",
+  "perAssetBudgetBytes": 1048576,
+  "totalBudgetBytes": 5242880,
+  "note": "Pipeline scaffold ready, real assets pending D-002/D-012/D-018 and named owner approval. No external assets committed; the game currently uses only in-repo CSS/SVG placeholder art (src/app/SceneArt.tsx).",
+  "assets": [
+    {
+      "id": "ex-viewpoint-chamber-entrance-v1",
+      "kind": "viewpoint",
+      "file": "viewpoints/chamber/entrance-v1.svg",
+      "origin": "original",
+      "license": "EXAMPLE-ONLY - not a real license",
+      "source": "Fictional example: original in-repo SVG derived from the CSS/SVG placeholder in src/app/SceneArt.tsx.",
+      "author": "EXAMPLE - fictional author name",
+      "createdDate": "2026-11-22",
+      "status": "approved",
+      "approvedDate": "2026-11-22",
+      "approvedBy": "EXAMPLE - fictional reviewer name",
+      "checksum": "sha256:0000000000000000000000000000000000000000000000000000000000000000",
+      "sizeBytes": 8192,
+      "usedAt": "Senior Chamber / entrance viewpoint",
+      "notes": "Example only. Replace the zero checksum with the real sha256 of the committed file; approval requires a named human reviewer and resolved D-002/D-012/D-018."
+    },
+    {
+      "id": "ex-portrait-meera-neutral-v1",
+      "kind": "portrait",
+      "file": "portraits/meera/neutral-v1.webp",
+      "origin": "licensed-third-party",
+      "license": "EXAMPLE-ONLY - not a real license",
+      "source": "Fictional example: state the vendor, pack name, stable URL and saved licence text.",
+      "author": "EXAMPLE - fictional author name",
+      "createdDate": "2026-11-22",
+      "status": "draft",
+      "sizeBytes": 24576,
+      "usedAt": "Character portrait / neutral expression",
+      "notes": "Draft example. Licence text and redistribution rights must be checked and recorded before approval."
+    }
+  ]
+}
