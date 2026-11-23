@@ -1,0 +1,83 @@
+{
+  "version": 1,
+  "updated_at": "2026-11-23T18:30:00Z",
+  "project": "project-negotiations",
+  "name": "The Negotiation Table",
+  "status": "complete",
+  "objective": "Build and complete The Negotiation Table MVP per PRD.md.",
+  "current_milestone": "NEG-M5: MVP complete and verified",
+  "active_task_id": null,
+  "active_agent": null,
+  "last_completed_task_id": "NEG-017",
+  "next_action": "Implementation plan MVP scope complete and verified. Optional: live LLM playtest on faster/API machine (LLM_PROVIDER/LLM_API_KEY/LLM_MODEL/LLM_URL); operator deploy hardening/TLS. No deploy/push without explicit approval.",
+  "model_policy": {
+    "active_model": "opencode/iceman-free",
+    "waiting_for_model_capacity": false,
+    "last_model_error": null
+  },
+  "task_assignments": [
+    {
+      "task_id": "NEG-017",
+      "title": "Onboarding + explicit prediction reflection",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Added dismissible first-run onboarding on case select and explicit prediction-vs-outcome calibration panel in debrief; updated PRD gap audit. typecheck PASS, 33/33 tests PASS, build PASS."
+    },
+    {
+      "task_id": "NEG-016",
+      "title": "Self-host fonts for offline determinism",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Replaced Google Fonts with self-hosted latin woff2 (IBM Plex Sans 400-700, Newsreader 500-700) in public/fonts; updated index.html; dist includes fonts. typecheck PASS, 33/33 tests PASS, build PASS."
+    },
+    {
+      "task_id": "NEG-015",
+      "title": "Prediction-vs-outcome debrief reflection",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Added evidence-based prediction calibration concept lesson when predictions recorded; added missed opportunity when absent. Engine-only, contract-safe. typecheck PASS, 33/33 tests PASS."
+    },
+    {
+      "task_id": "NEG-014",
+      "title": "UI polish + visual QA pass",
+      "agent": "ui-ux-frontend",
+      "status": "done",
+      "result_summary": "ui-ux-frontend polished client UI (room/briefing/prep/debrief/skills), responsive+a11y+reduced-motion/forced-colors, no contract/backend changes. Independent verification: typecheck PASS, 33/33 tests PASS, build PASS. Screenshots captured at 375/1440.",
+      "next_action": null
+    },
+    {
+      "task_id": "NEG-013",
+      "title": "PRD gap audit + contextual concept lessons",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Saved MASTER-ORCHESTRATOR-PRD.md; audited gaps; added evidence-based conceptLessons to DebriefReport/engine/UI covering BATNA, anchoring, ZOPA/information asymmetry, signalling/bluff detection, concessions/game theory, cognitive biases/pressure. typecheck PASS, 33/33 tests PASS."
+    },
+    {
+      "task_id": "NEG-012",
+      "title": "Local LLM wiring for Cloud Shell",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "Installed ollama in /tmp, pulled qwen3.5:2b+0.8b to /tmp/ollama-models. Fixed provider to allow local/ollama without API key; orchestrator timeout now reads LLM_TIMEOUT_MS; .env.example updated. Typecheck/tests still PASS (33/33). Live local inference too slow on 2-core Cloud Shell for reliable E2E."
+    },
+    {
+      "task_id": "NEG-011",
+      "title": "Final completion pass and doc reconciliation",
+      "agent": "orchestrator",
+      "status": "done",
+      "result_summary": "typecheck PASS, vitest 33/33 PASS, build PASS, 99M. Docs reconciled; project-management moved into project-negotiations/project-management."
+    }
+  ],
+  "recovery": {
+    "last_checkpoint": "2026-11-23T18:30:00Z",
+    "resume_instructions": "Read project-negotiations/project-management/* and PRD/ROADMAP/docs/ARCHITECT-PLAN.md; verify with typecheck/test/build; continue from next_action."
+  },
+  "validation_notes": [
+    "2026-11-23: NEG-017 onboarding + explicit prediction reflection. typecheck PASS, 33/33 PASS, build PASS.",
+    "2026-11-23: NEG-016 self-hosted fonts. typecheck PASS, 33/33 PASS, build PASS; dist includes fonts.",
+    "2026-11-23: NEG-015 prediction calibration in debrief. typecheck PASS, 33/33 tests PASS.",
+    "2026-11-23: NEG-014 UI polish. typecheck PASS, 33/33 PASS, build PASS. Client-only scope; screenshots in /tmp/opencode/neg-*.png.",
+    "2026-11-23: NEG-013 PRD gap audit. Added conceptLessons (evidence-based) to debrief; typecheck PASS, 33/33 tests PASS.",
+    "2026-11-23: NEG-012 local LLM wiring. typecheck PASS, 33/33 tests PASS. Ollama+qwen3.5:2b/0.8b installed in /tmp; local provider/keyless+timeout fix applied. Live CPU inference too slow/unreliable on 2-core Cloud Shell.",
+    "2026-11-23: typecheck PASS, vitest 33/33 PASS (6 files), vite build PASS, 99M. PRD MVP criteria present; docs reconciled."
+  ]
+}
