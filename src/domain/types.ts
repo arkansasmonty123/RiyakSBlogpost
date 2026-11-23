@@ -350,6 +350,38 @@ export interface CaseTheory {
   claims: TheoryClaim[];
 }
 
+/**
+ * The separately tracked dimensions of the formative Legal Mind Profile. Each dimension keeps
+ * its own qualitative rating and its own supporting evidence; there is deliberately no single
+ * aggregate "intelligence" score. These ids are stable so a profile built from an older save
+ * still maps onto the same dimensions.
+ */
+export type LegalMindDimensionId =
+  | 'issue-spotting'
+  | 'fact-analysis'
+  | 'logical-consistency'
+  | 'evidence-evaluation'
+  | 'legal-interpretation'
+  | 'precedent-analysis'
+  | 'strategy'
+  | 'counterargument-anticipation'
+  | 'drafting'
+  | 'ethical-reasoning';
+
+/** Stable build/display order for the ten profile dimensions. */
+export const LEGAL_MIND_DIMENSION_IDS: readonly LegalMindDimensionId[] = [
+  'issue-spotting',
+  'fact-analysis',
+  'logical-consistency',
+  'evidence-evaluation',
+  'legal-interpretation',
+  'precedent-analysis',
+  'strategy',
+  'counterargument-anticipation',
+  'drafting',
+  'ethical-reasoning',
+];
+
 export interface SaveGame {
   version: 2;
   savedAt: string;

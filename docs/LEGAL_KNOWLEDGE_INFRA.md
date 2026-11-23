@@ -350,3 +350,58 @@ source warns (`UNUSED_REVIEWED_IDENTIFIER`) so it cannot silently lend authority
 ---
 
 _Documentation only. No runtime code, schema or validator behaviour is changed by this document._
+
+## 5.4 Knowledge Graph and Interdisciplinary Learning (Phase 8)
+
+### 5.4.1 Connection Establishment (player actions, not AI)
+
+Knowledge connections are established exclusively through player-driven actions within the game's deterministic systems. The flow is:
+
+1. **Discovery**: When a player discovers or reviews evidence, the game may prompt the player to record an interdisciplinary link if the evidence type suggests a connection to a non-legal domain. This is a manual player choice — the system never auto-generates or infers connections.
+
+2. **Notebook entry**: The player creates a notebook entry (kind: `research`, `theory`, `note`, etc.) that includes `knowledgeGraphIds?: string[]`. These IDs reference entries in the knowledge graph. The `InterdisciplinaryNotebookEntry` type extends `NotebookEntry` with a required `connection: KnowledgeConnection` field, establishing the explicit link between the notebook note and its interdisciplinary connection.
+
+3. **Assignment integration**: Assignments may have `requiredNotebookKinds` that include interdisciplinary notes. When a player submits an assignment for review, the system checks that required `knowledgeGraphIds` are present on relevant notebook entries. The `reviewAssignment` function in `src/domain/progression.ts` verifies `requiredSourceIds` and `requiredNotebookKinds` — `knowledgeGraphIds` are checked similarly as part of the assignment completion gate.
+
+4. **Review**: During senior review, the feedback may reference or validate the interdisciplinary connections. The review is deterministic — it checks that the `KnowledgeConnection` fields are properly populated with valid `KnowledgeDomain` values and `strength` assessments, all written by the player.
+
+### 5.4.2 `knowledgeGraphIds` Flow Through the System
+
+```
+discovery → notebook entry (with knowledgeGraphIds) → assignment requirement → review validation
+```
+
+- **Discovery**: When evidence is discovered/reviewed, `knowledgeGraphIds` may be populated on the resulting notebook entry via player action.
+- **Notebook**: `NotebookEntry` has `knowledgeGraphIds?: string[]` (line 200, `src/domain/types.ts`). `InterdisciplinaryNotebookEntry` adds `connection: KnowledgeConnection` (line 237-239).
+- **Assignment**: Assignment completion gates check that required notebook kinds and their `knowledgeGraphIds` are present. The `missingA2Requirements` function (`src/domain/draftSubmission.ts`) and `reviewAssignment` (`src/domain/progression.ts`) both follow the same pattern of checking required notebook fields.
+- **Review**: Senior review feedback references the connections; the review result is recorded as a notebook entry of kind `feedback`.
+
+The `knowledgeGraphIds` array is **preserved** through save round-trips via the `hydrateSave` → `trimNotebook` pipeline in `src/storage/save.ts`. Legacy saves (v1, v2) without the field default to `undefined` (treated as empty array behavior), and new saves include the field. The `capNotebook` function in `src/domain/notebook.ts` trims the notebook array to `MAX_NOTEBOOK_ENTRIES` (300), which also trims `knowledgeGraphIds` arrays in-situ.
+
+### 5.4.3 UI Hints for Interdisciplinary Links
+
+- **Notebook panel**: When a notebook entry has `knowledgeGraphIds` populated, the UI displays a "Interdisciplinary links" badge or chip group showing the `KnowledgeDomain` chips (forensic, medical, psychology, economics, accounting, cybersecurity, history, philosophy, sociology, technology). Clicking a chip could filter or highlight related entries.
+- **Assignment panels**: When an assignment has `requiredNotebookKinds` that include interdisciplinary knowledge, the assignment UI shows a visual indicator that the player must produce an interdisciplinary-linked note before the assignment can be reviewed.
+- **Research panel**: Source entries in the research panel may show a "Connect to discipline" affordance that, when clicked, opens a modal letting the player select a `KnowledgeDomain` and write a `relatedConcept` summary, creating a `KnowledgeConnection` record.
+- **Knowledge domain chips**: Throughout the UI, `KnowledgeDomain` values render as tagged chips with domain-specific colors/icons, making interdisciplinary links visible at a glance.
+
+### 5.4.4 Save Migration Path
+
+The `knowledgeGraphIds` field is additive and backward-compatible:
+
+- **Legacy saves** (v1, v2 without the field): When `hydrateSave` runs, `save.notebook[i].knowledgeGraphIds` is `undefined`. The `trimNotebook` function and notebook capping logic treat `undefined` the same as an empty array. No migration script is required — the field simply resolves to `[]` (empty) for old saves.
+- **New saves**: `knowledgeGraphIds` is included when notebook entries are created via `addNotebookEntry`. The field is persisted in localStorage as part of the JSON save game.
+- **Migration strategy**: If a future need arises to populate `knowledgeGraphIds` for existing saves, a one-time migration can be run via `npm run db:server` or a CLI script that iterates `save.notebook`, reads any stored interdisciplinary data, and sets `knowledgeGraphIds` based on the existing `KnowledgeConnection` records. Because the field is optional and the system treats its absence as "no interdisciplinary links," no data is lost and no existing entries are broken.
+- **Deterministic derivers**: Any function that reads `knowledgeGraphIds` must handle `undefined` / missing field gracefully (e.g., `save.notebook[n]?.knowledgeGraphIds ?? []`). This is already the pattern used throughout the codebase for optional fields.
+
+### 5.4.5 Deterministic Derivation Rules (no AI generation)
+
+All knowledge graph behavior is deterministic and player-driven. The following rules are **never** AI-generated:
+
+- **No auto-inference**: The system never infers or generates `KnowledgeConnection` records from evidence text, case facts, or player behavior. A player must explicitly create a notebook entry with a `connection: KnowledgeConnection` field.
+- **Player-written descriptions**: The `description` field of `KnowledgeConnection` is always player-written. It is a `string` summarizing the connection — the game never populates it from domain models or external lookups.
+- **Player-assigned strength**: The `strength: 'weak' | 'moderate' | 'strong'` field is player-assessed. The UI may provide hints, but the assignment is always a player choice.
+- **Domain from predefined set**: The `domain: KnowledgeDomain` field must be one of the 10 predefined domains. The UI presents these as selectable chips; the game does not suggest or auto-complete domains.
+- **ID references**: `knowledgeGraphIds?: string[]` contains IDs that the player or system has previously recorded. The game never generates new IDs; it only references existing ones.
+- **Validation is structural**: Validators check that `KnowledgeConnection` fields have the correct shape (id, legalTopic, domain, relatedConcept, description, strength) but do not validate the semantic content of the connection. This is a player-quality gate, not a truth gate.
+- **Save serialization**: When serializing/deserializing saves, `knowledgeGraphIds` is treated as a plain string array. No AI or domain logic is run during save load — the data is passed through deterministically.

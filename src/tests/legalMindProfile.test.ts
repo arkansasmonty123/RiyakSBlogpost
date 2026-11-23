@@ -13,9 +13,9 @@ import {
 } from '@/domain/casework';
 import { addEvidenceNote, discoverEvidenceItem, reviewEvidence } from '@/domain/evidence';
 import { applyDialogueChoice } from '@/domain/dialogue';
-import { loadSave, SAVE_KEY } from '@/storage/save';
+import { loadSave, persistSave, SAVE_KEY } from '@/storage/save';
 import type { StorageLike } from '@/storage/save';
-import type { SaveGame } from '@/domain/types';
+import { LEGAL_MIND_DIMENSION_IDS, type SaveGame } from '@/domain/types';
 
 const GOOD_SUMMARY =
   'Issue: what happened outside the canteen. I reviewed the medical report, the partial clip and the witness note, attached the verified educational summary, and kept known facts separate from claims and disputed points.';
@@ -101,6 +101,12 @@ function completeChapter(): SaveGame {
   return save;
 }
 
+function dimension(profile: LegalMindProfile, id: string) {
+  const found = profile.dimensions.find((d) => d.id === id);
+  if (!found) throw new Error(`missing profile dimension: ${id}`);
+  return found;
+}
+
 /** Collect every string in a profile so no field escapes the guardrails. */
 function profileStrings(profile: LegalMindProfile): string[] {
   const out: string[] = [profile.intro, profile.closing];
@@ -130,15 +136,21 @@ describe('Legal Mind Profile (lite)', () => {
     const second = buildLegalMindProfile(save);
 
     expect(first).toEqual(second);
-    expect(first.dimensions).toHaveLength(6);
-    expect(new Set(first.dimensions.map((d) => d.id)).size).toBe(6);
+    expect(first.dimensions).toHaveLength(LEGAL_MIND_DIMENSION_IDS.length);
+    expect(first.dimensions).toHaveLength(10);
+    expect(new Set(first.dimensions.map((d) => d.id)).size).toBe(10);
+    expect(first.dimensions.map((d) => d.id)).toEqual([...LEGAL_MIND_DIMENSION_IDS]);
     expect(first.dimensions.map((d) => d.id)).toEqual([
       'issue-spotting',
       'fact-analysis',
+      'logical-consistency',
       'evidence-evaluation',
       'legal-interpretation',
-      'procedure',
-      'ethics',
+      'precedent-analysis',
+      'strategy',
+      'counterargument-anticipation',
+      'drafting',
+      'ethical-reasoning',
     ]);
     // No single numeric score field anywhere in the profile.
     expect(Object.keys(first).sort()).toEqual(['closing', 'dimensions', 'intro']);
@@ -164,14 +176,14 @@ describe('Legal Mind Profile (lite)', () => {
     const save = completeChapter();
     const profile = buildLegalMindProfile(save);
     const evidence = profile.dimensions.find((d) => d.id === 'evidence-evaluation')!;
-    const procedure = profile.dimensions.find((d) => d.id === 'procedure')!;
+    const strategy = profile.dimensions.find((d) => d.id === 'strategy')!;
 
     expect(evidence.level).toBe('consistent');
-    expect(procedure.level).toBe('consistent');
+    expect(strategy.level).toBe('consistent');
     expect(evidence.evidence.join(' ')).toContain('chain-of-custody');
     expect(evidence.rationale).toContain('recorded action');
     expect(evidence.rationale).toContain('Consistent');
-    expect(procedure.evidence.join(' ')).toContain('custody-log assignment');
+    expect(strategy.evidence.join(' ')).toContain('senior feedback');
 
     // A playthrough without casework milestones earns genuinely lower, explained levels.
     const thinned = structuredClone(save);
@@ -186,12 +198,12 @@ describe('Legal Mind Profile (lite)', () => {
     }
     const thinner = buildLegalMindProfile(thinned);
     const thinnerEvidence = thinner.dimensions.find((d) => d.id === 'evidence-evaluation')!;
-    const thinnerProcedure = thinner.dimensions.find((d) => d.id === 'procedure')!;
+    const thinnerStrategy = thinner.dimensions.find((d) => d.id === 'strategy')!;
 
     expect(LEGAL_MIND_LEVEL_RANK[thinnerEvidence.level]).toBeLessThan(LEGAL_MIND_LEVEL_RANK[evidence.level]);
-    expect(LEGAL_MIND_LEVEL_RANK[thinnerProcedure.level]).toBeLessThan(LEGAL_MIND_LEVEL_RANK[procedure.level]);
+    expect(LEGAL_MIND_LEVEL_RANK[thinnerStrategy.level]).toBeLessThan(LEGAL_MIND_LEVEL_RANK[strategy.level]);
     expect(thinnerEvidence.rationale).toContain('recorded action');
-    expect(thinnerProcedure.evidence.length).toBeLessThan(procedure.evidence.length);
+    expect(thinnerStrategy.evidence.length).toBeLessThan(strategy.evidence.length);
   });
 
   it('starts at emerging for a fresh player and never mutates the save', () => {
@@ -245,7 +257,7 @@ describe('Legal Mind Profile (lite)', () => {
 
     const summary = buildChapterCompletionSummary(save);
     expect(summary.outcome).toContain('Medical report summary');
-    expect(summary.legalMindProfile.dimensions).toHaveLength(6);
+    expect(summary.legalMindProfile.dimensions).toHaveLength(LEGAL_MIND_DIMENSION_IDS.length);
   });
 
   it('stays compatible with previously saved games and old payload shapes', () => {
@@ -268,8 +280,172 @@ describe('Legal Mind Profile (lite)', () => {
     delete old.caseTheory;
     const legacy = loadSave(memoryStorage({ 'the-bar-save-v1': JSON.stringify(old) }));
     const legacyProfile = buildLegalMindProfile(legacy);
-    expect(legacyProfile.dimensions).toHaveLength(6);
+    expect(legacyProfile.dimensions).toHaveLength(LEGAL_MIND_DIMENSION_IDS.length);
     expect(() => assertNoCanonicalTruthLeak(legacyProfile)).not.toThrow();
     expect(buildChapterCompletionSummary(legacy).isComplete).toBe(false);
+  });
+  it('keeps ten separate qualitative dimensions and never a single composite score', () => {
+    const profile = buildLegalMindProfile(completeChapter());
+    for (const key of ['score', 'total', 'overall', 'composite', 'average']) {
+      expect(profile).not.toHaveProperty(key);
+    }
+    expect(typeof profile.intro).toBe('string');
+    expect(typeof profile.closing).toBe('string');
+    for (const d of profile.dimensions) {
+      expect(typeof d.level).toBe('string');
+      expect(Number.isFinite(Number(d.level))).toBe(false);
+      expect(Object.keys(d).sort()).toEqual([
+        'evidence',
+        'id',
+        'label',
+        'level',
+        'levelLabel',
+        'nextStep',
+        'rationale',
+      ]);
+    }
+    // One grade is not applied globally: each dimension reflects its own recorded actions.
+    expect(new Set(profile.dimensions.map((d) => d.level)).size).toBeGreaterThan(1);
+  });
+
+  it('updates from assignment review outcomes', () => {
+    const base = createInitialSave();
+    const before = dimension(buildLegalMindProfile(base), 'issue-spotting');
+    expect(before.level).toBe('emerging');
+
+    const reviewed = structuredClone(base);
+    reviewed.assignments.find((a) => a.id === 'a1')!.status = 'reviewed';
+    const after = dimension(buildLegalMindProfile(reviewed), 'issue-spotting');
+    expect(after.evidence.join(' ')).toContain('fact matrix');
+    expect(LEGAL_MIND_LEVEL_RANK[after.level]).toBeGreaterThan(LEGAL_MIND_LEVEL_RANK[before.level]);
+
+    reviewed.assignments.find((a) => a.id === 'a2')!.status = 'reviewed';
+    expect(dimension(buildLegalMindProfile(reviewed), 'drafting').evidence.join(' ')).toContain('case-brief draft');
+  });
+
+  it('updates from senior review results', () => {
+    const base = createInitialSave();
+    base.reviewRounds = [
+      {
+        id: 'r-accepted',
+        day: 9,
+        assignmentId: 'a7',
+        round: 2,
+        status: 'accepted',
+        feedback: 'Accepted.',
+        strengths: ['Work summary states the issue and the basis for conclusions.', 'Verified source notes attached.'],
+        gaps: [],
+      },
+    ];
+    expect(dimension(buildLegalMindProfile(base), 'legal-interpretation').evidence.join(' ')).toContain(
+      'verified source notes',
+    );
+    expect(dimension(buildLegalMindProfile(base), 'logical-consistency').evidence.join(' ')).toContain(
+      'basis for your conclusions',
+    );
+
+    base.reviewRounds.unshift({
+      id: 'r-revision',
+      day: 9,
+      assignmentId: 'a7',
+      round: 1,
+      status: 'needs_revision',
+      feedback: 'Revise.',
+      strengths: [],
+      gaps: ['Expand the work summary.'],
+    });
+    expect(dimension(buildLegalMindProfile(base), 'drafting').evidence.join(' ')).toContain('revised and resubmitted');
+    expect(dimension(buildLegalMindProfile(base), 'counterargument-anticipation').evidence.join(' ')).toContain(
+      'resubmitted your work',
+    );
+  });
+
+  it('updates from case conclusions', () => {
+    const base = createInitialSave();
+    const before = dimension(buildLegalMindProfile(base), 'strategy');
+
+    const closed = structuredClone(base);
+    closed.flags.finalBriefSubmitted = true;
+    closed.flags.chapterOneComplete = true;
+    closed.caseFile.status = 'closed';
+    const after = dimension(buildLegalMindProfile(closed), 'strategy');
+    expect(after.evidence.join(' ')).toContain('final submission');
+    expect(LEGAL_MIND_LEVEL_RANK[after.level]).toBeGreaterThan(LEGAL_MIND_LEVEL_RANK[before.level]);
+    expect(dimension(buildLegalMindProfile(closed), 'drafting').evidence.join(' ')).toContain('final brief');
+  });
+
+  it('updates from evidence discoveries and reviews', () => {
+    const base = createInitialSave();
+    const discovered = structuredClone(base);
+    expect(discoverEvidenceItem(discovered, 'ev-1')).not.toBeNull();
+    // Discovery alone is not relied-upon work: no dimension level moves yet.
+    expect(dimension(buildLegalMindProfile(discovered), 'evidence-evaluation').level).toBe('emerging');
+
+    expect(reviewEvidence(discovered, 'ev-1')).toBe(true);
+    expect(discoverEvidenceItem(discovered, 'ev-2')).not.toBeNull();
+    expect(reviewEvidence(discovered, 'ev-2')).toBe(true);
+    const after = dimension(buildLegalMindProfile(discovered), 'evidence-evaluation');
+    expect(after.level).toBe('developing');
+    expect(after.evidence.join(' ')).toContain('reviewed items of evidence');
+  });
+
+  it('updates from AI review accepted and rejected outcomes', () => {
+    const base = createInitialSave();
+    const record = {
+      id: 'ai-1',
+      day: 9,
+      assignmentId: 'a7',
+      round: 1,
+      requestId: 'req-1',
+      deterministicStatus: 'accepted' as const,
+      summary: 'Structured feedback.',
+      citedSources: ['ls-4'],
+      warnings: [],
+    };
+
+    const accepted = structuredClone(base);
+    accepted.aiReviews = [{ ...record, gatewayStatus: 'accepted', aiAssisted: true }];
+    expect(dimension(buildLegalMindProfile(accepted), 'precedent-analysis').evidence.join(' ')).toContain(
+      'cited sources',
+    );
+
+    const rejected = structuredClone(base);
+    rejected.aiReviews = [{ ...record, gatewayStatus: 'rejected', aiAssisted: false, citedSources: [] }];
+    const counter = dimension(buildLegalMindProfile(rejected), 'counterargument-anticipation');
+    expect(counter.evidence.join(' ')).toContain('provenance gates');
+    expect(LEGAL_MIND_LEVEL_RANK[counter.level]).toBeGreaterThan(
+      LEGAL_MIND_LEVEL_RANK[dimension(buildLegalMindProfile(base), 'counterargument-anticipation').level],
+    );
+  });
+
+  it('stores and retrieves every dimension through save round-trips and v1/v2 migration', () => {
+    const completed = completeChapter();
+    const storage = memoryStorage();
+    expect(persistSave(completed, storage).ok).toBe(true);
+    const loaded = loadSave(storage);
+    const original = buildLegalMindProfile(completed);
+    const retrieved = buildLegalMindProfile(loaded);
+
+    expect(retrieved).toEqual(original);
+    expect(retrieved.dimensions).toHaveLength(LEGAL_MIND_DIMENSION_IDS.length);
+    for (const id of LEGAL_MIND_DIMENSION_IDS) {
+      const before = original.dimensions.find((d) => d.id === id)!;
+      const after = retrieved.dimensions.find((d) => d.id === id)!;
+      expect(after.level).toBe(before.level);
+      expect(after.evidence).toEqual(before.evidence);
+    }
+
+    // An unknown/stored profile field from an older or tampered save is ignored: the profile is
+    // always rebuilt from recorded gameplay events, never trusted from storage.
+    const payload = JSON.parse(storage.getItem(SAVE_KEY)!) as Record<string, any>;
+    payload.version = 1;
+    payload.legalMindProfile = { dimensions: [{ id: 'score', level: 10 }], score: 10 };
+    delete payload.auditLog;
+    const legacy = loadSave(memoryStorage({ 'the-bar-save-v1': JSON.stringify(payload) }));
+    expect(legacy.version).toBe(2);
+    const migrated = buildLegalMindProfile(legacy);
+    expect(migrated.dimensions.map((d) => d.id)).toEqual([...LEGAL_MIND_DIMENSION_IDS]);
+    expect(migrated).not.toHaveProperty('score');
+    expect(migrated).toEqual(original);
   });
 });

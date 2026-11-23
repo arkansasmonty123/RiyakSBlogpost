@@ -1,10 +1,12 @@
-import type { SaveGame } from './types';
+import { LEGAL_MIND_DIMENSION_IDS } from './types';
+import type { LegalMindDimensionId, SaveGame } from './types';
 
 /**
  * A "lite", formative Legal Mind Profile. It is computed on demand from actions the player
- * actually recorded (assignments, notebook, evidence review, casework, reviews and reputation).
- * There is deliberately no aggregate/intelligence score: each dimension is qualitative, and
- * every rating is explained by the concrete actions behind it plus one next step.
+ * actually recorded through gameplay events (assignment reviews, senior reviews, case
+ * conclusions, evidence discoveries and AI-review outcomes). There is deliberately no
+ * aggregate/intelligence score: each of the ten dimensions is a separate qualitative rating,
+ * explained by the concrete actions behind it plus one next step.
  *
  * Only player-legible state is read. The canonical case record, authenticity values, motives
  * and responsibility are never consulted, and no legal citation is ever generated here.
@@ -25,7 +27,8 @@ export const LEGAL_MIND_LEVEL_RANK: Record<LegalMindLevel, number> = {
 };
 
 export interface LegalMindDimension {
-  id: string;
+  /** One of the ten stable, separately tracked dimension ids. */
+  id: LegalMindDimensionId;
   label: string;
   level: LegalMindLevel;
   levelLabel: string;
@@ -51,7 +54,7 @@ interface Signal {
   nextStep: string;
 }
 
-function assess(id: string, label: string, signals: Signal[]): LegalMindDimension {
+function assess(label: string, signals: Signal[]): Omit<LegalMindDimension, 'id'> {
   const present = signals.filter((s) => s.present);
   const level: LegalMindLevel = present.length >= 3 ? 'consistent' : present.length >= 1 ? 'developing' : 'emerging';
   const rationale =
@@ -59,7 +62,6 @@ function assess(id: string, label: string, signals: Signal[]): LegalMindDimensio
       ? `Rated ${LEGAL_MIND_LEVEL_LABELS[level]} on the strength of ${present.length} recorded action${present.length === 1 ? '' : 's'}: ${present.map((s) => s.action).join(' ')}`
       : 'Rated emerging: no supporting actions were recorded in this area during the chapter.';
   return {
-    id,
     label,
     level,
     levelLabel: LEGAL_MIND_LEVEL_LABELS[level],
@@ -79,13 +81,56 @@ function assignmentReviewed(save: SaveGame, id: string): boolean {
   return save.assignments.some((a) => a.id === id && a.status === 'reviewed');
 }
 
-function acceptedWithStrength(save: SaveGame, assignmentId: string, fragment: string): boolean {
+function acceptedStrength(save: SaveGame, fragment: string): boolean {
   return save.reviewRounds.some(
-    (r) =>
-      r.assignmentId === assignmentId &&
-      r.status === 'accepted' &&
-      r.strengths.some((s) => s.toLowerCase().includes(fragment)),
+    (r) => r.status === 'accepted' && r.strengths.some((s) => s.toLowerCase().includes(fragment)),
   );
+}
+
+function revisionCompleted(save: SaveGame): boolean {
+  return (
+    save.reviewRounds.some((r) => r.status === 'needs_revision') &&
+    save.reviewRounds.some((r) => r.status === 'accepted')
+  );
+}
+
+function caseConcluded(save: SaveGame): boolean {
+  return (
+    save.flags.finalBriefSubmitted === true ||
+    save.flags.chapterOneComplete === true ||
+    save.caseFile.status === 'closed'
+  );
+}
+
+function groundedTheoryClaim(save: SaveGame): boolean {
+  const reviewedIds = new Set(reviewedEvidence(save).map((e) => e.id));
+  return save.caseTheory.claims.some((c) => c.evidenceIds.some((id) => reviewedIds.has(id)));
+}
+
+function consultedOnLimits(save: SaveGame): boolean {
+  return ['specialistConsulted', 'medicalConsulted', 'supervisorConsulted', 'juniorConsulted'].some(
+    (flag) => save.flags[flag] === true,
+  );
+}
+
+function verifiedJudgmentNote(save: SaveGame): boolean {
+  return save.notebook.some(
+    (n) =>
+      !!n.sourceId &&
+      save.legalSources.some(
+        (s) => s.id === n.sourceId && s.sourceType === 'judgment' && s.verificationStatus === 'verified',
+      ),
+  );
+}
+
+/** Accepted structured feedback whose cited ids were checked is a recorded player action. */
+function aiFeedbackChecked(save: SaveGame): boolean {
+  return save.aiReviews.some((r) => r.gatewayStatus === 'accepted' && r.aiAssisted && r.citedSources.length > 0);
+}
+
+/** A rejected proposal is a recorded provenance event; deterministic review still stood. */
+function aiFeedbackRejected(save: SaveGame): boolean {
+  return save.aiReviews.some((r) => r.gatewayStatus === 'rejected');
 }
 
 /** Build the profile from player-visible state only. Safe to call at any point in the chapter. */
@@ -103,9 +148,14 @@ export function buildLegalMindProfile(save: SaveGame): LegalMindProfile {
   const keptFaultOutOfSubmissions =
     save.reviewRounds.length > 0 &&
     save.reviewRounds.every((r) => !r.gaps.some((g) => /at fault|guilty|culprit/i.test(g)));
+  const contradictionNoted = save.notebook.some((n) => n.kind === 'contradiction' || !!n.relation);
+  const aiCheckedToAcceptance =
+    aiFeedbackChecked(save) && save.reviewRounds.some((r) => r.assignmentId === 'a7' && r.status === 'accepted');
 
-  const dimensions: LegalMindDimension[] = [
-    assess('issue-spotting', 'Issue spotting', [
+  // A keyed record guarantees every one of the ten stable ids is built separately. TypeScript
+  // fails the build if a dimension is missing, so a profile can never collapse to one score.
+  const dimensionsById: Record<LegalMindDimensionId, Omit<LegalMindDimension, 'id'>> = {
+    'issue-spotting': assess('Issue spotting', [
       {
         present: draftEngaged && /issue\s*:/i.test(save.draft.current),
         action: 'You framed a distinct issue in your case brief.',
@@ -117,14 +167,14 @@ export function buildLegalMindProfile(save: SaveGame): LegalMindProfile {
         nextStep: 'Complete the initial fact matrix to practise framing the question first.',
       },
       {
-        present: acceptedWithStrength(save, 'a7', 'states the issue'),
+        present: acceptedStrength(save, 'states the issue'),
         action: 'Your senior confirmed your work summary stated the issue and the basis for your conclusions.',
         nextStep: 'In senior review, state the issue and your basis before the conclusion.',
       },
     ]),
-    assess('fact-analysis', 'Fact analysis', [
+    'fact-analysis': assess('Fact analysis', [
       {
-        present: save.notebook.some((n) => n.kind === 'contradiction' || !!n.relation),
+        present: contradictionNoted,
         action: 'You recorded a contradiction or corroboration note tied to reviewed evidence.',
         nextStep: 'Record a note that ties a difference between accounts to the item you reviewed.',
       },
@@ -139,7 +189,29 @@ export function buildLegalMindProfile(save: SaveGame): LegalMindProfile {
         nextStep: 'Label facts as known, claimed or disputed in your brief.',
       },
     ]),
-    assess('evidence-evaluation', 'Evidence evaluation', [
+    'logical-consistency': assess('Logical consistency', [
+      {
+        present: save.notebook.some((n) => n.kind === 'contradiction' && !!n.evidenceId),
+        action: 'You tied a difference between accounts to the specific item you reviewed.',
+        nextStep: 'Link each contradiction or corroboration note to the evidence item behind it.',
+      },
+      {
+        present: groundedTheoryClaim(save),
+        action: 'You linked a point in your working theory to evidence you had actually reviewed.',
+        nextStep: 'Link each theory claim to at least one item you have discovered and reviewed.',
+      },
+      {
+        present: keptFaultOutOfSubmissions,
+        action: 'You kept conclusions about fault out of your submitted work.',
+        nextStep: 'Separate known, claimed and disputed points instead of asserting fault.',
+      },
+      {
+        present: acceptedStrength(save, 'states the issue and the basis'),
+        action: 'Your senior confirmed your work stated the issue and the basis for your conclusions.',
+        nextStep: 'State both your conclusion and the basis for it before senior review.',
+      },
+    ]),
+    'evidence-evaluation': assess('Evidence evaluation', [
       {
         present: reviewed.length >= 2,
         action: 'You reviewed items of evidence before relying on them.',
@@ -161,14 +233,14 @@ export function buildLegalMindProfile(save: SaveGame): LegalMindProfile {
         nextStep: 'Challenge reliance on a reviewed item with a stated, legitimate ground.',
       },
     ]),
-    assess('legal-interpretation', 'Legal interpretation & citation discipline', [
+    'legal-interpretation': assess('Legal interpretation & citation discipline', [
       {
         present: hasVerifiedSourceNote,
         action: 'You relied on a verified, clearly labelled educational source in your research.',
         nextStep: 'Attach a verified, labelled source note before treating material as authority.',
       },
       {
-        present: acceptedWithStrength(save, 'a7', 'verified source notes attached'),
+        present: acceptedStrength(save, 'verified source notes attached'),
         action: 'Your senior confirmed that verified source notes were attached to your work.',
         nextStep: 'Attach the required verified source notes before senior review.',
       },
@@ -180,37 +252,109 @@ export function buildLegalMindProfile(save: SaveGame): LegalMindProfile {
       {
         // Derived from a recorded action, never from an AI assertion: the player opted into a
         // structured review, checked its cited sources and brought the assignment to acceptance.
-        present:
-          save.aiReviews.some((record) => record.aiAssisted && record.citedSources.length > 0) &&
-          save.reviewRounds.some((r) => r.assignmentId === 'a7' && r.status === 'accepted'),
+        present: aiCheckedToAcceptance,
         action:
           'You sought structured senior feedback on a research note, checked its cited sources and revised the work to acceptance.',
         nextStep: 'Request structured feedback on a research note and verify every cited source before resubmitting.',
       },
     ]),
-    assess('procedure', 'Procedure', [
+    'precedent-analysis': assess('Precedent analysis', [
       {
-        present: save.custodyLog.length > 0,
-        action: 'You recorded a chain-of-custody observation on the file.',
-        nextStep: 'Record a custody observation so the handling of an item is on the file.',
+        present: verifiedJudgmentNote(save),
+        action: 'You consulted a verified judgment source and kept it clearly labelled in your research.',
+        nextStep: 'Attach a note from a verified judgment source before reasoning from it.',
       },
       {
-        present: assignmentReviewed(save, 'a5'),
-        action: 'You completed the custody-log assignment on the record.',
-        nextStep: 'Complete the custody-log assignment before the final brief.',
+        present: draftEngaged && /judgment|precedent|case law/i.test(save.draft.current),
+        action: 'You referred to verified judgments or case law in your brief.',
+        nextStep: 'Refer to verified judgments only, and keep them clearly labelled in the brief.',
       },
       {
-        present: assignmentReviewed(save, 'a6'),
-        action: 'You completed the admissibility-challenge assignment with a stated ground.',
-        nextStep: 'Complete the admissibility-challenge assignment with a stated ground.',
+        present: acceptedStrength(save, 'verified source notes attached'),
+        action: 'Your senior confirmed that your verified source notes were attached to the work.',
+        nextStep: 'Attach the required verified source notes before senior review.',
       },
       {
-        present: !!save.flags.finalBriefSubmitted,
-        action: 'You brought the matter to a final, evidence-grounded brief on the last day.',
+        present: aiFeedbackChecked(save),
+        action: 'You checked the cited sources in structured feedback before relying on it.',
+        nextStep: 'Check every cited source in structured feedback before relying on it.',
+      },
+    ]),
+    strategy: assess('Strategy', [
+      {
+        present: consultedOnLimits(save),
+        action:
+          'You consulted specialists about the limits of what material could establish before building your theory.',
+        nextStep: 'Ask what material can and cannot show before choosing how to use it.',
+      },
+      {
+        present: save.challenges.length > 0,
+        action: 'You chose how to test reliance on an item and stated a legitimate ground.',
+        nextStep: 'Choose a legitimate ground and state it when testing how material is relied on.',
+      },
+      {
+        present: revisionCompleted(save),
+        action: 'You revised your work after senior feedback before it was accepted.',
+        nextStep: 'Read senior feedback, revise the work and resubmit before acceptance.',
+      },
+      {
+        present: caseConcluded(save),
+        action: 'You carried an evidence-grounded brief through to the final submission.',
+        nextStep: 'Bring the earlier milestones together in a final, evidence-grounded brief.',
+      },
+    ]),
+    'counterargument-anticipation': assess('Counterargument anticipation', [
+      {
+        present: contradictionNoted,
+        action: 'You recorded a difference between accounts tied to the item you reviewed.',
+        nextStep: 'Record a note that acknowledges a difference between accounts in the file.',
+      },
+      {
+        present: save.caseTheory.claims.some((c) => c.status === 'disputed'),
+        action: 'You marked a point in your working theory as disputed rather than settled.',
+        nextStep: 'Mark contested points as disputed rather than presenting them as settled.',
+      },
+      {
+        present: save.challenges.length > 0,
+        action: 'You tested how an item could be relied on with a stated ground.',
+        nextStep: 'Challenge reliance on a reviewed item with a stated, legitimate ground.',
+      },
+      {
+        present: revisionCompleted(save),
+        action: 'You addressed senior feedback and resubmitted your work.',
+        nextStep: 'Use the revision round to address the gaps the senior pointed out.',
+      },
+      {
+        // The rejection is recorded by deterministic gates; only the opt-in is the player's act.
+        present: aiFeedbackRejected(save),
+        action:
+          'You sought independent structured feedback; when the proposal failed the provenance gates, the deterministic review stood.',
+        nextStep: 'Seek independent feedback and let provenance checks decide what may be relied on.',
+      },
+    ]),
+    drafting: assess('Drafting & advocacy', [
+      {
+        present: assignmentReviewed(save, 'a2'),
+        action: 'You completed the case-brief draft assignment.',
+        nextStep: 'Complete the case-brief draft before the final brief.',
+      },
+      {
+        present: draftEngaged && /analysis|conclusion/i.test(save.draft.current),
+        action: 'You structured your brief with analysis and a conclusion.',
+        nextStep: 'Give your brief a reasoned analysis and a clear conclusion.',
+      },
+      {
+        present: revisionCompleted(save),
+        action: 'You revised and resubmitted your work after senior feedback.',
+        nextStep: 'Revise in response to feedback and resubmit before acceptance.',
+      },
+      {
+        present: caseConcluded(save),
+        action: 'You brought the final brief to submission.',
         nextStep: 'Submit the final brief once the earlier milestones are complete.',
       },
     ]),
-    assess('ethics', 'Ethics & professionalism', [
+    'ethical-reasoning': assess('Ethical reasoning & professionalism', [
       {
         present: !!save.flags.clientInterviewDone,
         action: 'You kept the client statement inside what they could personally know.',
@@ -232,7 +376,9 @@ export function buildLegalMindProfile(save: SaveGame): LegalMindProfile {
         nextStep: 'Record gaps and credit colleagues honestly, even when it is inconvenient.',
       },
     ]),
-  ];
+  };
+
+  const dimensions: LegalMindDimension[] = LEGAL_MIND_DIMENSION_IDS.map((id) => ({ id, ...dimensionsById[id] }));
 
   return {
     intro:
