@@ -4,7 +4,6 @@ import { config } from '@/config/env';
 import { loadSave, persistSave, resetSave } from '@/storage/save';
 import type { PersistResult } from '@/storage/save';
 import { recordAudit } from '@/domain/audit';
-import { checkDraftCitations } from '@/domain/guards';
 import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/completion';
 import { markHelpSeen, shouldShowHelp } from '@/domain/onboarding';
 import {
@@ -45,7 +44,9 @@ import {
   submitFinalBrief,
   submitSeniorReview,
 } from '@/domain/casework';
-import { loadDraftVersion, MAX_DRAFT_CHARS, saveDraftVersion, setCurrentDraft } from '@/domain/draft';
+import { loadDraftVersion, MAX_DRAFT_CHARS, saveDraftVersion } from '@/domain/draft';
+import { submitDraftForFeedback } from '@/domain/draftSubmission';
+import type { DraftSubmissionResult } from '@/domain/draftSubmission';
 import {
   addTheoryClaim,
   getTheorySupport,
@@ -667,58 +668,21 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
   }
 
   function submitDraft() {
-    const citationCheck = checkDraftCitations(draft, save.legalSources);
-    if (!citationCheck.ok) {
-      addNotebook({
-        kind: 'feedback',
-        title: 'Draft blocked: citation guardrail',
-        content: `Submission blocked.\n${citationCheck.blocked.map((b) => `- ${b}`).join('\n')}\n\nRule: never fabricate or cite unverified legal provisions/judgments.`,
-        verified: true,
-      });
+    const outcome: { result?: DraftSubmissionResult } = {};
+    update((s) => {
+      outcome.result = submitDraftForFeedback(s, draft);
+      return s;
+    });
+    const result = outcome.result;
+    if (!result) return;
+    if (!result.ok) {
       setDialogue(
         'Adv. Meera Kulkarni: "Stop. I see an unverified or fabricated citation. Verify the source first, or remove it."',
       );
       setPanel('notebook');
       return;
     }
-
-    const hasIssue = /issue\s*:/i.test(draft) && draft.length > 60;
-    const hasEvidenceRefs = discoveredCount > 0 && /evidence|medical|cctv|witness|report/i.test(draft);
-    const warnings = citationCheck.warnings;
-    update((s) => {
-      recordAudit(s, 'draft-submitted', 'Submitted case brief draft for senior review');
-      s.flags.assignment2Submitted = true;
-      s.player.reputation.reliability += hasIssue ? 2 : -1;
-      s.player.reputation.competence += hasIssue && hasEvidenceRefs ? 2 : hasIssue ? 1 : 0;
-      s.player.reputation.integrity += warnings.length ? 0 : 1;
-      const a2 = s.assignments.find((a) => a.id === 'a2');
-      if (a2 && a2.status !== 'reviewed') {
-        a2.feedback = hasIssue ? 'Structure acceptable; continue evidence-grounded analysis.' : 'Incomplete structure.';
-      }
-      setCurrentDraft(s, draft);
-      s.memories.unshift({
-        id: makeId('m'),
-        day: s.clock.day,
-        summary: 'Submitted case brief draft for senior review.',
-        participants: ['player', 'senior'],
-      });
-      return s;
-    });
-    addNotebook({
-      kind: 'feedback',
-      title: 'Senior feedback (deterministic)',
-      content: [
-        hasIssue
-          ? 'Structure: acceptable.'
-          : 'Structure: incomplete - include Issue, Facts (known/claimed/disputed), Verified Law/Source Notes, Analysis, Conclusion.',
-        hasEvidenceRefs
-          ? 'Evidence grounding: present.'
-          : 'Evidence grounding: weak - tie claims to discovered evidence.',
-        warnings.length ? `Warnings: ${warnings.join(' ')}` : 'Citation guard: no blocked issues detected.',
-        'Reminder: canonical truth is not known; distinguish known/claimed/disputed/unknown.',
-      ].join('\n'),
-      verified: true,
-    });
+    setDialogue(`Adv. Meera Kulkarni: "${result.message}"`);
     setPanel('notebook');
   }
 
@@ -2458,13 +2422,16 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
                 </span>
                 <span>Use only verified sources; no fabricated citations.</span>
               </div>
+              <p className="text-xs text-bar-muted">
+                A2 also requires reviewed evidence and the verified source note in your notebook.
+              </p>
               <div className="flex gap-2 flex-wrap">
                 <button
                   type="button"
                   className="px-3 py-1 border border-bar-gold/30 rounded text-sm hover:bg-white/5"
                   onClick={submitDraft}
                 >
-                  Submit for senior review
+                  Submit draft for feedback
                 </button>
                 <button
                   type="button"

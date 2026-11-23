@@ -6,7 +6,7 @@ import type { SaveGame } from '@/domain/types';
 import { SAVE_KEY } from '@/storage/save';
 
 /** Render the real tree against a given save using a minimal localStorage stub. */
-function renderWithSave(save: SaveGame, initialPanel?: 'assignments'): string {
+function renderWithSave(save: SaveGame, initialPanel?: 'assignments' | 'draft'): string {
   const data: Record<string, string> = { [SAVE_KEY]: JSON.stringify(save) };
   const globals = globalThis as Record<string, unknown>;
   const previousWindow = globals.window;
@@ -333,5 +333,12 @@ describe('App render smoke test', () => {
     for (const html of [day1Html, day6Html]) {
       expect(html).not.toContain('Locks until Day');
     }
+  });
+
+  it('names draft submission as feedback and explains what A2 still requires', () => {
+    const draftHtml = renderWithSave(createInitialSave(), 'draft');
+    expect(draftHtml).toContain('Submit draft for feedback');
+    expect(draftHtml).not.toContain('Submit for senior review');
+    expect(draftHtml).toContain('A2 also requires reviewed evidence and the verified source note in your notebook.');
   });
 });
