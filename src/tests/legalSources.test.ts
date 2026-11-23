@@ -69,24 +69,33 @@ describe('provenance validation', () => {
 
   it('keeps seed sources honest: official metadata verified with URLs, no fabricated provision text', () => {
     const sources = createInitialSave().legalSources;
-    expect(sources.length).toBeGreaterThanOrEqual(5);
+    expect(sources.length).toBeGreaterThanOrEqual(7);
 
     for (const s of sources) {
-      expect(looksLikeSpecificCitation(s.citation)).toBe(false);
       expect(String(s.excerpt ?? '')).not.toMatch(/\bsection\s+\d+\b/i);
       expect(String(s.excerpt ?? '')).not.toMatch(/\barticle\s+\d+\b/i);
     }
 
-    const official = sources.filter((s) => ['ls-bns', 'ls-bnss', 'ls-bsa', 'ls-constitution'].includes(s.id));
-    expect(official).toHaveLength(4);
-    for (const s of official) {
+    const officialActs = sources.filter((s) => ['ls-bns', 'ls-bnss', 'ls-bsa', 'ls-constitution'].includes(s.id));
+    expect(officialActs).toHaveLength(4);
+    for (const s of officialActs) {
+      expect(looksLikeSpecificCitation(s.citation)).toBe(false);
       expect(s.sourceType).toBe('statute');
       expect(s.jurisdiction).toBe('India');
       expect(s.verificationStatus).toBe('verified');
       expect(canCiteAsAuthoritative(s)).toBe(true);
       expect(s.sourceUrl).toMatch(/^https:\/\/www\.indiacode\.nic\.in\//);
       expect(s.excerpt).toBeUndefined();
-      expect(String(s.provenance)).toContain('metadata/provenance only');
+      expect(String(s.provenance).toLowerCase()).toContain('metadata/provenance only');
+    }
+
+    const judgments = sources.filter((s) => s.sourceType === 'judgment' && s.verificationStatus === 'verified');
+    expect(judgments.length).toBeGreaterThanOrEqual(2);
+    for (const s of judgments) {
+      expect(canCiteAsAuthoritative(s)).toBe(true);
+      expect(s.sourceUrl).toMatch(/^https:\/\/(api\.sci\.gov\.in|www\.sci\.gov\.in|scr\.sci\.gov\.in)\//);
+      expect(s.excerpt).toBeUndefined();
+      expect(String(s.provenance).toLowerCase()).toContain('metadata/provenance only');
     }
 
     const ls4 = sources.find((s) => s.id === 'ls-4');

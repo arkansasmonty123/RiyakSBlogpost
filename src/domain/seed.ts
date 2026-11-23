@@ -855,6 +855,16 @@ export const DIALOGUE_SCENES: DialogueScene[] = [
   },
 ];
 
+/**
+ * Human-reviewed official identifiers for seed records that contain specific-looking citations
+ * (e.g. case names). These are only for officially verified metadata records already present in seed.
+ * Do not add fabricated citations.
+ */
+export const SEED_REVIEWED_OFFICIAL_IDENTIFIERS: readonly string[] = [
+  'Sanofi India Ltd. v. Central Bureau of Investigation, 2026 INSC 957',
+  'Harish Rana v. Union of India, 2026 INSC 222',
+];
+
 export function createInitialSave(): SaveGame {
   return {
     version: 2,
@@ -1241,6 +1251,40 @@ export function createInitialSave(): SaveGame {
         sourceUrl: 'https://www.indiacode.nic.in/handle/123456789/15240',
         notes:
           'Official Constitution metadata only. Not legal advice. Verify applicable version/amendments against the official source before reliance.',
+        intake: 'seed',
+      },
+      {
+        id: 'ls-sc-sanofi-2026',
+        title: 'Sanofi India Ltd. v. Central Bureau of Investigation',
+        sourceName: 'Supreme Court of India (official judgment PDF)',
+        citation: 'Sanofi India Ltd. v. Central Bureau of Investigation, 2026 INSC 957',
+        sourceType: 'judgment',
+        jurisdiction: 'India',
+        verificationStatus: 'verified',
+        provenance:
+          'Official Supreme Court judgment metadata verified from api.sci.gov.in on 2026-11-23. Neutral citation 2026 INSC 957; Criminal Appeal No. 4250 of 2026; decided 7 September 2026. Metadata/provenance only; no judgment text reproduced or fabricated. Consult official source for authoritative text.',
+        verifiedBy: 'Project owner (user-approved, official SCI source verified)',
+        verificationDate: '2026-11-23',
+        sourceUrl: 'https://api.sci.gov.in/supremecourt/2019/13349/13349_2019_6_1502_74010_Judgement_07-Sep-2026.pdf',
+        notes:
+          'Official judgment metadata only. Not legal advice. Read full judgment at official source before reliance.',
+        intake: 'seed',
+      },
+      {
+        id: 'ls-sc-harish-rana-2026',
+        title: 'Harish Rana v. Union of India',
+        sourceName: 'Supreme Court of India (official judgment PDF)',
+        citation: 'Harish Rana v. Union of India, 2026 INSC 222',
+        sourceType: 'judgment',
+        jurisdiction: 'India',
+        verificationStatus: 'verified',
+        provenance:
+          'Official Supreme Court judgment metadata verified from api.sci.gov.in on 2026-11-23. Neutral citation 2026 INSC 222; M.A. No. 2238 of 2025 in SLP (C) No. 18225 of 2024; decided 11 March 2026. Metadata/provenance only; no judgment text reproduced or fabricated. Consult official source for authoritative text.',
+        verifiedBy: 'Project owner (user-approved, official SCI source verified)',
+        verificationDate: '2026-11-23',
+        sourceUrl: 'https://api.sci.gov.in/supremecourt/2025/60980/60980_2025_7_1501_69246_Judgement_11-Mar-2026.pdf',
+        notes:
+          'Official judgment metadata only. Not legal advice. Read full judgment at official source before reliance.',
         intake: 'seed',
       },
       {

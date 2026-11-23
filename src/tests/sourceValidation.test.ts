@@ -152,7 +152,12 @@ describe('source record validation (D-005/D-011 ingestion gate)', () => {
   });
 
   it('confirms the shipped seed corpus itself satisfies the ingestion gate', () => {
-    const batch = validateSourceRecords(createInitialSave().legalSources);
+    const batch = validateSourceRecords(createInitialSave().legalSources, {
+      reviewedOfficialIdentifiers: [
+        'Sanofi India Ltd. v. Central Bureau of Investigation, 2026 INSC 957',
+        'Harish Rana v. Union of India, 2026 INSC 222',
+      ],
+    });
     expect(batch.ok).toBe(true);
     expect(batch.invalid).toBe(0);
     expect(batch.duplicateIds).toEqual([]);

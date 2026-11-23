@@ -12,7 +12,7 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { createInitialSave } from '@/domain/seed';
+import { createInitialSave, SEED_REVIEWED_OFFICIAL_IDENTIFIERS } from '@/domain/seed';
 import { validateSourceRecords } from '@/domain/sourceValidation';
 import type { SourceValidationOptions, ValidationIssue } from '@/domain/sourceValidation';
 
@@ -56,6 +56,7 @@ function main(): number {
 
   if (args.includes('--seed')) {
     sources = createInitialSave().legalSources;
+    options = { reviewedOfficialIdentifiers: SEED_REVIEWED_OFFICIAL_IDENTIFIERS };
     process.stdout.write('Validating the in-app seed corpus...\n');
   } else {
     const path = args[0];

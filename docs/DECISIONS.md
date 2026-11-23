@@ -115,3 +115,9 @@ Use this for future entries:
 - **Scope:** Metadata/provenance/official URLs only. No statutory, constitutional, judgment, or procedural rule text reproduced or fabricated.
 - **Artifacts:** `src/domain/seed.ts`, `docs/legal-corpus/official-sources.manifest.json`, `src/domain/sourceValidation.ts` (official-source-metadata kind support), validation scripts/tests/docs.
 - **Remaining human work:** Full legal-text review, citation-specific section/case verification, amendment/version review, formal legal sign-off for reliance; external licensed/final art sign-off.
+
+## 2026-11-23 official case-law metadata research/ingestion
+
+- **Action:** Used researcher subagent + web verification to add official Supreme Court judgment metadata (no judgment text reproduced): Sanofi India Ltd. v. CBI, 2026 INSC 957 (7 Sep 2026), and Harish Rana v. Union of India, 2026 INSC 222 (11 Mar 2026), both verified via api.sci.gov.in official PDFs.
+- **Guardrails:** No fabricated citations/provisions/judgment text. Specific case citations added to reviewed allowlist/seed reviewed identifiers. Licensing/terms noted as requiring human review for bulk text reuse.
+- **Remaining:** Broader case-law corpus, full legal-text ingestion, section-level citation verification, procedural-rule text review remain human/legal-review tasks.

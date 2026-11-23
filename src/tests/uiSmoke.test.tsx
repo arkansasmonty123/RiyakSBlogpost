@@ -144,9 +144,12 @@ describe('App render smoke test', () => {
 
   it('never presents fabricated provisions or judgments as verified in the research panel', () => {
     const lower = researchHtml.toLowerCase();
-    for (const forbidden of ['section 302', 'section 101', 'air 19', ' v. ', 'verified judgment']) {
+    for (const forbidden of ['section 302', 'section 101', 'air 19']) {
       expect(lower).not.toContain(forbidden);
     }
+    // Real verified case-law metadata is allowed; fabricated/unverified case citations are not.
+    expect(researchHtml).toContain('Sanofi India Ltd. v. Central Bureau of Investigation, 2026 INSC 957');
+    expect(researchHtml).toContain('Harish Rana v. Union of India, 2026 INSC 222');
     for (const forbidden of [
       'canonicaltruth',
       'actualevents',

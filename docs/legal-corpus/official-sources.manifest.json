@@ -18,10 +18,12 @@
       "The Bharatiya Nyaya Sanhita, 2023 - https://www.indiacode.nic.in/handle/123456789/20062",
       "The Bharatiya Nagarik Suraksha Sanhita, 2023 - https://www.indiacode.nic.in/handle/123456789/20099",
       "The Bharatiya Sakshya Adhiniyam, 2023 - https://www.indiacode.nic.in/handle/123456789/20063",
-      "Constitution of India - https://www.indiacode.nic.in/handle/123456789/15240"
+      "Constitution of India - https://www.indiacode.nic.in/handle/123456789/15240",
+      "Supreme Court of India judgments - https://www.sci.gov.in/",
+      "e-SCR / official judgment PDFs - https://api.sci.gov.in/"
     ],
     "retrievalDate": "2026-11-23",
-    "note": "Official publication identities/URLs verified via web search against India Code on 2026-11-23. Direct PDF download was not available in this environment at verification time (network 504); metadata recorded from official catalog/search results. No provision text copied."
+    "note": "Official publication identities/URLs verified via web search against India Code on 2026-11-23. Direct PDF download was not available in this environment at verification time (network 504); metadata recorded from official catalog/search results. No provision text copied. Supreme Court judgment metadata (Sanofi 2026 INSC 957, Harish Rana 2026 INSC 222) verified from official api.sci.gov.in PDF URLs on 2026-11-23; no judgment text reproduced."
   },
   "signoff": {
     "reviewer": "Project owner (user-approved)",
@@ -43,7 +45,7 @@
   "allowlistPolicy": {
     "maintainedBy": "Project owner (user-approved)",
     "lastReviewed": "2026-11-23",
-    "policyNote": "These records identify official Acts/publications by official name and Act number as published on India Code. Specific section/case citations still require separate human review before being added as reviewed identifiers."
+    "policyNote": "Act-name citations and two officially verified Supreme Court neutral-citation case metadata records are included. Additional specific section/case citations require separate human review before being added as reviewed identifiers."
   },
   "staging": {
     "stage": "reviewed",
@@ -51,7 +53,10 @@
     "reviewedFolder": "intake/reviewed/",
     "importNote": "Official metadata reviewed by project owner on 2026-11-23. Not promoted as reproduced legal text; metadata-only references."
   },
-  "reviewedOfficialIdentifiers": [],
+  "reviewedOfficialIdentifiers": [
+    "Sanofi India Ltd. v. Central Bureau of Investigation, 2026 INSC 957",
+    "Harish Rana v. Union of India, 2026 INSC 222"
+  ],
   "sources": [
     {
       "id": "official-bns-2023",
@@ -124,6 +129,42 @@
       "verificationDate": "2026-11-23",
       "sourceUrl": "https://www.indiacode.nic.in/handle/123456789/15240",
       "notes": "Metadata-only record. Verify current amendments/version on official India Code before reliance."
+    },
+    {
+      "id": "official-sc-sanofi-2026-insc-957",
+      "title": "Sanofi India Ltd. v. Central Bureau of Investigation",
+      "sourceName": "Supreme Court of India (official judgment PDF)",
+      "citation": "Sanofi India Ltd. v. Central Bureau of Investigation, 2026 INSC 957",
+      "sourceType": "judgment",
+      "jurisdiction": "India",
+      "verificationStatus": "verified",
+      "category": "official-source-metadata",
+      "authority": "official-publication-metadata",
+      "assertsRealCitation": true,
+      "disclaimer": "Official judgment metadata only. No judgment text reproduced. Not legal advice.",
+      "provenance": "Official SC judgment metadata verified from api.sci.gov.in on 2026-11-23. Neutral citation 2026 INSC 957; Criminal Appeal No. 4250 of 2026; decided 7 Sep 2026. No judgment text reproduced/fabricated.",
+      "verifiedBy": "Project owner (user-approved)",
+      "verificationDate": "2026-11-23",
+      "sourceUrl": "https://api.sci.gov.in/supremecourt/2019/13349/13349_2019_6_1502_74010_Judgement_07-Sep-2026.pdf",
+      "notes": "Metadata-only record. Consult official judgment for authoritative text."
+    },
+    {
+      "id": "official-sc-harish-rana-2026-insc-222",
+      "title": "Harish Rana v. Union of India",
+      "sourceName": "Supreme Court of India (official judgment PDF)",
+      "citation": "Harish Rana v. Union of India, 2026 INSC 222",
+      "sourceType": "judgment",
+      "jurisdiction": "India",
+      "verificationStatus": "verified",
+      "category": "official-source-metadata",
+      "authority": "official-publication-metadata",
+      "assertsRealCitation": true,
+      "disclaimer": "Official judgment metadata only. No judgment text reproduced. Not legal advice.",
+      "provenance": "Official SC judgment metadata verified from api.sci.gov.in on 2026-11-23. Neutral citation 2026 INSC 222; M.A. 2238/2025 in SLP(C) 18225/2024; decided 11 Mar 2026. No judgment text reproduced/fabricated.",
+      "verifiedBy": "Project owner (user-approved)",
+      "verificationDate": "2026-11-23",
+      "sourceUrl": "https://api.sci.gov.in/supremecourt/2025/60980/60980_2025_7_1501_69246_Judgement_11-Mar-2026.pdf",
+      "notes": "Metadata-only record. Consult official judgment for authoritative text."
     }
   ]
 }
