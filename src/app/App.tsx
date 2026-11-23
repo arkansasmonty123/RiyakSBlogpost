@@ -8,7 +8,7 @@ import { getGameRepository } from '@/storage/getGameRepository';
 import { isSaveConflict, type PersistResult } from '@/storage/save';
 import { recordAudit } from '@/domain/audit';
 import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/completion';
-import { addNotebookEntry, capNotebook } from '@/domain/notebook';
+import { addKnowledgeConnectionEntry, addNotebookEntry, capNotebook, KNOWLEDGE_DOMAINS } from '@/domain/notebook';
 import { markHelpSeen } from '@/domain/onboarding';
 import {
   canCiteAsAuthoritative,
@@ -27,6 +27,7 @@ import {
 import { assertNoCanonicalTruthLeak, toPlayerCaseView } from '@/domain/caseAccess';
 import { buildCaseJournal, groupJournalByDay, JOURNAL_KINDS } from '@/domain/journal';
 import type { JournalKind } from '@/domain/journal';
+import type { KnowledgeDomain } from '@/domain/types';
 import { buildCaseSummary } from '@/domain/caseSummary';
 import { pluralize } from '@/domain/evidenceSynthesis';
 import {
@@ -437,6 +438,10 @@ function GameApp({
   const [notebookFilter, setNotebookFilter] = useState<'all' | NotebookEntry['kind']>(freshUi.notebookFilter);
   const [journalFilter, setJournalFilter] = useState<'all' | JournalKind>(freshUi.journalFilter);
   const [focusEvidenceId, setFocusEvidenceId] = useState<string | null>(null);
+  const [kcTarget, setKcTarget] = useState<string | null>(null);
+  const [kcDomain, setKcDomain] = useState<KnowledgeDomain>('forensic');
+  const [kcConcept, setKcConcept] = useState('');
+  const [kcDescription, setKcDescription] = useState('');
   const [editingClaimId, setEditingClaimId] = useState<string | null>(freshUi.editingClaimId);
   const [editingLinks, setEditingLinks] = useState<string[]>(freshUi.editingLinks);
   const [showHelp, setShowHelp] = useState(freshUi.showHelp);
@@ -680,6 +685,10 @@ function GameApp({
     setNoteTarget(fresh.noteTarget);
     setNoteRelation(fresh.noteRelation);
     setNoteText(fresh.noteText);
+    setKcTarget(null);
+    setKcDomain('forensic');
+    setKcConcept('');
+    setKcDescription('');
     setCaseTarget(fresh.caseTarget);
     setCustodyText(fresh.custodyText);
     setChallengeGround(fresh.challengeGround);
@@ -915,6 +924,31 @@ function GameApp({
       setDialogue('System: Note recorded in your notebook, tied to the reviewed evidence item.');
       setPanel('notebook');
     }
+  }
+
+  function doSaveKnowledgeConnection() {
+    if (!kcTarget || !kcConcept.trim() || !kcDescription.trim()) return;
+    const ev = save.caseFile.evidence.find((e) => e.id === kcTarget);
+    if (!ev || !ev.discovered || !ev.reviewed) return;
+    update((s) => {
+      addKnowledgeConnectionEntry(
+        s,
+        {
+          evidenceId: kcTarget,
+          legalTopic: ev.title,
+          domain: kcDomain,
+          relatedConcept: kcConcept,
+          description: kcDescription,
+        },
+        makeId('kn'),
+      );
+      return s;
+    });
+    setKcTarget(null);
+    setKcConcept('');
+    setKcDescription('');
+    setDialogue('System: Interdisciplinary connection saved to your notebook. You can refer to it in later review.');
+    setPanel('notebook');
   }
 
   function doRecordCustody() {
@@ -2343,6 +2377,18 @@ function GameApp({
                             <button
                               type="button"
                               className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                              onClick={() => {
+                                setKcTarget(ev.id);
+                                setKcDomain('forensic');
+                                setKcConcept('');
+                                setKcDescription('');
+                              }}
+                            >
+                              Connect to discipline
+                            </button>
+                            <button
+                              type="button"
+                              className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
                               onClick={() => addEvidenceToTheory(ev.id)}
                             >
                               Use in theory →
@@ -2360,6 +2406,11 @@ function GameApp({
                               </button>
                             )}
                           </div>
+                          {!save.notebook.some((n) => n.kind === 'knowledge-connection' && n.evidenceId === ev.id) && (
+                            <p className="text-xs text-bar-muted mt-2">
+                              Optional: connect this reviewed item to another discipline in your notebook.
+                            </p>
+                          )}
                         </div>
                       ) : null}
                     </div>
@@ -2404,6 +2455,72 @@ function GameApp({
                       onClick={() => {
                         setNoteTarget(null);
                         setNoteText('');
+                      }}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+              {kcTarget && (
+                <div className="bg-bar-panel2 p-3 rounded border border-bar-gold/30">
+                  <div className="text-xs text-bar-gold mb-2">
+                    Interdisciplinary connection for{' '}
+                    {playerCase.evidence.find((e) => e.id === kcTarget)?.title ?? 'evidence'}
+                  </div>
+                  <p className="text-xs text-bar-muted mb-2">
+                    Player-authored link only. This does not verify facts or create legal authority.
+                  </p>
+                  <label className="text-xs flex flex-col gap-1">
+                    Domain
+                    <select
+                      className="bg-bar-bg border border-white/10 rounded p-2"
+                      value={kcDomain}
+                      onChange={(e) => setKcDomain(e.target.value as KnowledgeDomain)}
+                    >
+                      {KNOWLEDGE_DOMAINS.map((d) => (
+                        <option key={d} value={d}>
+                          {d}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="text-xs flex flex-col gap-1 mt-2">
+                    Related concept
+                    <input
+                      className="bg-bar-bg border border-white/10 rounded p-2"
+                      value={kcConcept}
+                      maxLength={120}
+                      onChange={(e) => setKcConcept(e.target.value)}
+                      placeholder="e.g. chain of custody metadata, trauma memory, forensic timing"
+                    />
+                  </label>
+                  <label className="text-xs flex flex-col gap-1 mt-2">
+                    Explain the connection in your own words
+                    <textarea
+                      className="bg-bar-bg border border-white/10 rounded p-2 min-h-20"
+                      value={kcDescription}
+                      maxLength={500}
+                      onChange={(e) => setKcDescription(e.target.value)}
+                      placeholder="How might this discipline help you interpret or question this evidence?"
+                    />
+                  </label>
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-bar-gold/30 rounded text-xs"
+                      disabled={!kcConcept.trim() || !kcDescription.trim()}
+                      onClick={doSaveKnowledgeConnection}
+                    >
+                      Save connection
+                    </button>
+                    <button
+                      type="button"
+                      className="px-2 py-1 border border-white/10 rounded text-xs text-bar-muted"
+                      onClick={() => {
+                        setKcTarget(null);
+                        setKcConcept('');
+                        setKcDescription('');
                       }}
                     >
                       Cancel
@@ -3389,6 +3506,12 @@ function GameApp({
                         </span>
                       </div>
                       <div className="whitespace-pre-wrap text-sm mt-1">{n.content}</div>
+                      {n.kind === 'knowledge-connection' && n.connection && (
+                        <div className="text-xs text-bar-muted mt-1">
+                          Domain: {n.connection.domain} · Topic: {n.connection.legalTopic} · Player-authored, not
+                          verified fact.
+                        </div>
+                      )}
                       {n.source && (
                         <div className="text-xs text-bar-muted mt-1">
                           Source: {n.source} {n.verified ? '(verified)' : '(unverified)'}

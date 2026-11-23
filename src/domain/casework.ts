@@ -200,6 +200,24 @@ export function submitSeniorReview(save: SaveGame, assignmentId: string, workSum
     gaps.push('Complete the casework milestone for this assignment.');
   }
 
+  const reviewedEvidenceIds = new Set(
+    save.caseFile.evidence.filter((e) => e.discovered && e.reviewed).map((e) => e.id),
+  );
+  const knowledgeConnections = save.notebook.filter((n) => n.kind === 'knowledge-connection');
+  const relevantConnections = knowledgeConnections.filter(
+    (n) => !n.evidenceId || reviewedEvidenceIds.has(n.evidenceId),
+  );
+  if (relevantConnections.length > 0) {
+    const domains = [...new Set(relevantConnections.map((n) => n.connection?.domain).filter(Boolean))];
+    strengths.push(
+      `Interdisciplinary reasoning: you linked case material to ${domains.join(', ')}. Keep such connections evidence-grounded and explained in your own words.`,
+    );
+  } else if (knowledgeConnections.length > 0) {
+    gaps.push(
+      'Your interdisciplinary connection was noted, but tie it to reviewed evidence and explain its relevance to this matter.',
+    );
+  }
+
   if (summary.length >= MIN_FINAL_BRIEF_CHARS) {
     strengths.push('Work summary states the issue and the basis for conclusions.');
   } else {
@@ -357,6 +375,14 @@ function finalReviewHighlights(save: SaveGame): string[] {
   if (synthesis.openQuestions.length > 0) {
     lines.push(
       `You left ${pluralize(synthesis.openQuestions.length, 'player-visible open question')} on the file; the case closes on your work, not on certainty.`,
+    );
+  }
+
+  const kc = save.notebook.filter((n) => n.kind === 'knowledge-connection');
+  if (kc.length > 0) {
+    const domains = [...new Set(kc.map((n) => n.connection?.domain).filter(Boolean))];
+    lines.push(
+      `You made ${pluralize(kc.length, 'interdisciplinary connection')} (${domains.join(', ')}), linking case material to other disciplines in your own words.`,
     );
   }
 

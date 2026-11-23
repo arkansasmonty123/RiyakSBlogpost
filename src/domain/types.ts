@@ -187,7 +187,16 @@ export interface LegalSource {
 export interface NotebookEntry {
   id: string;
   day: number;
-  kind: 'note' | 'provision' | 'fact' | 'mistake' | 'feedback' | 'research' | 'contradiction' | 'theory';
+  kind:
+    | 'note'
+    | 'provision'
+    | 'fact'
+    | 'mistake'
+    | 'feedback'
+    | 'research'
+    | 'contradiction'
+    | 'theory'
+    | 'knowledge-connection';
   title: string;
   content: string;
   sourceId?: string;
@@ -198,6 +207,8 @@ export interface NotebookEntry {
   relation?: 'contradiction' | 'corroboration';
   /** Knowledge graph link IDs connecting this note to interdisciplinary concepts. */
   knowledgeGraphIds?: string[];
+  /** Optional player-authored interdisciplinary connection (Phase 10.5 slice). */
+  connection?: KnowledgeConnection;
 }
 
 /** A connection between a legal topic and a non-legal discipline. */
