@@ -4,6 +4,9 @@
  *   npm run validate:sources -- --seed
  *   npm run validate:sources -- docs/examples/legal-sources.example.json
  *
+ * For a corpus manifest (with schemaVersion/corpusId/owner/status), use the manifest-aware
+ * CLI instead: npm run validate:legal-corpus -- <path-to-manifest.json>
+ *
  * Exit codes: 0 = all records valid, 1 = at least one record failed validation,
  * 2 = usage/IO error. Nothing is written, ingested or marked verified by this tool.
  */
@@ -61,6 +64,20 @@ function main(): number {
       parsed = JSON.parse(readFileSync(path, { encoding: 'utf8' })) as unknown;
     } catch (error) {
       process.stderr.write(`Could not read/parse corpus JSON at "${path}": ${String(error)}\n`);
+      return 2;
+    }
+
+    // A manifest carries pipeline metadata that this record-only CLI does not understand.
+    // Point the operator at the manifest-aware validator rather than silently ignoring it.
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      !Array.isArray(parsed) &&
+      ('schemaVersion' in parsed || 'corpusId' in parsed || 'template' in parsed)
+    ) {
+      process.stderr.write(
+        'This looks like a corpus manifest. Use `npm run validate:legal-corpus -- <path>` instead.\n',
+      );
       return 2;
     }
 

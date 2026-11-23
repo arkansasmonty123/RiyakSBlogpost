@@ -14,6 +14,10 @@ This document is the process a human content owner follows to add real legal mat
 BAR. It covers how provenance is recorded, how records are checked, and who may sign off. It is
 not itself a source of law and creates no legal content.
 
+The offline intake folder layout, manifest format and blocked status are described in
+[`legal-corpus/README.md`](./legal-corpus/README.md). That directory ships only a shape template
+(clearly marked `TEMPLATE` / not legal authority) and empty intake folders — no real corpus.
+
 The game runtime never performs this workflow. Player **Source Intake** only ever creates
 `unverified` or `placeholder` records, and the human `markSourceVerified` domain step (not a
 player action) enforces the same gate described here.
@@ -110,6 +114,10 @@ promoted to a verified statutory or judgment citation.
    npm run validate:sources -- path/to/corpus.json
    # or check the shipped in-app seed:
    npm run validate:sources -- --seed
+   # or validate a corpus manifest (with owner/status/allowlist metadata):
+   npm run validate:legal-corpus -- path/to/manifest.json
+   # prove the shipped shape template is NOT a corpus (expected to FAIL with exit code 1):
+   npm run validate:legal-corpus -- --template
    ```
    Exit code `0` = all records pass, `1` = at least one record failed, `2` = usage/IO error.
    Fix every `ERROR` before proceeding. `WARN` lines are informational but must be understood.
@@ -137,12 +145,15 @@ promoted to a verified statutory or judgment citation.
 
 ## 7. Tooling reference
 
-| Surface                 | Location                                                                     |
-| ----------------------- | ---------------------------------------------------------------------------- |
-| Single-record validator | `validateSourceRecord(source, options?)` in `src/domain/sourceValidation.ts` |
-| Whole-corpus validator  | `validateSourceRecords(input, options?)` in `src/domain/sourceValidation.ts` |
-| CLI / npm script        | `scripts/validate-sources.ts`, run via `npm run validate:sources -- <args>`  |
-| Runtime human step      | `markSourceVerified` in `src/domain/legalSources.ts`                         |
+| Surface                 | Location                                                                          |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| Single-record validator | `validateSourceRecord(source, options?)` in `src/domain/sourceValidation.ts`      |
+| Whole-corpus validator  | `validateSourceRecords(input, options?)` in `src/domain/sourceValidation.ts`      |
+| Manifest validator      | `validateCorpusManifest(input, options?)` in `src/domain/sourceValidation.ts`     |
+| CLI / npm script        | `scripts/validate-sources.ts`, run via `npm run validate:sources -- <args>`       |
+| Manifest CLI            | `scripts/validate-legal-corpus.ts`, via `npm run validate:legal-corpus -- <args>` |
+| Intake pipeline docs    | [`legal-corpus/README.md`](./legal-corpus/README.md) + `manifest.template.json`   |
+| Runtime human step      | `markSourceVerified` in `src/domain/legalSources.ts`                              |
 
 Key error codes emitted by the validator:
 
@@ -157,6 +168,18 @@ Key error codes emitted by the validator:
 | `UNREVIEWED_SPECIFIC_CITATION`                                                                 | Specific-looking citation not in the reviewed allowlist.      |
 | `PLACEHOLDER_CANNOT_BE_VERIFIED`                                                               | A stand-in was marked verified.                               |
 | `FIELD_TOO_LONG` (warning)                                                                     | Field exceeds the app's cap and would be truncated.           |
+
+Manifest-level codes (from `validateCorpusManifest`, additionally to the record codes above):
+
+| Code                                                                               | Meaning                                                              |
+| ---------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
+| `INVALID_MANIFEST`                                                                 | Manifest input was not a JSON object.                                |
+| `MANIFEST_IS_TEMPLATE`                                                             | A truthy `template` marker: never ingestible as a corpus.            |
+| `MISSING_SCHEMA_VERSION`, `UNSUPPORTED_SCHEMA_VERSION`                             | `schemaVersion` absent or not `1`.                                   |
+| `MISSING_CORPUS_ID`, `MISSING_SOURCES`                                             | Required manifest metadata/array absent.                             |
+| `INVALID_MANIFEST_STATUS`, `INVALID_OWNER`, `INVALID_INTAKE_FOLDER`                | Manifest metadata outside the documented shape.                      |
+| `INVALID_REVIEWED_IDENTIFIERS`                                                     | Allowlist is not an array of non-empty strings.                      |
+| `NO_CORPUS_OWNER`, `BLOCKED_WITH_REVIEWED_IDS`, `APPROVED_EMPTY_CORPUS` (warnings) | Non-blocking consistency notices about an incomplete/blocked corpus. |
 
 ## 8. Reviewer sign-off log
 
@@ -176,5 +199,9 @@ reviewed corpus change.
   is expected for internal fictional material. No person is recorded as having verified real
   law.
 - The shipped reviewed-identifier allowlist is empty.
+- The offline corpus pipeline scaffold exists at [`legal-corpus/`](./legal-corpus/README.md):
+  folder layout, manifest format and the `npm run validate:legal-corpus` CLI are ready, but the
+  only shipped manifest is a **template that the validator rejects by design**, and no real
+  `manifest.json` exists.
 - No real legal text, provision, judgment, citation or procedural rule has been ingested or
   fabricated.

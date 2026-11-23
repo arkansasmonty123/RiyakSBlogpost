@@ -1,0 +1,38 @@
+{
+  "_warning": "TEMPLATE ONLY - NOT A LEGAL CORPUS AND NOT LEGAL AUTHORITY. The `template: true` flag makes this file non-ingestible: `npm run validate:legal-corpus -- --template` MUST fail. Never fill fields from memory or AI output. Only a named human content owner may create a real manifest by following docs/LEGAL_SOURCE_VERIFICATION.md.",
+  "template": true,
+  "schemaVersion": 1,
+  "corpusId": "EXAMPLE-CORPUS-TEMPLATE-DO-NOT-USE",
+  "status": "blocked",
+  "owner": null,
+  "intakeFolder": "intake/",
+  "note": "Pipeline ready, corpus blocked (D-005/D-011). No official source has been supplied, ingested or verified. reviewedOfficialIdentifiers must stay empty until exact text is human-reviewed.",
+  "reviewedOfficialIdentifiers": [],
+  "sources": [
+    {
+      "id": "ex-1",
+      "title": "Example internal fictional summary",
+      "sourceName": "Internal fictional training summary (prototype)",
+      "citation": "INTERNAL-EXAMPLE-0001",
+      "sourceType": "summary",
+      "jurisdiction": "Fictional",
+      "verificationStatus": "verified",
+      "provenance": "Internal fictional example for workflow testing; not a real legal authority and not a statutory citation.",
+      "verifiedBy": "Internal prototype review",
+      "verificationDate": "2026-11-22",
+      "notes": "Non-authoritative. Replace only through the documented human review workflow.",
+      "intake": "seed"
+    },
+    {
+      "id": "ex-2",
+      "title": "Example placeholder - do not cite",
+      "sourceName": "Placeholder (not an enacted text record)",
+      "citation": "PLACEHOLDER (exact text not checked)",
+      "sourceType": "statute",
+      "jurisdiction": "India",
+      "verificationStatus": "placeholder",
+      "provenance": "Placeholder only. Verify against official enacted text before any use.",
+      "intake": "seed"
+    }
+  ]
+}

@@ -274,3 +274,173 @@ export function validateSourceRecords(input: unknown, options: SourceValidationO
     results,
   };
 }
+
+/**
+ * Corpus manifest support for the offline intake pipeline documented in
+ * `docs/legal-corpus/README.md`. A manifest is the container a human content owner uses to
+ * present a batch of source records for validation: it carries the small amount of metadata
+ * the pipeline needs (schema version, internal corpus id, owner/status and the reviewed
+ * allowlist) plus the `sources` array validated by `validateSourceRecords`.
+ *
+ * This function is deliberately read-only and deterministic. It verifies only that the
+ * required human attestation/metadata exists; it never invents legal text, never verifies a
+ * source on its own, and rejects anything explicitly marked as a template so that a
+ * shape/example file can never be mistaken for a real corpus.
+ */
+export const CORPUS_MANIFEST_SCHEMA_VERSION = 1;
+export const CORPUS_MANIFEST_STATUSES = ['blocked', 'draft', 'in-review', 'approved'] as const;
+
+export interface CorpusManifestResult {
+  ok: boolean;
+  errors: ValidationIssue[];
+  warnings: ValidationIssue[];
+  /** Source-level results, preserved with record positions for clear reporting. */
+  sources?: BatchValidationResult;
+  schemaVersion?: number;
+  status?: string;
+}
+
+export function validateCorpusManifest(input: unknown, options: SourceValidationOptions = {}): CorpusManifestResult {
+  const errors: ValidationIssue[] = [];
+  const warnings: ValidationIssue[] = [];
+
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return {
+      ok: false,
+      errors: [issue('INVALID_MANIFEST', 'A corpus manifest must be a JSON object (see docs/legal-corpus/README.md).')],
+      warnings,
+    };
+  }
+
+  const manifest = input as Record<string, unknown>;
+
+  // A shape/example file must never be ingestible as a real corpus, even if its example
+  // records happen to pass the ordinary source gate.
+  if (manifest.template) {
+    errors.push(
+      issue(
+        'MANIFEST_IS_TEMPLATE',
+        'This is a TEMPLATE, not a legal corpus. Never ingest a template; create a real manifest only through the human review workflow in docs/LEGAL_SOURCE_VERIFICATION.md.',
+        'template',
+      ),
+    );
+  }
+
+  const schemaVersion = manifest.schemaVersion;
+  if (schemaVersion === undefined) {
+    errors.push(issue('MISSING_SCHEMA_VERSION', 'A corpus manifest requires a schemaVersion.', 'schemaVersion'));
+  } else if (schemaVersion !== CORPUS_MANIFEST_SCHEMA_VERSION) {
+    errors.push(
+      issue(
+        'UNSUPPORTED_SCHEMA_VERSION',
+        `Unsupported schemaVersion ${String(schemaVersion)}; this tool supports ${CORPUS_MANIFEST_SCHEMA_VERSION}.`,
+        'schemaVersion',
+      ),
+    );
+  }
+
+  if (!hasText(manifest.corpusId)) {
+    errors.push(
+      issue('MISSING_CORPUS_ID', 'A stable internal corpusId is required (not a legal citation).', 'corpusId'),
+    );
+  }
+
+  const status = hasText(manifest.status) ? manifest.status : undefined;
+  if (status !== undefined && !(CORPUS_MANIFEST_STATUSES as readonly string[]).includes(status)) {
+    errors.push(
+      issue(
+        'INVALID_MANIFEST_STATUS',
+        `Manifest status must be one of: ${CORPUS_MANIFEST_STATUSES.join(', ')}.`,
+        'status',
+      ),
+    );
+  }
+
+  if (manifest.owner !== undefined && manifest.owner !== null && !hasText(manifest.owner)) {
+    errors.push(issue('INVALID_OWNER', 'owner must be null or the name of the human content owner.', 'owner'));
+  }
+  if (manifest.intakeFolder !== undefined && !hasText(manifest.intakeFolder)) {
+    errors.push(
+      issue('INVALID_INTAKE_FOLDER', 'intakeFolder must be a non-empty path string when present.', 'intakeFolder'),
+    );
+  }
+
+  let reviewed: string[] = [];
+  if (manifest.reviewedOfficialIdentifiers !== undefined) {
+    if (!Array.isArray(manifest.reviewedOfficialIdentifiers)) {
+      errors.push(
+        issue(
+          'INVALID_REVIEWED_IDENTIFIERS',
+          'reviewedOfficialIdentifiers must be an array of strings.',
+          'reviewedOfficialIdentifiers',
+        ),
+      );
+    } else if (!manifest.reviewedOfficialIdentifiers.every(hasText)) {
+      errors.push(
+        issue(
+          'INVALID_REVIEWED_IDENTIFIERS',
+          'Every reviewed identifier must be a non-empty string.',
+          'reviewedOfficialIdentifiers',
+        ),
+      );
+    } else {
+      reviewed = manifest.reviewedOfficialIdentifiers as string[];
+    }
+  }
+
+  if (!Array.isArray(manifest.sources)) {
+    errors.push(issue('MISSING_SOURCES', 'A corpus manifest requires a "sources" array.', 'sources'));
+  }
+
+  // The manifest's own allowlist is the machine-readable record of human review; any
+  // identifiers supplied by the caller are additional (never a way to fabricate authority).
+  const combinedReviewed = [...new Set([...reviewed, ...(options.reviewedOfficialIdentifiers ?? [])])];
+  const batch = validateSourceRecords(Array.isArray(manifest.sources) ? manifest.sources : [], {
+    reviewedOfficialIdentifiers: combinedReviewed,
+  });
+  for (const result of batch.results) {
+    const label = `sources[${result.index}]${result.id ? ` "${result.id}"` : ''}`;
+    for (const error of result.errors) {
+      errors.push({ ...error, message: `${label}: ${error.message}` });
+    }
+    for (const warning of result.warnings) {
+      warnings.push({ ...warning, message: `${label}: ${warning.message}` });
+    }
+  }
+
+  // Consistency warnings: non-blocking, but make an incomplete/blocked corpus obvious.
+  if (!hasText(manifest.owner) && batch.total > 0) {
+    warnings.push(
+      issue(
+        'NO_CORPUS_OWNER',
+        'No named content owner is recorded; a human must sign off before any real source is authoritative.',
+        'owner',
+        'warning',
+      ),
+    );
+  }
+  if (status === 'blocked' && combinedReviewed.length > 0) {
+    warnings.push(
+      issue(
+        'BLOCKED_WITH_REVIEWED_IDS',
+        'A blocked corpus should not carry reviewed identifiers yet.',
+        'reviewedOfficialIdentifiers',
+        'warning',
+      ),
+    );
+  }
+  if (status === 'approved' && batch.total === 0) {
+    warnings.push(
+      issue('APPROVED_EMPTY_CORPUS', 'A corpus marked approved contains no source records.', 'sources', 'warning'),
+    );
+  }
+
+  return {
+    ok: errors.length === 0,
+    errors,
+    warnings,
+    sources: batch,
+    ...(typeof schemaVersion === 'number' ? { schemaVersion } : {}),
+    ...(status ? { status } : {}),
+  };
+}

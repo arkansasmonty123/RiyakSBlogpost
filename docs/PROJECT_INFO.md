@@ -2,15 +2,15 @@
 
 ## Summary
 
-| Field                    | Value                                                                                                                                                                                                                                                                                                                                                                 |
-| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Project name**         | THE BAR                                                                                                                                                                                                                                                                                                                                                               |
-| **Type**                 | Immersive, persistent legal-career simulator (educational simulation)                                                                                                                                                                                                                                                                                                 |
-| **Primary jurisdiction** | India (fictional firm/district/court environment initially)                                                                                                                                                                                                                                                                                                           |
-| **Repository**           | `/home/divyanshukumarsinha241/project-courtroom`                                                                                                                                                                                                                                                                                                                      |
-| **Status**               | Phase 0 complete (2026-11-22). P0 prototype: "The First Brief — Office Prototype" (Vite + React + TS + Tailwind, localStorage), Day 1–10 playable slice, provenance/source-intake + deterministic corpus-validation workflow with no auto-verification, 166/166 tests passing, CI workflow added. Real corpus still blocked on the legal content owner (D-005/D-011). |
-| **Primary reference**    | [`../THE_BAR_MASTER_CONTEXT.md`](../THE_BAR_MASTER_CONTEXT.md)                                                                                                                                                                                                                                                                                                        |
-| **Audit date**           | 2026-11-22                                                                                                                                                                                                                                                                                                                                                            |
+| Field                    | Value                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Project name**         | THE BAR                                                                                                                                                                                                                                                                                                                                                                     |
+| **Type**                 | Immersive, persistent legal-career simulator (educational simulation)                                                                                                                                                                                                                                                                                                       |
+| **Primary jurisdiction** | India (fictional firm/district/court environment initially)                                                                                                                                                                                                                                                                                                                 |
+| **Repository**           | `/home/divyanshukumarsinha241/project-courtroom`                                                                                                                                                                                                                                                                                                                            |
+| **Status**               | Phase 0 complete (2026-11-22). P0 prototype: "The First Brief — Office Prototype" (Vite + React + TS + Tailwind, localStorage), Day 1–10 playable slice, provenance/source-intake + deterministic corpus-validation workflow and corpus manifest pipeline with no auto-verification, CI workflow added. Real corpus still blocked on the legal content owner (D-005/D-011). |
+| **Primary reference**    | [`../THE_BAR_MASTER_CONTEXT.md`](../THE_BAR_MASTER_CONTEXT.md)                                                                                                                                                                                                                                                                                                              |
+| **Audit date**           | 2026-11-22                                                                                                                                                                                                                                                                                                                                                                  |
 
 ## Product vision
 
@@ -51,6 +51,7 @@ All legal content must be verified, sourced, versioned, and dated. No fabricated
 - **Workflow complete, corpus blocked.** The content-owner checklist, sign-off log, required-field contract and acceptable-source rules are documented in [`LEGAL_SOURCE_VERIFICATION.md`](./LEGAL_SOURCE_VERIFICATION.md). No official text has been supplied or ingested; the reviewed-identifier allowlist is empty.
 - `src/domain/sourceValidation.ts` provides deterministic `validateSourceRecord` / `validateSourceRecords`: required provenance fields, valid enums/dates/URLs, and a strict verified gate (named reviewer, review date, provenance, identifier, official URL for real-world authority). Specific-looking citations (`Section …`, `AIR …`, `<year> SCC`, `X v. Y`) are rejected as verified unless their identifier is in the human-reviewed allowlist. Placeholders can never be verified.
 - `npm run validate:sources -- <corpus.json>` (or `-- --seed`) runs the same validator as an offline CLI with clear error codes and non-zero exit on failure. A safe shape template is at [`docs/examples/legal-sources.example.json`](./examples/legal-sources.example.json).
+- **Corpus manifest pipeline ready, corpus blocked.** [`docs/legal-corpus/README.md`](./legal-corpus/README.md) defines the intake folder layout, manifest format and verification handoff. `validateCorpusManifest` (`src/domain/sourceValidation.ts`) plus `npm run validate:legal-corpus` validate manifest metadata and every source record with clear, position-labelled reporting. The shipped [`manifest.template.json`](./legal-corpus/manifest.template.json) is marked `template: true` and is **rejected by design** (`--template` exits 1); no real `manifest.json` exists and no official source has been ingested.
 - `markSourceVerified` now applies this same strict gate as a separate human/content-owner step; the game and AI stubs never verify or fabricate sources.
 - **Blocked follow-up:** assign the legal content owner (D-011), obtain official text and rights, and sign off real records before any verified real citation exists.
 
@@ -89,6 +90,7 @@ project-courtroom/
 │   └── tests/                   # vitest guardrail + smoke tests
 ├── scripts/
 │   ├── validate-sources.ts      # offline corpus validator CLI
+│   ├── validate-legal-corpus.ts # offline manifest validator CLI
 │   └── node-shims.d.ts          # minimal Node ambient types (no @types/node)
 ├── README.md
 ├── THE_BAR_MASTER_CONTEXT.md
@@ -99,6 +101,10 @@ project-courtroom/
     │   └── ADR-002-p0-vertical-slice.md
     ├── examples/
     │   └── legal-sources.example.json  # fictional shape template (not real law)
+    ├── legal-corpus/
+    │   ├── README.md            # intake pipeline docs + blocked status
+    │   ├── manifest.template.json # TEMPLATE / NOT LEGAL AUTHORITY (rejected by CLI)
+    │   └── intake/{unverified,reviewed}/.gitkeep
     ├── AUDIT.md
     ├── DECISIONS.md
     ├── IMPLEMENTATION_PLAN.md

@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "validate:sources": "vite-node scripts/validate-sources.ts",
+    "validate:legal-corpus": "vite-node scripts/validate-legal-corpus.ts",
     "size:home": "du -sh /home/divyanshukumarsinha241"
   },
   "dependencies": {
