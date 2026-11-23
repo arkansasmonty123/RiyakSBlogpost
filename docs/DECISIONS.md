@@ -121,3 +121,10 @@ Use this for future entries:
 - **Action:** Used researcher subagent + web verification to add official Supreme Court judgment metadata (no judgment text reproduced): Sanofi India Ltd. v. CBI, 2026 INSC 957 (7 Sep 2026), and Harish Rana v. Union of India, 2026 INSC 222 (11 Mar 2026), both verified via api.sci.gov.in official PDFs.
 - **Guardrails:** No fabricated citations/provisions/judgment text. Specific case citations added to reviewed allowlist/seed reviewed identifiers. Licensing/terms noted as requiring human review for bulk text reuse.
 - **Remaining:** Broader case-law corpus, full legal-text ingestion, section-level citation verification, procedural-rule text review remain human/legal-review tasks.
+
+## 2026-11-23 ADR-001 infra start
+
+- **Action:** Started ADR-001 DB/persistence infrastructure with size-conscious SQLite (`node:sqlite`, zero extra runtime deps).
+- **Added:** `server/db/*` schema/migrations/transactional save-slot repository, audit events, canonicalTruth strip, minimal HTTP API (`/api/health`, `/api/saves`, `/api/audit`), Vite proxy, `npm run db:server`, server typecheck, tests.
+- **Default unchanged:** localStorage remains active client persistence path; no regression to existing save behavior.
+- **Next:** client storage adapter (localStorage/API), normalized entities/migrations, Postgres/Prisma evaluation when needed, auth/multi-user boundaries.

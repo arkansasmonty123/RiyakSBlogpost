@@ -38,3 +38,11 @@ For P0 prototype, use a **size-conscious web stack**:
 - Track `du -sh /home/divyanshukumarsinha241` before/after install.
 - Keep dependencies minimal; avoid heavy UI/AI packages in P0.
 - Re-evaluate stack at Phase 1/2 boundary.
+
+## 2026-11-23 infra start (implemented)
+
+- **Started:** SQLite persistence scaffold using Node built-in `node:sqlite` (zero extra runtime deps), file-based DB at `data/the-bar.sqlite` (configurable by `THE_BAR_DB_PATH`).
+- **Added:** `server/db/database.ts` (migrations/WAL/transactions), `server/db/repository.ts` (save slot upsert/get/list/delete + audit events, canonicalTruth stripped defensively), `server/api.ts` minimal HTTP API (`/api/health`, `/api/saves`, `/api/audit`), `server/index.ts`.
+- **Dev wiring:** Vite proxy for `/api/saves|/api/health|/api/audit` to `127.0.0.1:8787`; `npm run db:server`.
+- **Tests:** `server/db/repository.test.ts` (2 tests) passing under full verify.
+- **Still deferred:** Postgres/Prisma migration, normalized schema for all entities, auth/multi-user, client-side API storage adapter default switch, production deployment. localStorage remains the active client persistence path until adapter migration is completed and verified.

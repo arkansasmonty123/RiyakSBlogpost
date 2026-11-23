@@ -25,7 +25,7 @@ export default tseslint.config(
   },
   {
     // Test fixtures deliberately cast legacy/partial save payloads to `any`.
-    files: ['src/tests/**/*.{ts,tsx}'],
+    files: ['src/tests/**/*.{ts,tsx}', 'server/**/*.test.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
     },

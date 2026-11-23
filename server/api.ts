@@ -1,0 +1,107 @@
+import http from 'node:http';
+import { URL } from 'node:url';
+import { closeDb, getDb } from './db/database';
+import { deleteSaveSlot, getSaveSlot, listAuditEvents, listSaveSlots, upsertSaveSlot } from './db/repository';
+
+function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
+  const json = JSON.stringify(body);
+  res.writeHead(status, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(json),
+    'Cache-Control': 'no-store',
+  });
+  res.end(json);
+}
+
+async function readBody(req: http.IncomingMessage, limitBytes = 2_000_000): Promise<unknown> {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of req) {
+    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buf.length;
+    if (total > limitBytes) throw new Error('PAYLOAD_TOO_LARGE');
+    chunks.push(buf);
+  }
+  if (chunks.length === 0) return null;
+  const text = Buffer.concat(chunks).toString('utf8');
+  return JSON.parse(text);
+}
+
+function slotIdFromPath(pathname: string): string | null {
+  const m = pathname.match(/^\/api\/saves\/([a-zA-Z0-9_-]{1,64})$/);
+  return m ? m[1] : null;
+}
+
+export async function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+  try {
+    const url = new URL(req.url ?? '/', 'http://localhost');
+    const { pathname } = url;
+    const method = req.method ?? 'GET';
+
+    if (method === 'GET' && pathname === '/api/health') {
+      getDb();
+      return sendJson(res, 200, { ok: true, service: 'the-bar-db', storage: 'sqlite' });
+    }
+
+    if (method === 'GET' && pathname === '/api/saves') {
+      return sendJson(res, 200, { ok: true, slots: listSaveSlots(getDb()) });
+    }
+
+    if (method === 'GET' && pathname === '/api/audit') {
+      const slotId = url.searchParams.get('slotId') ?? undefined;
+      const limit = Number(url.searchParams.get('limit') ?? '100');
+      return sendJson(res, 200, { ok: true, events: listAuditEvents(getDb(), slotId, limit) });
+    }
+
+    const slotId = slotIdFromPath(pathname);
+    if (slotId) {
+      if (method === 'GET') {
+        const slot = getSaveSlot(getDb(), slotId);
+        if (!slot) return sendJson(res, 404, { ok: false, error: 'NOT_FOUND' });
+        return sendJson(res, 200, { ok: true, slot });
+      }
+      if (method === 'PUT' || method === 'POST') {
+        const body = await readBody(req);
+        const payload =
+          body && typeof body === 'object' && 'payload' in (body as Record<string, unknown>)
+            ? (body as Record<string, unknown>).payload
+            : body;
+        const slot = upsertSaveSlot(getDb(), slotId, payload);
+        return sendJson(res, 200, { ok: true, slot });
+      }
+      if (method === 'DELETE') {
+        const deleted = deleteSaveSlot(getDb(), slotId);
+        return sendJson(res, 200, { ok: true, deleted });
+      }
+    }
+
+    return sendJson(res, 404, { ok: false, error: 'NOT_FOUND' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message === 'PAYLOAD_TOO_LARGE') return sendJson(res, 413, { ok: false, error: message });
+    if (error instanceof SyntaxError) return sendJson(res, 400, { ok: false, error: 'INVALID_JSON' });
+    return sendJson(res, 500, { ok: false, error: 'INTERNAL_ERROR' });
+  }
+}
+
+export function createServer(): http.Server {
+  return http.createServer((req, res) => {
+    void handleRequest(req, res);
+  });
+}
+
+export function startServer(port = Number(process.env.PORT ?? 8787)): http.Server {
+  const server = createServer();
+  server.listen(port, '127.0.0.1', () => {
+    console.log(`[the-bar-db] listening on http://127.0.0.1:${port}`);
+  });
+  const shutdown = () => {
+    server.close(() => {
+      closeDb();
+      process.exit(0);
+    });
+  };
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+  return server;
+}

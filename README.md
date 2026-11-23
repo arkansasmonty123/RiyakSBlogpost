@@ -43,6 +43,9 @@ npm install
 # One-command local gate (lint, format, types, 301 tests, production build):
 npm run verify
 
+# Optional ADR-001 DB infra (SQLite, zero extra runtime deps):
+npm run db:server
+
 # Or run the steps individually:
 npm run typecheck
 npm run lint
