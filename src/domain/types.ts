@@ -196,6 +196,46 @@ export interface NotebookEntry {
   /** Set on contradiction/corroboration notes so the source item is traceable. */
   evidenceId?: string;
   relation?: 'contradiction' | 'corroboration';
+  /** Knowledge graph link IDs connecting this note to interdisciplinary concepts. */
+  knowledgeGraphIds?: string[];
+}
+
+/** A connection between a legal topic and a non-legal discipline. */
+export type KnowledgeDomain =
+  | 'forensic'
+  | 'medical'
+  | 'psychology'
+  | 'economics'
+  | 'accounting'
+  | 'cybersecurity'
+  | 'history'
+  | 'philosophy'
+  | 'sociology'
+  | 'technology';
+
+export interface KnowledgeConnection {
+  id: string;
+  legalTopic: string; // case element, evidence id, assignment title, etc.
+  domain: KnowledgeDomain;
+  relatedConcept: string;
+  description: string; // player-legible summary of the connection
+  strength: 'weak' | 'moderate' | 'strong'; // player-legible assessment
+  sourceId?: string; // optional link to a LegalSource if the connection is verified
+}
+
+/** Player-legible interdisciplinary notes. */
+export type InterdisciplinaryNote =
+  | 'forensic-analysis'
+  | 'medical-reasoning'
+  | 'psychological-profile'
+  | 'economic-analysis'
+  | 'historical-context'
+  | 'philosophical-implication'
+  | 'technological-implication'
+  | 'sociological-pattern';
+
+export interface InterdisciplinaryNotebookEntry extends NotebookEntry {
+  connection: KnowledgeConnection;
 }
 
 /** Grounds a player may legitimately question about an item's use in a case. */
