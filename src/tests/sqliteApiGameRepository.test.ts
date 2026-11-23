@@ -89,3 +89,138 @@ describe('SqliteApiGameRepository', () => {
     expect(save.version).toBe(2);
   });
 });
+
+describe('SqliteApiGameRepository optimistic concurrency', () => {
+  it('does not send expectedSavedAt until the server savedAt is known, then uses the PUT ack', async () => {
+    const bodies: any[] = [];
+    let puts = 0;
+    const repo = new SqliteApiGameRepository('', async (_input, init) => {
+      bodies.push(JSON.parse(String(init?.body ?? '{}')));
+      puts += 1;
+      return jsonResponse({ ok: true, slot: { slotId: 'default', savedAt: `ack-${puts}` } });
+    });
+
+    expect((await repo.saveGame('default', createInitialSave())).ok).toBe(true);
+    expect(bodies[0].expectedSavedAt).toBeUndefined();
+    expect((await repo.saveGame('default', createInitialSave())).ok).toBe(true);
+    // The ack's savedAt wins over the locally generated payload stamp.
+    expect(bodies[1].expectedSavedAt).toBe('ack-1');
+  });
+
+  it('tracks savedAt from GET (slot.savedAt, falling back to payload.savedAt)', async () => {
+    let putBody: any = null;
+    const repo = new SqliteApiGameRepository('', async (_input, init) => {
+      if (String(init?.method ?? 'GET') === 'PUT') {
+        putBody = JSON.parse(String(init?.body ?? '{}'));
+        return jsonResponse({ ok: true, slot: { savedAt: 'new-stamp' } });
+      }
+      return jsonResponse({ ok: true, slot: { payload: { version: 2, savedAt: 'loaded-stamp' } } });
+    });
+    await repo.loadGame('default');
+    await repo.saveGame('default', createInitialSave());
+    expect(putBody.expectedSavedAt).toBe('loaded-stamp');
+  });
+
+  it('prefers slot.savedAt over payload.savedAt when both are present', async () => {
+    let putBody: any = null;
+    const repo = new SqliteApiGameRepository('', async (_input, init) => {
+      if (String(init?.method ?? 'GET') === 'PUT') {
+        putBody = JSON.parse(String(init?.body ?? '{}'));
+        return jsonResponse({ ok: true, slot: { savedAt: 'new-stamp' } });
+      }
+      return jsonResponse({
+        ok: true,
+        slot: { savedAt: 'slot-stamp', payload: { version: 2, savedAt: 'payload-stamp' } },
+      });
+    });
+    await repo.loadGame('default');
+    await repo.saveGame('default', createInitialSave());
+    expect(putBody.expectedSavedAt).toBe('slot-stamp');
+  });
+
+  it('returns a distinguishable conflict result on 409 and keeps guarding with the old stamp', async () => {
+    const bodies: any[] = [];
+    const repo = new SqliteApiGameRepository('', async (_input, init) => {
+      bodies.push(JSON.parse(String(init?.body ?? '{}')));
+      return bodies.length === 1
+        ? jsonResponse({ ok: true, slot: { savedAt: 'server-stamp' } })
+        : jsonResponse({ ok: false, error: 'SAVE_CONFLICT' }, 409);
+    });
+    await repo.saveGame('default', createInitialSave());
+
+    expect(await repo.saveGame('default', createInitialSave())).toEqual({
+      ok: false,
+      reason: 'SAVE_CONFLICT',
+      conflict: true,
+    });
+    expect(bodies[1].expectedSavedAt).toBe('server-stamp');
+    // A conflict never silently disables the guard for the next write.
+    await repo.saveGame('default', createInitialSave());
+    expect(bodies[2].expectedSavedAt).toBe('server-stamp');
+  });
+
+  it('force omits expectedSavedAt for that write only', async () => {
+    const bodies: any[] = [];
+    const repo = new SqliteApiGameRepository('', async (_input, init) => {
+      bodies.push(JSON.parse(String(init?.body ?? '{}')));
+      return jsonResponse({ ok: true, slot: { savedAt: `ack-${bodies.length}` } });
+    });
+    await repo.saveGame('default', createInitialSave());
+
+    expect((await repo.saveGame('default', createInitialSave(), { force: true })).ok).toBe(true);
+    expect(bodies[1].expectedSavedAt).toBeUndefined();
+
+    await repo.saveGame('default', createInitialSave());
+    expect(bodies[2].expectedSavedAt).toBe('ack-2');
+  });
+
+  it('reset clears the tracked savedAt so the next save is unguarded', async () => {
+    const bodies: any[] = [];
+    const repo = new SqliteApiGameRepository('', async (_input, init) => {
+      if (String(init?.method ?? 'GET') === 'PUT') {
+        bodies.push(JSON.parse(String(init?.body ?? '{}')));
+        return jsonResponse({ ok: true, slot: { savedAt: 'server-stamp' } });
+      }
+      return jsonResponse({ ok: true, deleted: true });
+    });
+    await repo.saveGame('default', createInitialSave());
+    await repo.resetGame('default');
+    await repo.saveGame('default', createInitialSave());
+    expect(bodies[1].expectedSavedAt).toBeUndefined();
+  });
+
+  it('a 404 load clears a stale savedAt', async () => {
+    const bodies: any[] = [];
+    let phase: 'put' | 'get' = 'put';
+    const repo = new SqliteApiGameRepository('', async (_input, init) => {
+      if (phase === 'get') return jsonResponse({ ok: false }, 404);
+      bodies.push(JSON.parse(String(init?.body ?? '{}')));
+      return jsonResponse({ ok: true, slot: { savedAt: 'server-stamp' } });
+    });
+    await repo.saveGame('default', createInitialSave());
+    phase = 'get';
+    await repo.loadGame('default');
+    phase = 'put';
+    await repo.saveGame('default', createInitialSave());
+    expect(bodies[1].expectedSavedAt).toBeUndefined();
+  });
+
+  it('migration import does not send a guard for the unknown slot', async () => {
+    const putBodies: any[] = [];
+    const local = createInitialSave();
+    const repo = new SqliteApiGameRepository(
+      '',
+      async (_input, init) => {
+        if (String(init?.method ?? 'GET') === 'PUT') {
+          putBodies.push(JSON.parse(String(init?.body ?? '{}')));
+          return jsonResponse({ ok: true, slot: { savedAt: 'imported-stamp' } });
+        }
+        return jsonResponse({ ok: false }, 404);
+      },
+      { hasLocalSave: () => true, loadLocalSave: () => local },
+    );
+    await repo.loadGame('default');
+    expect(putBodies).toHaveLength(1);
+    expect(putBodies[0].expectedSavedAt).toBeUndefined();
+  });
+});

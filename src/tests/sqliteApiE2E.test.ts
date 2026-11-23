@@ -6,6 +6,7 @@ import path from 'node:path';
 import { createServer } from '../../server/api';
 import { closeDb, getDb } from '../../server/db/database';
 import { SqliteApiGameRepository, type FetchLike, type MigrationSource } from '@/storage/sqliteApiGameRepository';
+import { toPersistedSave } from '@/storage/save';
 import { createInitialSave } from '@/domain/seed';
 
 /**
@@ -230,18 +231,15 @@ describe('SqliteApiGameRepository end-to-end (real HTTP + temp SQLite)', () => {
     expect(conflict.body).toEqual({ ok: false, error: 'SAVE_CONFLICT' });
     expect((await requestJson('/api/saves/e2e-conflict')).body.slot.payload.marker).toBe('original');
 
-    // Observed behavior: the repository never sends expectedSavedAt, so a plain save
-    // always overwrites the slot — optimistic-concurrency conflicts cannot arise from
-    // the default repository path.
+    // A fresh repository has no known stamp, so its first save is unguarded and overwrites.
     const plainRepo = new SqliteApiGameRepository(baseUrl);
     const nextSave = createInitialSave();
     nextSave.player.name = 'Overwrote Without CAS';
     expect(await plainRepo.saveGame('e2e-conflict', nextSave)).toEqual({ ok: true });
     expect((await requestJson('/api/saves/e2e-conflict')).body.slot.payload.player.name).toBe('Overwrote Without CAS');
 
-    // If a caller opts into CAS (here by injecting a stale expectedSavedAt into the PUT
-    // body while still performing a real HTTP fetch), a 409 is surfaced as a failed
-    // PersistResult — it never throws and never overwrites the slot.
+    // Once a stamp is known (here injected by a stale fetch wrapper over a real PUT), a 409 is
+    // surfaced as a distinguishable conflict result — it never throws and never overwrites.
     const withStaleCas: FetchLike = (input, init) => {
       if (String(init?.method ?? 'GET') !== 'PUT') return fetch(input, init);
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
@@ -253,7 +251,53 @@ describe('SqliteApiGameRepository end-to-end (real HTTP + temp SQLite)', () => {
     const casRepo = new SqliteApiGameRepository(baseUrl, withStaleCas);
     const casSave = createInitialSave();
     casSave.player.name = 'Should Not Be Written';
-    expect(await casRepo.saveGame('e2e-conflict', casSave)).toEqual({ ok: false, reason: 'HTTP_409' });
+    expect(await casRepo.saveGame('e2e-conflict', casSave)).toEqual({
+      ok: false,
+      reason: 'SAVE_CONFLICT',
+      conflict: true,
+    });
     expect((await requestJson('/api/saves/e2e-conflict')).body.slot.payload.player.name).toBe('Overwrote Without CAS');
+  });
+
+  it('detects an external write after load, reloads it, and supports a one-shot force overwrite', async () => {
+    const slot = 'e2e-cas-flow';
+    const repo = new SqliteApiGameRepository(baseUrl);
+    const mine = createInitialSave();
+    mine.player.name = 'My Copy';
+    expect((await repo.saveGame(slot, mine)).ok).toBe(true);
+    expect((await repo.loadGame(slot)).player.name).toBe('My Copy');
+
+    // Another tab writes a newer version directly over HTTP.
+    const external = toPersistedSave(createInitialSave());
+    external.player.name = 'Other Tab';
+    external.savedAt = '2026-11-23T12:00:00.000Z';
+    expect((await putSave(slot, external)).status).toBe(200);
+
+    const conflict = await repo.saveGame(slot, mine);
+    expect(conflict).toEqual({ ok: false, reason: 'SAVE_CONFLICT', conflict: true });
+    expect((await requestJson(`/api/saves/${slot}`)).body.slot.payload.player.name).toBe('Other Tab');
+
+    // Reload adopts the server copy; the repository re-learns the stamp and can save again.
+    const reloaded = await repo.loadGame(slot);
+    expect(reloaded.player.name).toBe('Other Tab');
+    expect((await repo.saveGame(slot, reloaded)).ok).toBe(true);
+
+    // Force ignores the guard for exactly one write.
+    const second = toPersistedSave(createInitialSave());
+    second.player.name = 'Second Writer';
+    second.savedAt = '2026-11-23T13:00:00.000Z';
+    await putSave(slot, second);
+    const forcedMine = createInitialSave();
+    forcedMine.player.name = 'Forced Win';
+    expect((await repo.saveGame(slot, forcedMine, { force: true })).ok).toBe(true);
+    expect((await requestJson(`/api/saves/${slot}`)).body.slot.payload.player.name).toBe('Forced Win');
+
+    // Normal conditional writes still conflict afterwards.
+    const third = toPersistedSave(createInitialSave());
+    third.player.name = 'Third Writer';
+    third.savedAt = '2026-11-23T14:00:00.000Z';
+    await putSave(slot, third);
+    expect(await repo.saveGame(slot, forcedMine)).toMatchObject({ ok: false, conflict: true });
+    expect((await requestJson(`/api/saves/${slot}`)).body.slot.payload.player.name).toBe('Third Writer');
   });
 });

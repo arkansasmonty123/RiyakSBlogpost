@@ -4,9 +4,9 @@ import { createResetUiState, emptySourceForm, EXPLICIT_SAVE_NOTICE, RESET_CONFIR
 import type { SaveStatus, SourceFormState } from '@/app/sessionUi';
 import { config, isLocalAiPanelEnabled } from '@/config/env';
 import { createInitialSave } from '@/domain/seed';
-import { DEFAULT_GAME_SLOT, type GameRepository } from '@/storage/gameRepository';
+import { DEFAULT_GAME_SLOT, type GameRepository, type SaveOptions } from '@/storage/gameRepository';
 import { getGameRepository } from '@/storage/getGameRepository';
-import type { PersistResult } from '@/storage/save';
+import { isSaveConflict, type PersistResult } from '@/storage/save';
 import { recordAudit } from '@/domain/audit';
 import { buildChapterCompletionSummary, isChapterComplete } from '@/domain/completion';
 import { addNotebookEntry, capNotebook } from '@/domain/notebook';
@@ -164,15 +164,28 @@ export async function loadBootSave(boot: SessionBoot): Promise<SaveGame> {
 }
 
 /** Save through the configured adapter, using the sync path when the adapter offers one. */
-export function persistSaveThrough(boot: SessionBoot, next: SaveGame): PersistResult | Promise<PersistResult> {
+export function persistSaveThrough(
+  boot: SessionBoot,
+  next: SaveGame,
+  options?: SaveOptions,
+): PersistResult | Promise<PersistResult> {
   return boot.sync
     ? boot.sync.saveGameSync(DEFAULT_GAME_SLOT, next)
-    : boot.repository.saveGame(DEFAULT_GAME_SLOT, next);
+    : boot.repository.saveGame(DEFAULT_GAME_SLOT, next, options);
 }
 
 /** Reset through the configured adapter, using the sync path when the adapter offers one. */
 export function resetSaveThrough(boot: SessionBoot): SaveGame | Promise<SaveGame> {
   return boot.sync ? boot.sync.resetGameSync(DEFAULT_GAME_SLOT) : boot.repository.resetGame(DEFAULT_GAME_SLOT);
+}
+
+/**
+ * A conflict is only possible on the async (sqlite-api) path: the localStorage adapter has no
+ * concurrency model and never returns one, so its status/UX stays byte-for-byte unchanged.
+ */
+export function saveStatusFromResult(result: PersistResult, sync: boolean): { status: SaveStatus; conflict: boolean } {
+  const conflict = !sync && isSaveConflict(result);
+  return { status: conflict ? 'conflict' : result.ok ? 'saved' : 'error', conflict };
 }
 
 function SessionLoading() {
@@ -212,7 +225,8 @@ export function App({ initialPanel = 'case' }: { initialPanel?: Panel }) {
 
 /** Polite, in-header feedback about local persistence; never exposes storage internals. */
 export function SaveStatusMessage({ status }: { status: SaveStatus }) {
-  if (status === 'idle') return null;
+  // A conflict is announced by SaveConflictNotice with its own actions, so stay silent here.
+  if (status === 'idle' || status === 'conflict') return null;
   return (
     <p
       role="status"
@@ -221,6 +235,53 @@ export function SaveStatusMessage({ status }: { status: SaveStatus }) {
     >
       {status === 'error' ? 'Progress is in memory but could not be saved locally.' : 'Progress saved locally.'}
     </p>
+  );
+}
+
+/**
+ * Non-destructive conflict prompt. Keeps the in-memory progress intact and offers an explicit,
+ * user-chosen resolution; nothing is overwritten automatically.
+ */
+export function SaveConflictNotice({
+  onReload,
+  onOverwrite,
+  busy = false,
+}: {
+  onReload: () => void;
+  onOverwrite: () => void;
+  busy?: boolean;
+}) {
+  return (
+    <div
+      role="alert"
+      aria-live="assertive"
+      aria-busy={busy}
+      className="w-full p-3 rounded border border-yellow-400/40 bg-yellow-400/10"
+    >
+      <p className="text-xs font-medium text-yellow-200">Your latest changes were not saved.</p>
+      <p className="mt-1 text-xs text-yellow-100/90">
+        Another copy of this case file was saved while you were working. Nothing has been overwritten — your changes are
+        still here in memory. Choose what to do next.
+      </p>
+      <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Resolve save conflict">
+        <button
+          type="button"
+          className="px-2 py-1 border border-bar-gold/40 rounded text-xs hover:bg-white/5 disabled:opacity-50"
+          onClick={onReload}
+          disabled={busy}
+        >
+          Reload from server
+        </button>
+        <button
+          type="button"
+          className="px-2 py-1 border border-yellow-400/40 rounded text-xs text-yellow-100 hover:bg-yellow-400/10 disabled:opacity-50"
+          onClick={onOverwrite}
+          disabled={busy}
+        >
+          Overwrite server save
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -331,6 +392,9 @@ function GameApp({
   const [showHelp, setShowHelp] = useState(freshUi.showHelp);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(freshUi.saveStatus);
   const [saveNotice, setSaveNotice] = useState(freshUi.saveNotice);
+  // Async-only conflict UX. Local mode never sets these because it has no concurrency model.
+  const [saveConflict, setSaveConflict] = useState(false);
+  const [conflictBusy, setConflictBusy] = useState(false);
   const [aiPrompt, setAiPrompt] = useState(freshUi.aiPrompt);
   const [aiResponse, setAiResponse] = useState(freshUi.aiResponse);
   const [aiWarnings, setAiWarnings] = useState<string[]>(freshUi.aiWarnings);
@@ -477,16 +541,19 @@ function GameApp({
   }
 
   function applyPersistResult(result: PersistResult) {
-    setSaveStatus(result.ok ? 'saved' : 'error');
+    const { status, conflict } = saveStatusFromResult(result, !!boot.sync);
+    setSaveStatus(status);
+    setSaveConflict(conflict);
+    if (conflict) setSaveNotice('');
   }
 
-  function persist(next: SaveGame) {
+  function persist(next: SaveGame, options?: SaveOptions) {
     if (boot.sync) {
-      applyPersistResult(persistSaveThrough(boot, next) as PersistResult);
+      applyPersistResult(persistSaveThrough(boot, next, options) as PersistResult);
       return;
     }
     const generation = ++saveGeneration.current;
-    const write = () => persistSaveThrough(boot, next) as Promise<PersistResult>;
+    const write = () => persistSaveThrough(boot, next, options) as Promise<PersistResult>;
     saveQueue.current = saveQueue.current
       .then(write, write)
       .then((result) => {
@@ -518,14 +585,11 @@ function GameApp({
   }
 
   /**
-   * Complete session reset. One path for both entry points: a fresh save plus every
-   * transient UI value from the same blueprint, so no stale id or filter survives.
+   * Replace all in-memory game and transient UI state from a freshly obtained save. Shared by
+   * session reset and by the conflict "reload from server" action so neither leaves stale ids,
+   * filters, editor text or a stale conflict notice behind.
    */
-  async function resetSession() {
-    // A reset invalidates any in-flight async save so its result cannot relight the status.
-    saveGeneration.current += 1;
-    const reset = resetSaveThrough(boot);
-    const freshSave = boot.sync ? (reset as SaveGame) : await (reset as Promise<SaveGame>);
+  function applyFreshSaveState(freshSave: SaveGame) {
     const fresh = createResetUiState(freshSave);
     setSave(freshSave);
     setPanel(fresh.panel);
@@ -554,6 +618,7 @@ function GameApp({
     setShowHelp(fresh.showHelp);
     setSaveStatus(fresh.saveStatus);
     setSaveNotice(fresh.saveNotice);
+    setSaveConflict(false);
     aiRequestId.current += 1;
     setAiPrompt(fresh.aiPrompt);
     setAiResponse(fresh.aiResponse);
@@ -562,6 +627,45 @@ function GameApp({
     setAiIncludeInternalSummaries(fresh.aiIncludeInternalSummaries);
     setAiSources(fresh.aiSources);
     setAiLoading(false);
+  }
+
+  /**
+   * Complete session reset. One path for both entry points: a fresh save plus every
+   * transient UI value from the same blueprint, so no stale id or filter survives.
+   */
+  async function resetSession() {
+    // A reset invalidates any in-flight async save so its result cannot relight the status.
+    saveGeneration.current += 1;
+    const reset = resetSaveThrough(boot);
+    const freshSave = boot.sync ? (reset as SaveGame) : await (reset as Promise<SaveGame>);
+    applyFreshSaveState(freshSave);
+  }
+
+  /** Conflict action: discard in-memory edits and adopt the server's copy through the repository. */
+  async function reloadFromServer() {
+    if (conflictBusy) return;
+    setConflictBusy(true);
+    // Invalidate any queued save so a late result cannot re-raise the conflict.
+    saveGeneration.current += 1;
+    try {
+      const loaded = await boot.repository.loadGame(DEFAULT_GAME_SLOT);
+      applyFreshSaveState(loaded);
+    } finally {
+      setConflictBusy(false);
+    }
+  }
+
+  /** Conflict action: keep in-memory edits and force one unconditional write (no expectedSavedAt). */
+  function overwriteServerSave() {
+    if (conflictBusy) return;
+    setConflictBusy(true);
+    saveGeneration.current += 1;
+    const write = () => persistSaveThrough(boot, save, { force: true }) as Promise<PersistResult>;
+    saveQueue.current = saveQueue.current
+      .then(write, write)
+      .then((result) => applyPersistResult(result))
+      .catch(() => applyPersistResult({ ok: false, reason: 'SAVE_FAILED' }))
+      .finally(() => setConflictBusy(false));
   }
 
   /** Shared, explicit confirmation for every "start over" action. */
@@ -1038,6 +1142,13 @@ function GameApp({
             </button>
             <SaveStatusMessage status={saveStatus} />
           </div>
+          {saveConflict && !boot.sync && (
+            <SaveConflictNotice
+              onReload={() => void reloadFromServer()}
+              onOverwrite={overwriteServerSave}
+              busy={conflictBusy}
+            />
+          )}
         </div>
       </header>
 

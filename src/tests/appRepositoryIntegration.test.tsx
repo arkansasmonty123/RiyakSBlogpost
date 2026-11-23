@@ -133,11 +133,18 @@ describe('App ↔ GameRepository integration (ADR-001)', () => {
 
     const result = await persistSaveThrough(boot, next);
     expect(result).toEqual({ ok: true });
-    expect(repo.saveGame).toHaveBeenCalledWith(DEFAULT_GAME_SLOT, next);
+    expect(repo.saveGame).toHaveBeenCalledWith(DEFAULT_GAME_SLOT, next, undefined);
 
     const fresh = await resetSaveThrough(boot);
     expect(fresh.version).toBe(2);
     expect(repo.resetGame).toHaveBeenCalledWith(DEFAULT_GAME_SLOT);
+  });
+
+  it('passes a one-shot force option through the async save helper only', async () => {
+    const repo = asyncRepository();
+    const boot = createSessionBoot(repo);
+    await persistSaveThrough(boot, createInitialSave(), { force: true });
+    expect(repo.saveGame).toHaveBeenCalledWith(DEFAULT_GAME_SLOT, expect.anything(), { force: true });
   });
 
   it('drives sqlite-api load/save/reset with a mocked fetch through the same helpers', async () => {

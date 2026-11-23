@@ -34,9 +34,23 @@ export interface StorageLike {
 export type PersistedCaseFile = Omit<CaseFile, 'canonicalTruth'>;
 export type PersistedSave = Omit<SaveGame, 'caseFile'> & { caseFile: PersistedCaseFile };
 
+/** Server rejected a conditional write because another copy was saved first. */
+export const SAVE_CONFLICT_REASON = 'SAVE_CONFLICT';
+
 export interface PersistResult {
   ok: boolean;
   reason?: string;
+  /**
+   * True only when a conditional (optimistic-concurrency) write lost to a newer server copy.
+   * `reason` carries the same signal for callers that only inspect the string. Adapters with
+   * no concurrency model (localStorage) never set it, so their UX is unchanged.
+   */
+  conflict?: boolean;
+}
+
+/** Distinguish a lost conditional write from ordinary persistence failures. */
+export function isSaveConflict(result: PersistResult): boolean {
+  return result.conflict === true || result.reason === SAVE_CONFLICT_REASON;
 }
 
 /** Storage can be unavailable (private mode, disabled cookies, quota policy). Cleanup must never fail a save/reset. */

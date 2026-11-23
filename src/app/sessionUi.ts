@@ -12,8 +12,8 @@ export const RESET_CONFIRMATION = 'Start over? This erases the local save and ca
 /** Confirmation text for the explicit Save button; shown in place, never navigates away. */
 export const EXPLICIT_SAVE_NOTICE = 'Saved locally.';
 
-/** Polite, in-header feedback about local persistence; never exposes storage internals. */
-export type SaveStatus = 'idle' | 'saved' | 'error';
+/** Polite, in-header feedback about persistence; 'conflict' is announced by its own action prompt. */
+export type SaveStatus = 'idle' | 'saved' | 'error' | 'conflict';
 
 export interface SourceFormState {
   title: string;
